@@ -1,0 +1,508 @@
+openapi: 3.0.1
+info:
+  title: Lagartos Pádel API
+  description: Documentación de las APIs disponibles para la app móvil y herramientas administrativas.
+  version: "1.0.0"
+
+servers:
+  - url: https://ktor-lagartosapp-stage.up.railway.app/api
+
+tags:
+  - name: Auth
+    description: Endpoints relacionados con autenticación y gestión de perfil
+  - name: Tournaments
+    description: Endpoints para creación y gestión de torneos
+  - name: Teams
+    description: Endpoints para registrar, consultar y modificar equipos
+  - name: Payments
+    description: Endpoints para pagos con Stripe
+  - name: Ranking
+    description: Endpoints para obtener ranking de jugadores
+  - name: Remote Config
+    description: Endpoint para configuración remota
+  - name: Excel
+    description: Generación y envío de reportes por correo
+
+paths:
+  /auth/login:
+    post:
+      summary: Iniciar sesión
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: Respuesta exitosa con token y perfil
+        "401":
+          description: Credenciales inválidas
+
+  /auth/register:
+    post:
+      summary: Registrar usuario nuevo
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        "201":
+          description: Usuario registrado correctamente
+
+  /auth/profile:
+    get:
+      summary: Obtener perfil del usuario autenticado
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Datos del perfil
+
+    patch:
+      summary: Actualizar datos del perfil
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        "200":
+          description: Perfil actualizado
+
+  /auth/profile/photo:
+    patch:
+      summary: Subir imagen de perfil
+      tags: [Auth]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Foto actualizada
+
+  /auth/forgot-password:
+    post:
+      summary: Solicitar cambio de contraseña
+      tags: [Auth]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+      responses:
+        "200":
+          description: Correo enviado
+
+  /auth/reset-password:
+    post:
+      summary: Establecer nueva contraseña usando token
+      tags: [Auth]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        "200":
+          description: Contraseña actualizada
+
+  /tournaments:
+    get:
+      summary: Obtener todos los torneos ordenados por fecha
+      tags: [Tournaments]
+      responses:
+        "200":
+          description: Lista de torneos
+    post:
+      summary: Crear torneo
+      tags: [Tournaments]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TournamentRequest'
+      responses:
+        "201":
+          description: Torneo creado
+
+  /tournaments/{id}:
+    get:
+      summary: Obtener detalles de torneo por ID
+      tags: [Tournaments]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Detalles del torneo
+    patch:
+      summary: Actualizar torneo
+      tags: [Tournaments]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TournamentRequest'
+      responses:
+        "200":
+          description: Torneo actualizado
+    delete:
+      summary: Eliminar torneo
+      tags: [Tournaments]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Eliminado correctamente
+
+  /tournaments/{id}/flyer:
+    patch:
+      summary: Actualizar URL del flyer
+      tags: [Tournaments]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                flyer_url:
+                  type: string
+      responses:
+        "200":
+          description: Flyer actualizado
+
+  /ranking:
+    get:
+      summary: Obtener ranking por categoría
+      tags: [Ranking]
+      parameters:
+        - name: category
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Lista de ranking
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RankingEntry'
+
+  /ranking/categories:
+    get:
+      summary: Obtener todas las categorías disponibles para ranking
+      tags: [Ranking]
+      responses:
+        "200":
+          description: Lista de categorías
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  /ranking/player/{uid}:
+    get:
+      summary: Obtener historial de ranking de un jugador
+      tags: [Ranking]
+      parameters:
+        - in: path
+          name: uid
+          required: true
+          schema: { type: string }
+        - name: category
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Historial de ranking del jugador
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlayerRankingHistory'
+
+  /teams/register:
+    post:
+      summary: Registrar pareja en torneo
+      tags: [Teams]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamRequest'
+      responses:
+        "200":
+          description: Registro exitoso
+
+  /teams/register-with-code:
+    post:
+      summary: Registrar pareja con código
+      tags: [Teams]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TeamCodeRequest'
+      responses:
+        "200":
+          description: Registro exitoso
+
+  /teams/check:
+    get:
+      summary: Validar si jugador está inscrito
+      tags: [Teams]
+      parameters:
+        - in: query
+          name: tournamentId
+          required: true
+          schema: { type: string }
+        - in: query
+          name: playerUid
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Resultado de verificación
+
+  /teams/by-tournament:
+    get:
+      summary: Obtener equipos por torneo
+      tags: [Teams]
+      parameters:
+        - in: query
+          name: tournamentId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Equipos agrupados por categoría
+
+  /teams/pay:
+    patch:
+      summary: Actualizar estado de pago manual
+      tags: [Teams]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                teamId:
+                  type: string
+                player:
+                  type: string
+                paid:
+                  type: boolean
+      responses:
+        "200":
+          description: Estado actualizado
+
+  /teams/{teamId}:
+    delete:
+      summary: Eliminar equipo por ID
+      tags: [Teams]
+      parameters:
+        - in: path
+          name: teamId
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Eliminado correctamente
+
+  /payments/create-session:
+    post:
+      summary: Crear sesión de pago con Stripe
+      tags: [Payments]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        "200":
+          description: URL de redirección devuelta
+
+  /excel/send-teams:
+    post:
+      summary: Generar Excel con equipos inscritos y enviarlo por correo
+      tags: [Excel]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tournamentId:
+                  type: string
+      responses:
+        "200":
+          description: Correo enviado
+
+  /remote-config:
+    get:
+      summary: Obtener configuración remota
+      tags: [Remote Config]
+      responses:
+        "200":
+          description: Configuración actual
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginRequest:
+      type: object
+      properties:
+        email: { type: string }
+        password: { type: string }
+
+    RegisterRequest:
+      type: object
+      properties:
+        name: { type: string }
+        lastname: { type: string }
+        email: { type: string }
+        password: { type: string }
+        gender: { type: string }
+        phone: { type: string }
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name: { type: string }
+        lastname: { type: string }
+        gender: { type: string }
+        phone: { type: string }
+
+    TournamentRequest:
+      type: object
+      properties:
+        name: { type: string }
+        startDate: { type: string }
+        endDate: { type: string }
+        location: { type: string }
+        cost: { type: number }
+        type: { type: string }
+        category: { type: string }
+
+    TeamRequest:
+      type: object
+      properties:
+        tournamentId: { type: string }
+        player1Uid: { type: string }
+        player2Uid: { type: string }
+        category: { type: string }
+
+    TeamCodeRequest:
+      type: object
+      properties:
+        tournamentId: { type: string }
+        code: { type: string }
+        player1Uid: { type: string }
+        player2Uid: { type: string }
+
+    PaymentRequest:
+      type: object
+      properties:
+        tournamentId: { type: string }
+        player1Uid: { type: string }
+        player2Uid: { type: string }
+        paidFor: { type: string }
+    
+    RankingEntry:
+      type: object
+      properties:
+        position:
+          type: integer
+        points:
+          type: integer
+        player:
+          $ref: '#/components/schemas/PlayerBasicInfo'
+        trend:
+          type: string
+          enum: [up, down, same]
+
+    PlayerBasicInfo:
+      type: object
+      properties:
+        uid:
+          type: string
+        name:
+          type: string
+        lastname:
+          type: string
+        photo:
+          type: string
+          format: uri
+
+    PlayerRankingHistory:
+      type: object
+      properties:
+        currentPosition:
+          type: integer
+        currentPoints:
+          type: integer
+        bestPosition:
+          type: integer
+        history:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              position:
+                type: integer
+              points:
+                type: integer

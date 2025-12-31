@@ -1,0 +1,373 @@
+package com.incodap.services.payments
+
+import com.incodap.models.payments.PaymentRequest
+import com.incodap.repositories.payments.PaymentRepository
+import com.incodap.repositories.teams.TeamRepository
+import com.incodap.repositories.users.UserRepository
+import com.incodap.services.excel.ExcelService
+import com.stripe.Stripe
+import com.stripe.exception.StripeException
+import com.stripe.model.Customer
+import com.stripe.model.EphemeralKey
+import com.stripe.model.PaymentIntent
+import com.stripe.model.checkout.Session
+import com.stripe.net.RequestOptions
+import com.stripe.param.EphemeralKeyCreateParams
+import com.stripe.param.PaymentIntentCreateParams
+import com.stripe.param.checkout.SessionCreateParams
+import io.ktor.server.plugins.BadRequestException
+import models.payments.CreateIntentResponse
+import models.payments.RpcApplyCodeDto
+import repositories.category.CategoryRepository
+import repositories.tournament.TournamentRepository
+import services.email.EmailService
+import java.util.UUID
+
+class PaymentService(
+    private val teamRepository: TeamRepository,
+    private val paymentRepository: PaymentRepository,
+    private val excelService: ExcelService,
+    private val emailService: EmailService,
+    private val tournamentRepository: TournamentRepository,
+    private val categoryRepository: CategoryRepository,
+    private val userRepository: UserRepository,
+) {
+    companion object {
+        private const val BASE_REDIRECT_URL = "https://neon-dango-f7ebd5.netlify.app"
+        private val ADMIN_EMAIL: String = System.getenv("ADMIN_EMAIL") ?: "christianug26@gmail.com"
+        private val STRIPE_MOBILE_SDK_API_VERSION: String =
+            System.getenv("STRIPE_MOBILE_SDK_API_VERSION") ?: "2020-08-27"
+    }
+
+    init {
+        Stripe.apiKey = System.getenv("STRIPE_SECRET_KEY")
+        val mode = if (Stripe.apiKey?.startsWith("sk_live_") == true) "LIVE" else "TEST"
+        println("🔑 [Stripe] API key initialized in $mode mode")
+    }
+
+    // -------------------------------------------------------
+    // 🧾 STRIPE CHECKOUT (legacy flow, kept intact)
+    // -------------------------------------------------------
+    suspend fun createCheckoutSession(request: PaymentRequest): String {
+        validatePaymentRequest(request)
+        return createStripeSession(request)
+    }
+
+    private suspend fun validatePaymentRequest(request: PaymentRequest) {
+        val playerUid = request.playerUid
+        val partnerUid = request.partnerUid
+        val tournamentId = request.tournamentId
+        val categoryId = request.categoryId
+
+        require(playerUid.isNotBlank()) { "playerUid es requerido" }
+        require(tournamentId.isNotBlank()) { "tournamentId es requerido" }
+        require(categoryId > 0) { "categoryId inválido" }
+
+        val myTeam = teamRepository.findByPlayerAndCategory(playerUid, tournamentId, categoryId)
+        if (myTeam != null) {
+            if (partnerUid != myTeam.playerAUid && partnerUid != myTeam.playerBUid) {
+                throw BadRequestException("Ya estás inscrito en esta categoría con otra pareja.")
+            }
+            val alreadyPaid = if (myTeam.playerAUid == playerUid) myTeam.playerAPaid else myTeam.playerBPaid
+            if (alreadyPaid) throw BadRequestException("Ya estás inscrito y has pagado en esta categoría.")
+            return
+        }
+
+        val partnerTeam = teamRepository.findByPlayerAndCategory(partnerUid, tournamentId, categoryId)
+        if (partnerTeam != null) {
+            val isSamePair = (partnerTeam.playerAUid == playerUid) || (partnerTeam.playerBUid == playerUid)
+            if (!isSamePair) {
+                throw BadRequestException("Tu pareja ya está inscrita en esta categoría con otra persona.")
+            }
+        }
+    }
+
+    private fun createStripeSession(request: PaymentRequest): String {
+        val params = buildSessionParams(request)
+        return Session.create(params).url
+    }
+
+    private fun buildSessionParams(request: PaymentRequest): SessionCreateParams =
+        SessionCreateParams.builder()
+            .setMode(SessionCreateParams.Mode.PAYMENT)
+            .setSuccessUrl("$BASE_REDIRECT_URL/success.html?tournamentId=${request.tournamentId}")
+            .setCancelUrl("$BASE_REDIRECT_URL/cancel.html?tournamentId=${request.tournamentId}")
+            .setCustomerCreation(SessionCreateParams.CustomerCreation.ALWAYS)
+            .setPaymentIntentData(createPaymentIntentData(request))
+            .addLineItem(createLineItem(request))
+            .build()
+
+    private fun createPaymentIntentData(request: PaymentRequest): SessionCreateParams.PaymentIntentData =
+        SessionCreateParams.PaymentIntentData.builder()
+            .putMetadata("tournament_id", request.tournamentId)
+            .putMetadata("player_name", request.playerName)
+            .putMetadata("restriction", request.restriction ?: "")
+            .putMetadata("email", request.email ?: "")
+            .putMetadata("partner_uid", request.partnerUid)
+            .putMetadata("categoryId", request.categoryId.toString())
+            .putMetadata("paid_for", request.paidFor)
+            .putMetadata("player_uid", request.playerUid)
+            .build()
+
+    private fun createLineItem(request: PaymentRequest): SessionCreateParams.LineItem =
+        SessionCreateParams.LineItem.builder()
+            .setQuantity(1L)
+            .setPriceData(
+                SessionCreateParams.LineItem.PriceData.builder()
+                    .setCurrency(request.currency.lowercase())
+                    .setUnitAmount(request.amount * 100L)
+                    .setProductData(
+                        SessionCreateParams.LineItem.PriceData.ProductData.builder()
+                            .setName("Inscripción: ${request.playerName} - ${request.categoryId}")
+                            .build()
+                    )
+                    .build()
+            )
+            .build()
+
+    // -------------------------------------------------------
+    // 💳 PAYMENT SHEET (main flow)
+    // -------------------------------------------------------
+    suspend fun createPaymentIntentForPaymentSheet(
+        request: PaymentRequest,
+        userEmail: String?
+    ): CreateIntentResponse {
+        println("➡️ [PI] createPaymentIntent start " +
+                "uid=${request.playerUid}, tournament=${request.tournamentId}, cat=${request.categoryId}, " +
+                "amount=${request.amount}, currency=${request.currency}, paidFor=${request.paidFor}, " +
+                "reqEmail=${request.email ?: ""}, paramEmail=${userEmail ?: ""}")
+
+        validatePaymentRequest(request)
+
+        require(request.amount > 0) { "El monto debe ser mayor a cero." }
+        require(!request.currency.isNullOrBlank()) { "La moneda es requerida." }
+        val normalizedCurrency = request.currency.lowercase()
+
+        // 🔍 resolver email desde param → request → DB
+        val resolvedEmail: String = run {
+            val fromParam = userEmail?.trim().orEmpty()
+            if (fromParam.isNotEmpty()) return@run fromParam
+
+            val fromRequest = request.email?.trim().orEmpty()
+            if (fromRequest.isNotEmpty()) return@run fromRequest
+
+            val fromDb = userRepository.findByUid(request.playerUid)?.email?.trim().orEmpty()
+            fromDb
+        }
+
+        val source = when {
+            !userEmail.isNullOrBlank() -> "param"
+            !request.email.isNullOrBlank() -> "request"
+            else -> "db"
+        }
+        println("📧 [PI] resolvedEmail=$resolvedEmail (source=$source)")
+
+        val email = resolvedEmail
+        val customer: Customer? = if (email.isNotEmpty()) {
+            println("👤 [PI] ensureCustomer(uid=${request.playerUid}, email=$email)")
+            ensureCustomer(uid = request.playerUid, email = email)
+        } else {
+            println("⚠️ [PI] No email available for uid=${request.playerUid} → proceeding WITHOUT Customer.")
+            null
+        }
+
+        val idem = UUID.randomUUID().toString()
+        println("🧱 [PI] creating PaymentIntent (idempotency=$idem) " +
+                "hasCustomer=${customer != null}, currency=$normalizedCurrency, amount=${request.amount}")
+
+        val params = PaymentIntentCreateParams.builder()
+            .setAmount(request.amount * 100L)
+            .setCurrency(normalizedCurrency)
+            .setAutomaticPaymentMethods(
+                PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                    .setEnabled(true)
+                    .build()
+            )
+            .putMetadata("tournament_id", request.tournamentId)
+            .putMetadata("player_name", request.playerName)
+            .putMetadata("restriction", request.restriction ?: "")
+            .putMetadata("email", email)
+            .putMetadata("partner_uid", request.partnerUid)
+            .putMetadata("categoryId", request.categoryId.toString())
+            .putMetadata("paid_for", request.paidFor)
+            .putMetadata("player_uid", request.playerUid)
+            .apply {
+                if (customer != null) {
+                    setCustomer(customer.id)
+                    setSetupFutureUsage(PaymentIntentCreateParams.SetupFutureUsage.OFF_SESSION)
+                }
+            }
+            .build()
+
+        val requestOptions = RequestOptions.builder().setIdempotencyKey(idem).build()
+        val intent = PaymentIntent.create(params, requestOptions)
+
+        if (intent.clientSecret.isNullOrBlank() || !intent.clientSecret.contains("_secret_")) {
+            println("❌ [PI] invalid client_secret: ${intent.clientSecret}")
+            throw IllegalStateException("Stripe no devolvió un client_secret válido.")
+        }
+
+        println("✅ [PI] created id=${intent.id} clientSecret=${intent.clientSecret.take(14)}... " +
+                "customer=${intent.customer ?: customer?.id ?: "null"}")
+
+        val ephemeralKeySecret = customer?.let {
+            try {
+                val ek = createEphemeralKey(it.id).secret
+                println("🔑 [EK] created for customer=${it.id} secret=${ek.take(10)}...")
+                ek
+            } catch (e: Exception) {
+                println("❌ [EK] error creating EK for ${it.id}: ${e.message}")
+                null
+            }
+        }
+
+        return CreateIntentResponse(
+            paymentIntentClientSecret = intent.clientSecret,
+            customerId = customer?.id,
+            ephemeralKey = ephemeralKeySecret
+        )
+    }
+
+    // -------------------------------------------------------
+    // 👥 CUSTOMER MANAGEMENT
+    // -------------------------------------------------------
+    @Throws(StripeException::class)
+    private suspend fun ensureCustomer(uid: String, email: String): Customer {
+        val existingCustomerId = userRepository.getStripeCustomerIdByUid(uid)
+        println("👤 [Customer] existing in DB for uid=$uid -> $existingCustomerId")
+
+        if (!existingCustomerId.isNullOrBlank()) {
+            return try {
+                val c = Customer.retrieve(existingCustomerId)
+                println("👤 [Customer] retrieved from Stripe: ${c.id}")
+                c
+            } catch (ex: Exception) {
+                println("⚠️ [Customer] retrieve failed for $existingCustomerId: ${ex.message} → recreating")
+                val recreated = createCustomer(uid, email)
+                val ok = userRepository.updateStripeCustomerId(uid, recreated.id)
+                println("📝 [Customer] DB update after recreate -> $ok (id=${recreated.id})")
+                recreated
+            }
+        }
+
+        val created = createCustomer(uid, email)
+        val ok = userRepository.updateStripeCustomerId(uid, created.id)
+        println("📝 [Customer] DB update after create -> $ok (id=${created.id})")
+        return created
+    }
+
+    @Throws(StripeException::class)
+    private fun createCustomer(uid: String, email: String): Customer {
+        val params = mapOf<String, Any>(
+            "email" to email,
+            "metadata" to mapOf("app_uid" to uid, "app_email" to email)
+        )
+        val customer = Customer.create(params)
+        println("✅ [Customer] created ${customer.id} ($email)")
+        return customer
+    }
+
+    @Throws(StripeException::class)
+    private fun createEphemeralKey(customerId: String): EphemeralKey {
+        // ⚠️ Debe ir en los params, NO en headers
+        val ekParams = EphemeralKeyCreateParams.builder()
+            .setStripeVersion(STRIPE_MOBILE_SDK_API_VERSION) // p. ej. "2020-08-27"
+            .putExtraParam("customer", customerId)
+            .build()
+
+        return try {
+            val ek = EphemeralKey.create(ekParams)
+            println("🔑 [EK] created for customer=$customerId secret=${ek.secret.take(10)}... using version=$STRIPE_MOBILE_SDK_API_VERSION")
+            ek
+        } catch (e: Exception) {
+            println("❌ [EK] error creating EphemeralKey for $customerId: ${e.message}")
+            throw e
+        }
+    }
+
+    // -------------------------------------------------------
+    // 🏷️ CÓDIGOS Y REPORTES
+    // -------------------------------------------------------
+    enum class RedeemOutcome { Created, Updated, ConflictAlreadyPaid, ConflictPartnerOther, InvalidCode }
+
+    suspend fun redeemCode(
+        code: String,
+        playerUid: String,
+        partnerUid: String,
+        categoryId: Int?,
+        tournamentId: String,
+        playerName: String,
+        restriction: String?,
+        usedByEmail: String?
+    ): RedeemOutcome {
+        if (categoryId == null) throw BadRequestException("categoryId es requerido")
+        if (playerUid == partnerUid) throw BadRequestException("Los jugadores no pueden ser iguales")
+
+        val myTeam = teamRepository.findByPlayerAndCategory(playerUid, tournamentId, categoryId)
+        if (myTeam != null) {
+            val samePair = partnerUid == myTeam.playerAUid || partnerUid == myTeam.playerBUid
+            if (!samePair) throw BadRequestException("Ya estás inscrito en esta categoría con otra pareja.")
+            val alreadyPaid = if (myTeam.playerAUid == playerUid) myTeam.playerAPaid else myTeam.playerBPaid
+            if (alreadyPaid) return RedeemOutcome.ConflictAlreadyPaid
+        } else {
+            val partnerTeam = teamRepository.findByPlayerAndCategory(partnerUid, tournamentId, categoryId)
+            if (partnerTeam != null) {
+                val isSamePair = partnerTeam.playerAUid == playerUid || partnerTeam.playerBUid == playerUid
+                if (!isSamePair) return RedeemOutcome.ConflictPartnerOther
+            }
+        }
+
+        val ok = paymentRepository.applyRegistrationCode(
+            RpcApplyCodeDto(code, tournamentId, playerUid, partnerUid, categoryId, playerName, restriction, usedByEmail)
+        )
+
+        if (!ok) return RedeemOutcome.InvalidCode
+
+        val tournamentName = tournamentRepository.getById(tournamentId)?.name
+        val categoryName = categoryRepository.getCategoriesByIds(listOf(categoryId)).firstOrNull()?.name
+
+        val toPlayer = usedByEmail?.takeIf { it.isNotBlank() }
+        if (toPlayer != null) {
+            emailService.sendRegistrationConfirmation(
+                toEmail = toPlayer,
+                playerName = playerName,
+                partnerName = null,
+                tournamentName = tournamentName,
+                tournamentId = tournamentId,
+                categoryName = categoryName,
+                categoryId = categoryId,
+                paidFor = "1",
+                method = "Código"
+            )
+        }
+
+        emailService.sendAdminNewRegistration(
+            adminEmail = ADMIN_EMAIL,
+            playerName = playerName,
+            partnerName = null,
+            playerEmail = toPlayer ?: "desconocido",
+            tournamentName = tournamentName,
+            tournamentId = tournamentId,
+            categoryName = categoryName,
+            categoryId = categoryId,
+            paidFor = "1",
+            method = "Código"
+        )
+
+        return if (myTeam == null) RedeemOutcome.Created else RedeemOutcome.Updated
+    }
+
+    suspend fun sendPaymentsReport(
+        tournamentId: String,
+        tournamentName: String,
+        toEmail: String
+    ): Boolean {
+        val rows = paymentRepository.getPaymentsReport(tournamentId)
+        val bytes = excelService.generatePaymentsReportExcel(tournamentName, rows)
+        return emailService.sendPaymentsExcelReportEmail(
+            to = toEmail,
+            tournamentName = tournamentName,
+            attachment = bytes
+        )
+    }
+}
