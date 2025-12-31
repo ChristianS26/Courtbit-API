@@ -1,7 +1,43 @@
-.idea/
 .gradle/
 build/
-out/
-*.iml
+!gradle/wrapper/gradle-wrapper.jar
+
+# Secretos
 .env
+
+# IntelliJ / Android Studio
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Eclipse / STS
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# VS Code
+.vscode/
+
+# MacOS / general
+.DS_Store
+
+# Logs y archivos temporales
 *.log
+*.tmp
+
+# Claude Code
+.claude/
