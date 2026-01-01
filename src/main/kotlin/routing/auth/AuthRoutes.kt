@@ -30,7 +30,7 @@ fun Route.authRoutes(authService: AuthService, emailService: EmailService) {
                     request.gender ?: "null",
                     request.birthdate != null,
                     request.countryIso ?: "null",
-                    request.shirtSize ?: "null",
+                    request.shirtSize ?: "xs",
                 )
 
                 val response = authService.register(request)
