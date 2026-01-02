@@ -15,6 +15,10 @@ class RegistrationCodeService(
         return repository.getAllCodes()
     }
 
+    suspend fun getRegistrationCodesByOrganizer(organizerId: String): List<RegistrationCode> {
+        return repository.getCodesByOrganizerId(organizerId)
+    }
+
     suspend fun getAllRegistrationCodesWithTournamentInfo(): List<RegistrationCodeWithTournamentInfo> {
         return repository.getAllCodesWithTournamentInfo()
     }

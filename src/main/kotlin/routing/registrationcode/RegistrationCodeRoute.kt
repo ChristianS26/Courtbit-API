@@ -49,7 +49,15 @@ fun Route.registrationCodeRoutes(
 
             get {
                 try {
-                    val codes = registrationCodeService.getAllRegistrationCodes()
+                    // Query parameter for filtering by organizer
+                    val organizerId = call.request.queryParameters["organizer_id"]
+
+                    val codes = if (organizerId != null) {
+                        registrationCodeService.getRegistrationCodesByOrganizer(organizerId)
+                    } else {
+                        registrationCodeService.getAllRegistrationCodes()
+                    }
+
                     call.respond(HttpStatusCode.OK, codes)
                 } catch (e: Exception) {
                     println("❌ Error obteniendo códigos: ${e.message}")

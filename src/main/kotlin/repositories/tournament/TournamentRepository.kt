@@ -6,6 +6,7 @@ import models.tournament.TournamentResponse
 
 interface TournamentRepository {
     suspend fun getAll(): List<TournamentResponse>
+    suspend fun getByOrganizerId(organizerId: String): List<TournamentResponse>
     suspend fun getById(id: String): TournamentResponse?
     suspend fun create(request: CreateTournamentRequest): TournamentResponse?
     suspend fun update(id: String, request: UpdateTournamentRequest): Boolean

@@ -45,6 +45,26 @@ class TournamentRepositoryImpl(
         }
     }
 
+    override suspend fun getByOrganizerId(organizerId: String): List<TournamentResponse> {
+        val response = client.get("$apiUrl/tournaments") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "*")
+            parameter("organizer_id", "eq.$organizerId")
+            parameter("order", "start_date.desc")
+        }
+
+        return if (response.status.isSuccess()) {
+            json.decodeFromString(
+                ListSerializer(TournamentResponse.serializer()),
+                response.bodyAsText()
+            )
+        } else {
+            println("❌ Error getByOrganizerId: ${response.status}")
+            emptyList()
+        }
+    }
+
     override suspend fun getById(id: String): TournamentResponse? {
         val response = client.get("$apiUrl/tournaments") {
             header("apikey", apiKey)

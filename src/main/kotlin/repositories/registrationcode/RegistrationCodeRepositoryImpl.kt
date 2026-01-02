@@ -96,6 +96,21 @@ class RegistrationCodeRepositoryImpl(
         }
     }
 
+    override suspend fun getCodesByOrganizerId(organizerId: String): List<RegistrationCode> {
+        val url = "${config.apiUrl}/registration_codes?select=*&organizer_id=eq.$organizerId"
+        val response = client.get(url) {
+            header("apikey", config.apiKey)
+            header("Authorization", "Bearer ${config.apiKey}")
+        }
+        return if (response.status == HttpStatusCode.OK) {
+            val body = response.bodyAsText()
+            json.decodeFromString(ListSerializer(RegistrationCode.serializer()), body)
+        } else {
+            println("❌ Error obteniendo códigos por organizer_id: ${response.status}")
+            emptyList()
+        }
+    }
+
     override suspend fun getAllCodesWithTournamentInfo(): List<RegistrationCodeWithTournamentInfo> {
         val url = "${config.apiUrl}/registration_codes?select=*,tournaments:tournaments!used_in_tournament_id(name)&order=used.desc,used_at.desc"
         val response = client.get(url) {

@@ -8,5 +8,6 @@ interface RegistrationCodeRepository {
     suspend fun getValidCode(code: String): RegistrationCode?
     suspend fun markCodeAsUsed(code: String, usedByEmail: String, tournamentId: String): Boolean
     suspend fun getAllCodes(): List<RegistrationCode>
+    suspend fun getCodesByOrganizerId(organizerId: String): List<RegistrationCode>
     suspend fun getAllCodesWithTournamentInfo(): List<RegistrationCodeWithTournamentInfo>
 }

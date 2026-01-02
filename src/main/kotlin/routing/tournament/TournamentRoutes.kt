@@ -30,7 +30,15 @@ fun Route.tournamentRoutes(
     route("/tournaments") {
 
         get {
-            val tournaments = tournamentService.getAllTournaments()
+            // Query parameter for filtering by organizer
+            val organizerId = call.request.queryParameters["organizer_id"]
+
+            val tournaments = if (organizerId != null) {
+                tournamentService.getTournamentsByOrganizer(organizerId)
+            } else {
+                tournamentService.getAllTournaments()
+            }
+
             call.respond(HttpStatusCode.OK, tournaments)
         }
 
