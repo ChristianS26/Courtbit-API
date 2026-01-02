@@ -33,22 +33,7 @@ class MatchDayService(
      */
     suspend fun getCompleteMatchDay(matchDayId: String): CompleteMatchDayResponse? {
         // Use Supabase embedded resources to fetch everything in one query
-        val selectQuery = """
-            *,
-            day_groups(
-                *,
-                rotations(
-                    *,
-                    doubles_matches(
-                        *,
-                        team1_player1:league_players!team1_player1_id(*),
-                        team1_player2:league_players!team1_player2_id(*),
-                        team2_player1:league_players!team2_player1_id(*),
-                        team2_player2:league_players!team2_player2_id(*)
-                    )
-                )
-            )
-        """.trimIndent().replace("\n", "")
+        val selectQuery = "*,day_groups(*,rotations(*,doubles_matches(*,team1_player1:league_players!team1_player1_id(*),team1_player2:league_players!team1_player2_id(*),team2_player1:league_players!team2_player1_id(*),team2_player2:league_players!team2_player2_id(*))))"
 
         val response = client.get("$apiUrl/match_days") {
             header("apikey", apiKey)
@@ -60,8 +45,16 @@ class MatchDayService(
 
         return if (response.status.isSuccess()) {
             val bodyText = response.bodyAsText()
-            val list = json.decodeFromString<List<CompleteMatchDayRaw>>(bodyText)
-            list.firstOrNull()?.toResponse()
+            println("✅ Complete match day response: ${bodyText.take(500)}")
+            try {
+                val list = json.decodeFromString<List<CompleteMatchDayRaw>>(bodyText)
+                println("✅ Parsed ${list.size} match days")
+                list.firstOrNull()?.toResponse()
+            } catch (e: Exception) {
+                println("❌ Error parsing complete match day: ${e.message}")
+                println("Body sample: ${bodyText.take(1000)}")
+                null
+            }
         } else {
             println("❌ Error fetching complete match day: ${response.status}")
             println("Body: ${response.bodyAsText()}")
