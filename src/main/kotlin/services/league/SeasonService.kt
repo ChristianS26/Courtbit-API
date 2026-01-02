@@ -1,0 +1,61 @@
+package services.league
+
+import models.league.CreateSeasonRequest
+import models.league.SeasonResponse
+import repositories.league.LeagueCategoryRepository
+import repositories.league.MatchDayRepository
+import repositories.league.SeasonRepository
+
+class SeasonService(
+    private val repository: SeasonRepository,
+    private val categoryRepository: LeagueCategoryRepository,
+    private val matchDayRepository: MatchDayRepository
+) {
+    suspend fun createSeason(
+        request: CreateSeasonRequest,
+        organizerId: String
+    ): Result<SeasonResponse> {
+        // Business rule: Only one active season per organizer
+        if (request.isActive) {
+            val existing = repository.getActiveByOrganizer(organizerId)
+            if (existing != null) {
+                return Result.failure(
+                    IllegalStateException("Only one active season allowed. Deactivate '${existing.name}' first.")
+                )
+            }
+        }
+
+        // Auto-inject organizer
+        val seasonWithOrganizer = request.copy(organizerId = organizerId)
+
+        val created = repository.create(seasonWithOrganizer)
+        return if (created != null) Result.success(created)
+        else Result.failure(IllegalStateException("Failed to create season"))
+    }
+
+    suspend fun deleteSeason(id: String, organizerId: String): Result<Boolean> {
+        // Verify ownership
+        val season = repository.getById(id)
+            ?: return Result.failure(IllegalArgumentException("Season not found"))
+
+        if (season.organizerId != organizerId) {
+            return Result.failure(IllegalAccessException("Not authorized"))
+        }
+
+        // Check for dependencies
+        val categories = categoryRepository.getBySeasonId(id)
+        val hasCalendars = categories.any { category ->
+            matchDayRepository.getByCategoryId(category.id).isNotEmpty()
+        }
+
+        if (hasCalendars) {
+            return Result.failure(
+                IllegalStateException("Cannot delete season with active calendars. Delete categories first.")
+            )
+        }
+
+        val deleted = repository.delete(id)
+        return if (deleted) Result.success(true)
+        else Result.failure(IllegalStateException("Failed to delete"))
+    }
+}

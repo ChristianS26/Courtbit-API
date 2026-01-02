@@ -11,8 +11,16 @@ import com.incodap.services.excel.ExcelService
 import io.ktor.server.application.*
 import io.ktor.server.routing.*
 import org.koin.ktor.ext.get
+import repositories.league.LeagueCategoryRepository
+import repositories.league.LeaguePlayerRepository
+import repositories.league.SeasonRepository
+import repositories.organizer.OrganizerRepository
 import routing.auth.profileRoute
 import routing.draw.drawRoutes
+import routing.league.leagueCategoryRoutes
+import routing.league.leaguePlayerRoutes
+import routing.league.leagueRankingRoutes
+import routing.league.seasonRoutes
 import routing.notifications.pushRoutes
 import routing.organizer.organizerRoutes
 import routing.payments.PaymentRoutes
@@ -20,6 +28,9 @@ import routing.ranking.RankingRoutes
 import routing.remoteconfig.remoteConfigRoutes
 import services.auth.AuthService
 import services.email.EmailService
+import services.league.LeagueCategoryService
+import services.league.RankingService
+import services.league.SeasonService
 import services.organizer.OrganizerService
 import services.registrationcode.RegistrationCodeService
 import services.remoteconfig.RemoteConfigService
@@ -71,6 +82,12 @@ fun Application.configureRouting() {
 
             // Push notifications
             pushRoutes(get())
+
+            // League system
+            seasonRoutes(get<SeasonService>(), get<SeasonRepository>(), get<OrganizerRepository>())
+            leagueCategoryRoutes(get<LeagueCategoryService>(), get<LeagueCategoryRepository>())
+            leaguePlayerRoutes(get<LeaguePlayerRepository>())
+            leagueRankingRoutes(get<RankingService>())
         }
     }
 

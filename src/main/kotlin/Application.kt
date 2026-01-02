@@ -39,6 +39,7 @@ fun Application.module() {
             CategoryModule,
             NotificationsModule,
             OrganizerModule,
+            LeagueModule,
         )
     }
 
