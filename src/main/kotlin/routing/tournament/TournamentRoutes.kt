@@ -1,6 +1,6 @@
 package com.incodap.routing.tournament
 
-import com.incodap.security.requireAdmin
+import com.incodap.security.requireOrganizer
 import com.incodap.security.requireUserUid
 import io.ktor.server.auth.authenticate
 import io.ktor.http.HttpStatusCode
@@ -59,10 +59,8 @@ fun Route.tournamentRoutes(
 
         authenticate("auth-jwt") {
             post {
-                if (!call.requireAdmin()) return@post
-
-                // Obtener UID del usuario autenticado
-                val uid = call.requireUserUid() ?: return@post
+                // Verificar que el usuario tenga una organización
+                val uid = call.requireOrganizer() ?: return@post
 
                 val request = try {
                     call.receive<CreateTournamentWithCategoriesRequest>()
@@ -91,7 +89,7 @@ fun Route.tournamentRoutes(
             }
 
             patch("{id}") {
-                val id = call.validateAdminAndId() ?: return@patch
+                val id = call.validateOrganizerAndId() ?: return@patch
 
                 val request = try {
                     call.receive<UpdateTournamentWithCategoriesRequest>()
@@ -122,7 +120,7 @@ fun Route.tournamentRoutes(
             }
 
             patch("{id}/enabled") {
-                val id = call.validateAdminAndId() ?: return@patch
+                val id = call.validateOrganizerAndId() ?: return@patch
                 val payload = try { call.receive<Map<String, Boolean>>() }
                 catch (e: Exception) {
                     call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato inválido"))
@@ -144,7 +142,7 @@ fun Route.tournamentRoutes(
             }
 
             patch("{id}/registration-open") {
-                val id = call.validateAdminAndId() ?: return@patch
+                val id = call.validateOrganizerAndId() ?: return@patch
                 val payload = try { call.receive<Map<String, Boolean>>() }
                 catch (e: Exception) {
                     call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato inválido"))
@@ -166,7 +164,7 @@ fun Route.tournamentRoutes(
             }
 
             delete("{id}") {
-                val id = call.validateAdminAndId() ?: return@delete
+                val id = call.validateOrganizerAndId() ?: return@delete
 
                 when (val result = tournamentService.deleteTournament(id)) {
                     DeleteTournamentResult.Deleted -> {
@@ -190,7 +188,7 @@ fun Route.tournamentRoutes(
             }
 
             patch("{id}/flyer") {
-                val id = call.validateAdminAndId() ?: return@patch
+                val id = call.validateOrganizerAndId() ?: return@patch
 
                 val payload = try {
                     call.receive<UpdateFlyerRequest>()
@@ -230,7 +228,7 @@ fun Route.tournamentRoutes(
             }
 
             patch("{id}/club-logo") {
-                val id = call.validateAdminAndId() ?: return@patch
+                val id = call.validateOrganizerAndId() ?: return@patch
 
                 val payload = try {
                     call.receive<models.tournament.UpdateClubLogoRequest>()
@@ -255,8 +253,8 @@ fun Route.tournamentRoutes(
     }
 }
 
-private suspend fun ApplicationCall.validateAdminAndId(): String? {
-    if (!requireAdmin()) return null
+private suspend fun ApplicationCall.validateOrganizerAndId(): String? {
+    if (requireOrganizer() == null) return null
 
     val id = parameters["id"]
     if (id.isNullOrBlank()) {

@@ -1,7 +1,7 @@
 package com.incodap.routing.registrationcode
 
 import com.incodap.security.email
-import com.incodap.security.requireAdmin
+import com.incodap.security.requireOrganizer
 import com.incodap.security.requireUserUid
 import com.incodap.services.excel.ExcelService
 import io.ktor.http.HttpStatusCode
@@ -66,7 +66,8 @@ fun Route.registrationCodeRoutes(
             }
 
             post("/report") {
-                if (!call.requireAdmin()) return@post
+                // Verificar que el usuario tenga una organización
+                if (call.requireOrganizer() == null) return@post
 
                 val request = call.receive<RegistrationCodeReportRequest>() // Solo necesitas el correo, no el torneo
                 val codes = registrationCodeService.getAllRegistrationCodesWithTournamentInfo()

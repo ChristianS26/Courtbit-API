@@ -5,6 +5,7 @@ import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.server.auth.jwt.*
 import io.ktor.server.response.respond
+import org.koin.ktor.ext.inject
 
 const val ROLE_ADMIN = "admin"
 
@@ -51,5 +52,18 @@ suspend fun ApplicationCall.requireUserUid(): String? {
         this.respond(HttpStatusCode.Unauthorized, mapOf("error" to "UID missing in token"))
         return null
     }
+    return uid
+}
+
+suspend fun ApplicationCall.requireOrganizer(): String? {
+    val uid = this.requireUserUid() ?: return null
+
+    val organizerRepository: repositories.organizer.OrganizerRepository by inject()
+    val organizer = organizerRepository.getByUserUid(uid)
+    if (organizer == null) {
+        this.respond(HttpStatusCode.Forbidden, mapOf("error" to "Solo usuarios con organización pueden realizar esta acción"))
+        return null
+    }
+
     return uid
 }

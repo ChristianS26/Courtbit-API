@@ -1,6 +1,6 @@
 package com.incodap.routing.category
 
-import com.incodap.security.requireAdmin
+import com.incodap.security.requireOrganizer
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate

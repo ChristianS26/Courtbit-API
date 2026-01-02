@@ -1,6 +1,6 @@
 package routing.ranking
 
-import com.incodap.security.requireAdmin
+import com.incodap.security.requireOrganizer
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
@@ -63,7 +63,7 @@ class RankingRoutes(
             // Admin: evento suelto por jugador (opcional, se mantiene)
             route.authenticate("auth-jwt") {
                 post("/event") {
-                    if (!call.requireAdmin()) {
+                    if (!call.requireOrganizer()) {
                         call.respond(HttpStatusCode.Forbidden, "Admin only")
                         return@post
                     }

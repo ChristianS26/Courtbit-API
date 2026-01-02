@@ -1,7 +1,6 @@
 package com.incodap.routing.teams
 
-import com.incodap.security.requireAdmin
-import com.incodap.security.requireAdminUid
+import com.incodap.security.requireOrganizer
 import com.incodap.services.excel.ExcelService
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -70,7 +69,7 @@ fun Route.teamRoutes(
         // Rutas protegidas con JWT
         authenticate("auth-jwt") {
             post("/register") {
-                if (!call.requireAdmin()) return@post
+                if (!call.requireOrganizer()) return@post
 
                 val request = try {
                     call.receive<RegisterTeamRequest>()
@@ -106,7 +105,7 @@ fun Route.teamRoutes(
             }
 
             patch("/pay") {
-                val adminUid = call.requireAdminUid() ?: return@patch
+                val adminUid = call.requireUserUid() ?: return@patch
 
                 val reqRaw = try {
                     call.receive<MarkPaymentRequest>()
@@ -157,7 +156,7 @@ fun Route.teamRoutes(
             }
 
             delete("{teamId}") {
-                if (!call.requireAdmin()) return@delete
+                if (!call.requireOrganizer()) return@delete
 
                 val teamId = call.parameters["teamId"]
 
@@ -175,7 +174,7 @@ fun Route.teamRoutes(
             }
 
             post("/report") {
-                if (!call.requireAdmin()) return@post
+                if (!call.requireOrganizer()) return@post
 
                 val request = call.receive<ReportRequest>()
                 val teamsByCategory = teamService.getTeamsGroupedByCategoryWithPlayerInfo(request.tournamentId)
@@ -214,7 +213,7 @@ fun Route.teamRoutes(
             }
 
             patch("{teamId}/category") {
-                if (!call.requireAdmin()) return@patch
+                if (!call.requireOrganizer()) return@patch
                 val teamId = call.parameters["teamId"]
                 if (teamId.isNullOrBlank()) {
                     call.respond(HttpStatusCode.BadRequest, mapOf("error" to "teamId requerido"))
@@ -238,7 +237,7 @@ fun Route.teamRoutes(
             }
 
             get("/status/by-tournament") {
-                if (!call.requireAdmin()) {
+                if (!call.requireOrganizer()) {
                     call.respond(HttpStatusCode.Forbidden, "Admin only"); return@get
                 }
                 val tournamentId = call.request.queryParameters["tournamentId"]
@@ -250,7 +249,7 @@ fun Route.teamRoutes(
 
             // 🔵 SET RESULT
             post("{teamId}/result") {
-                if (!call.requireAdmin()) {
+                if (!call.requireOrganizer()) {
                     call.respond(HttpStatusCode.Forbidden, "Admin only"); return@post
                 }
 
@@ -272,7 +271,7 @@ fun Route.teamRoutes(
 
             // 🔵 UNSET RESULT
             delete("{teamId}/result") {
-                if (!call.requireAdmin()) {
+                if (!call.requireOrganizer()) {
                     call.respond(HttpStatusCode.Forbidden, "Admin only"); return@delete
                 }
 
@@ -288,7 +287,7 @@ fun Route.teamRoutes(
             }
 
             get("{teamId}/result") {
-                if (!call.requireAdmin()) {
+                if (!call.requireOrganizer()) {
                     call.respond(HttpStatusCode.Forbidden, "Admin only")
                     return@get
                 }
