@@ -33,15 +33,13 @@ class MatchDayService(
      */
     suspend fun getCompleteMatchDay(matchDayId: String): CompleteMatchDayResponse? {
         // Use Supabase embedded resources to fetch everything in one query
-        // Note: player_ids is an array, so we can't use embedded resources for it
-        // We'll need to fetch players separately or use an RPC function
         val selectQuery = """
             *,
-            day_groups:day_groups(
+            day_groups(
                 *,
-                rotations:rotations(
+                rotations(
                     *,
-                    doubles_matches:doubles_matches(
+                    doubles_matches(
                         *,
                         team1_player1:league_players!team1_player1_id(*),
                         team1_player2:league_players!team1_player2_id(*),
