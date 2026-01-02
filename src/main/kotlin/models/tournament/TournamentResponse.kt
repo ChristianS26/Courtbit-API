@@ -18,5 +18,6 @@ data class TournamentResponse(
     val categoryIds: List<String> = emptyList(),
     @SerialName("is_enabled") val isEnabled: Boolean,
     @SerialName("registration_open") val registrationOpen: Boolean,
-    @SerialName("club_logo_url") val clubLogoUrl: String? = null
+    @SerialName("club_logo_url") val clubLogoUrl: String? = null,
+    @SerialName("organizer_id") val organizerId: String? = null
 )

@@ -52,7 +52,7 @@ fun Application.configureRouting() {
             registrationCodeRoutes(get<RegistrationCodeService>(), get<EmailService>(), get<ExcelService>())
 
             // Torneos
-            tournamentRoutes(get(), get())
+            tournamentRoutes(get(), get(), get())
 
             // Draws
             drawRoutes(get())
