@@ -69,6 +69,8 @@ class OrganizerRepositoryImpl(
             @Serializable
             data class GetUserOrganizerPayload(val user_uid: String)
 
+            println("🔍 [OrganizerRepo] Calling get_user_organizer with UID: $userUid")
+
             val response = client.post("$apiUrl/rpc/get_user_organizer") {
                 header("apikey", apiKey)
                 header("Authorization", "Bearer $apiKey")
@@ -76,12 +78,21 @@ class OrganizerRepositoryImpl(
                 setBody(GetUserOrganizerPayload(user_uid = userUid))
             }
 
+            println("📡 [OrganizerRepo] RPC Response status: ${response.status}")
+            val body = response.bodyAsText()
+            println("📦 [OrganizerRepo] RPC Response body: $body")
+
             if (response.status.isSuccess()) {
-                json.decodeFromString<List<OrganizerResponse>>(response.bodyAsText()).firstOrNull()
+                val result = json.decodeFromString<List<OrganizerResponse>>(body).firstOrNull()
+                println("✅ [OrganizerRepo] Organizer found: ${result != null}")
+                result
             } else {
+                println("❌ [OrganizerRepo] RPC call failed")
                 null
             }
         } catch (e: Exception) {
+            println("💥 [OrganizerRepo] Exception: ${e.message}")
+            e.printStackTrace()
             null
         }
     }
