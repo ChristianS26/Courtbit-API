@@ -112,14 +112,14 @@ private data class RotationNested(
     @SerialName("day_group_id") val dayGroupId: String,
     @SerialName("rotation_number") val rotationNumber: Int,
     @SerialName("created_at") val createdAt: String,
-    @SerialName("doubles_matches") val doublesMatches: List<DoublesMatchNested>?
+    @SerialName("doubles_matches") val doublesMatches: DoublesMatchNested?
 ) {
     fun toResponse() = RotationWithMatchResponse(
         id = id,
         dayGroupId = dayGroupId,
         rotationNumber = rotationNumber,
         createdAt = createdAt,
-        match = doublesMatches?.firstOrNull()?.toResponse()
+        match = doublesMatches?.toResponse()
     )
 }
 
@@ -135,10 +135,10 @@ private data class DoublesMatchNested(
     @SerialName("score_team2") val scoreTeam2: Int?,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String,
-    @SerialName("team1_player1") val team1Player1: List<LeaguePlayerResponse>?,
-    @SerialName("team1_player2") val team1Player2: List<LeaguePlayerResponse>?,
-    @SerialName("team2_player1") val team2Player1: List<LeaguePlayerResponse>?,
-    @SerialName("team2_player2") val team2Player2: List<LeaguePlayerResponse>?
+    @SerialName("team1_player1") val team1Player1: LeaguePlayerResponse?,
+    @SerialName("team1_player2") val team1Player2: LeaguePlayerResponse?,
+    @SerialName("team2_player1") val team2Player1: LeaguePlayerResponse?,
+    @SerialName("team2_player2") val team2Player2: LeaguePlayerResponse?
 ) {
     fun toResponse() = DoublesMatchResponse(
         id = id,
@@ -151,10 +151,10 @@ private data class DoublesMatchNested(
         scoreTeam2 = scoreTeam2,
         createdAt = createdAt,
         updatedAt = updatedAt,
-        team1Player1 = team1Player1?.firstOrNull(),
-        team1Player2 = team1Player2?.firstOrNull(),
-        team2Player1 = team2Player1?.firstOrNull(),
-        team2Player2 = team2Player2?.firstOrNull()
+        team1Player1 = team1Player1,
+        team1Player2 = team1Player2,
+        team2Player1 = team2Player1,
+        team2Player2 = team2Player2
     )
 }
 
