@@ -30,15 +30,14 @@ class TournamentRepositoryImpl(
         val response = client.get("$apiUrl/tournaments") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "*")
+            parameter("select", "*,organizers!organizer_id(name)")
             parameter("order", "start_date.desc")
         }
 
         return if (response.status.isSuccess()) {
-            json.decodeFromString(
-                ListSerializer(TournamentResponse.serializer()),
-                response.bodyAsText()
-            )
+            val bodyText = response.bodyAsText()
+            val rawList = json.decodeFromString<List<TournamentRawResponse>>(bodyText)
+            rawList.map { it.toTournamentResponse() }
         } else {
             println("❌ Error getAll: ${response.status}")
             emptyList()
@@ -49,16 +48,15 @@ class TournamentRepositoryImpl(
         val response = client.get("$apiUrl/tournaments") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "*")
+            parameter("select", "*,organizers!organizer_id(name)")
             parameter("organizer_id", "eq.$organizerId")
             parameter("order", "start_date.desc")
         }
 
         return if (response.status.isSuccess()) {
-            json.decodeFromString(
-                ListSerializer(TournamentResponse.serializer()),
-                response.bodyAsText()
-            )
+            val bodyText = response.bodyAsText()
+            val rawList = json.decodeFromString<List<TournamentRawResponse>>(bodyText)
+            rawList.map { it.toTournamentResponse() }
         } else {
             println("❌ Error getByOrganizerId: ${response.status}")
             emptyList()
@@ -70,14 +68,13 @@ class TournamentRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("id", "eq.$id")
-            parameter("select", "*")
+            parameter("select", "*,organizers!organizer_id(name)")
         }
 
         return if (response.status.isSuccess()) {
-            json.decodeFromString(
-                ListSerializer(TournamentResponse.serializer()),
-                response.bodyAsText()
-            ).firstOrNull()
+            val bodyText = response.bodyAsText()
+            val rawList = json.decodeFromString<List<TournamentRawResponse>>(bodyText)
+            rawList.firstOrNull()?.toTournamentResponse()
         } else {
             println("❌ Error getTournamentById: ${response.status}")
             null
@@ -250,5 +247,51 @@ data class SupabaseError(
     val details: String? = null,
     val hint: String? = null,
 )
+
+@Serializable
+data class OrganizerInfo(
+    val name: String
+)
+
+@Serializable
+data class TournamentRawResponse(
+    val id: String,
+    val name: String,
+    @SerialName("start_date") val startDate: String,
+    @SerialName("end_date") val endDate: String,
+    val location: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val type: String,
+    @SerialName("max_points") val maxPoints: String? = null,
+    @SerialName("flyer_url") val flyerUrl: String? = null,
+    val categoryIds: List<String> = emptyList(),
+    @SerialName("is_enabled") val isEnabled: Boolean,
+    @SerialName("registration_open") val registrationOpen: Boolean,
+    @SerialName("club_logo_url") val clubLogoUrl: String? = null,
+    @SerialName("organizer_id") val organizerId: String? = null,
+    val organizers: OrganizerInfo? = null
+) {
+    fun toTournamentResponse(): TournamentResponse {
+        return TournamentResponse(
+            id = id,
+            name = name,
+            startDate = startDate,
+            endDate = endDate,
+            location = location,
+            latitude = latitude,
+            longitude = longitude,
+            type = type,
+            maxPoints = maxPoints,
+            flyerUrl = flyerUrl,
+            categoryIds = categoryIds,
+            isEnabled = isEnabled,
+            registrationOpen = registrationOpen,
+            clubLogoUrl = clubLogoUrl,
+            organizerId = organizerId,
+            organizerName = organizers?.name
+        )
+    }
+}
 
 class TournamentHasPaymentsException(message: String? = null) : RuntimeException(message)

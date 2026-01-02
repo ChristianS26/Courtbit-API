@@ -19,5 +19,6 @@ data class TournamentResponse(
     @SerialName("is_enabled") val isEnabled: Boolean,
     @SerialName("registration_open") val registrationOpen: Boolean,
     @SerialName("club_logo_url") val clubLogoUrl: String? = null,
-    @SerialName("organizer_id") val organizerId: String? = null
+    @SerialName("organizer_id") val organizerId: String? = null,
+    @SerialName("organizer_name") val organizerName: String? = null
 )
