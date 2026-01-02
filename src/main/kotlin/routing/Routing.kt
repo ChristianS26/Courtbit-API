@@ -13,6 +13,7 @@ import io.ktor.server.routing.*
 import org.koin.ktor.ext.get
 import repositories.league.LeagueCategoryRepository
 import repositories.league.LeaguePlayerRepository
+import repositories.league.MatchDayRepository
 import repositories.league.SeasonRepository
 import repositories.organizer.OrganizerRepository
 import routing.auth.profileRoute
@@ -20,6 +21,7 @@ import routing.draw.drawRoutes
 import routing.league.leagueCategoryRoutes
 import routing.league.leaguePlayerRoutes
 import routing.league.leagueRankingRoutes
+import routing.league.matchDayRoutes
 import routing.league.seasonRoutes
 import routing.notifications.pushRoutes
 import routing.organizer.organizerRoutes
@@ -87,6 +89,7 @@ fun Application.configureRouting() {
             seasonRoutes(get<SeasonService>(), get<SeasonRepository>(), get<OrganizerRepository>())
             leagueCategoryRoutes(get<LeagueCategoryService>(), get<LeagueCategoryRepository>())
             leaguePlayerRoutes(get<LeaguePlayerRepository>())
+            matchDayRoutes(get<MatchDayRepository>())
             leagueRankingRoutes(get<RankingService>())
         }
     }
