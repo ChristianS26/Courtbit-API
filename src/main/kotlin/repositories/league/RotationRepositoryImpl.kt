@@ -1,6 +1,6 @@
 package repositories.league
 
-import config.SupabaseConfig
+import com.incodap.config.SupabaseConfig
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -17,7 +17,8 @@ import models.league.RotationResponse
 class RotationRepositoryImpl(
     private val client: HttpClient,
     private val json: Json,
-    private val config: SupabaseConfig
+    private val config: SupabaseConfig,
+    private val doublesMatchRepository: DoublesMatchRepository
 ) : RotationRepository {
     private val apiUrl = config.apiUrl
     private val apiKey = config.apiKey
@@ -68,26 +69,22 @@ class RotationRepositoryImpl(
     }
 
     private suspend fun fetchMatchByRotationId(rotationId: String): DoublesMatchResponse? {
+        // Query by rotation_id
         val response = client.get("$apiUrl/doubles_matches") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "*")
+            parameter("select", "id")
             parameter("rotation_id", "eq.$rotationId")
             parameter("limit", "1")
         }
 
         return if (response.status.isSuccess()) {
             val bodyText = response.bodyAsText()
-            val rawList = json.decodeFromString<List<DoublesMatchRaw>>(bodyText)
-            val raw = rawList.firstOrNull() ?: return null
+            val idList = json.decodeFromString<List<Map<String, String>>>(bodyText)
+            val matchId = idList.firstOrNull()?.get("id") ?: return null
 
-            // Enrich with players
-            val team1Player1 = raw.team1Player1Id?.let { fetchPlayerById(it) }
-            val team1Player2 = raw.team1Player2Id?.let { fetchPlayerById(it) }
-            val team2Player1 = raw.team2Player1Id?.let { fetchPlayerById(it) }
-            val team2Player2 = raw.team2Player2Id?.let { fetchPlayerById(it) }
-
-            raw.toDoublesMatchResponse(team1Player1, team1Player2, team2Player1, team2Player2)
+            // Use DoublesMatchRepository to get full match with players
+            doublesMatchRepository.getById(matchId)
         } else {
             null
         }
@@ -125,41 +122,5 @@ private data class RotationRaw(
         rotationNumber = rotationNumber,
         createdAt = createdAt,
         match = match
-    )
-}
-
-@Serializable
-private data class DoublesMatchRaw(
-    val id: String,
-    @SerialName("rotation_id") val rotationId: String,
-    @SerialName("team1_player1_id") val team1Player1Id: String? = null,
-    @SerialName("team1_player2_id") val team1Player2Id: String? = null,
-    @SerialName("team2_player1_id") val team2Player1Id: String? = null,
-    @SerialName("team2_player2_id") val team2Player2Id: String? = null,
-    @SerialName("score_team1") val scoreTeam1: Int? = null,
-    @SerialName("score_team2") val scoreTeam2: Int? = null,
-    @SerialName("created_at") val createdAt: String,
-    @SerialName("updated_at") val updatedAt: String
-) {
-    fun toDoublesMatchResponse(
-        team1Player1: LeaguePlayerResponse?,
-        team1Player2: LeaguePlayerResponse?,
-        team2Player1: LeaguePlayerResponse?,
-        team2Player2: LeaguePlayerResponse?
-    ) = DoublesMatchResponse(
-        id = id,
-        rotationId = rotationId,
-        team1Player1Id = team1Player1Id,
-        team1Player2Id = team1Player2Id,
-        team2Player1Id = team2Player1Id,
-        team2Player2Id = team2Player2Id,
-        scoreTeam1 = scoreTeam1,
-        scoreTeam2 = scoreTeam2,
-        createdAt = createdAt,
-        updatedAt = updatedAt,
-        team1Player1 = team1Player1,
-        team1Player2 = team1Player2,
-        team2Player1 = team2Player1,
-        team2Player2 = team2Player2
     )
 }
