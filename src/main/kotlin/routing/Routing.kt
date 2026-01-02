@@ -11,17 +11,23 @@ import com.incodap.services.excel.ExcelService
 import io.ktor.server.application.*
 import io.ktor.server.routing.*
 import org.koin.ktor.ext.get
+import repositories.league.DayGroupRepository
+import repositories.league.DoublesMatchRepository
 import repositories.league.LeagueCategoryRepository
 import repositories.league.LeaguePlayerRepository
 import repositories.league.MatchDayRepository
+import repositories.league.RotationRepository
 import repositories.league.SeasonRepository
 import repositories.organizer.OrganizerRepository
 import routing.auth.profileRoute
 import routing.draw.drawRoutes
+import routing.league.dayGroupRoutes
+import routing.league.doublesMatchRoutes
 import routing.league.leagueCategoryRoutes
 import routing.league.leaguePlayerRoutes
 import routing.league.leagueRankingRoutes
 import routing.league.matchDayRoutes
+import routing.league.rotationRoutes
 import routing.league.seasonRoutes
 import routing.notifications.pushRoutes
 import routing.organizer.organizerRoutes
@@ -90,6 +96,9 @@ fun Application.configureRouting() {
             leagueCategoryRoutes(get<LeagueCategoryService>(), get<LeagueCategoryRepository>())
             leaguePlayerRoutes(get<LeaguePlayerRepository>())
             matchDayRoutes(get<MatchDayRepository>())
+            dayGroupRoutes(get<DayGroupRepository>())
+            rotationRoutes(get<RotationRepository>())
+            doublesMatchRoutes(get<DoublesMatchRepository>())
             leagueRankingRoutes(get<RankingService>())
         }
     }
