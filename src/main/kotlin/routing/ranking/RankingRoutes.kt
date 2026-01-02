@@ -63,10 +63,8 @@ class RankingRoutes(
             // Admin: evento suelto por jugador (opcional, se mantiene)
             route.authenticate("auth-jwt") {
                 post("/event") {
-                    if (!call.requireOrganizer()) {
-                        call.respond(HttpStatusCode.Forbidden, "Admin only")
-                        return@post
-                    }
+                    call.requireOrganizer() ?: return@post
+
                     val request = call.receive<AddRankingEventRequest>()
                     val resultId = service.addRankingEvent(request)
                     call.respond(

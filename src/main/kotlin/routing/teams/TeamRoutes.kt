@@ -69,7 +69,7 @@ fun Route.teamRoutes(
         // Rutas protegidas con JWT
         authenticate("auth-jwt") {
             post("/register") {
-                if (!call.requireOrganizer()) return@post
+                call.requireOrganizer() ?: return@post
 
                 val request = try {
                     call.receive<RegisterTeamRequest>()
@@ -156,7 +156,7 @@ fun Route.teamRoutes(
             }
 
             delete("{teamId}") {
-                if (!call.requireOrganizer()) return@delete
+                call.requireOrganizer() ?: return@delete
 
                 val teamId = call.parameters["teamId"]
 
@@ -174,7 +174,7 @@ fun Route.teamRoutes(
             }
 
             post("/report") {
-                if (!call.requireOrganizer()) return@post
+                call.requireOrganizer() ?: return@post
 
                 val request = call.receive<ReportRequest>()
                 val teamsByCategory = teamService.getTeamsGroupedByCategoryWithPlayerInfo(request.tournamentId)
@@ -213,7 +213,7 @@ fun Route.teamRoutes(
             }
 
             patch("{teamId}/category") {
-                if (!call.requireOrganizer()) return@patch
+                call.requireOrganizer() ?: return@patch
                 val teamId = call.parameters["teamId"]
                 if (teamId.isNullOrBlank()) {
                     call.respond(HttpStatusCode.BadRequest, mapOf("error" to "teamId requerido"))
@@ -237,9 +237,8 @@ fun Route.teamRoutes(
             }
 
             get("/status/by-tournament") {
-                if (!call.requireOrganizer()) {
-                    call.respond(HttpStatusCode.Forbidden, "Admin only"); return@get
-                }
+                call.requireOrganizer() ?: return@get
+
                 val tournamentId = call.request.queryParameters["tournamentId"]
                     ?: return@get call.respond(HttpStatusCode.BadRequest, "Missing tournamentId")
 
@@ -249,9 +248,7 @@ fun Route.teamRoutes(
 
             // 🔵 SET RESULT
             post("{teamId}/result") {
-                if (!call.requireOrganizer()) {
-                    call.respond(HttpStatusCode.Forbidden, "Admin only"); return@post
-                }
+                call.requireOrganizer() ?: return@post
 
                 val teamId = call.parameters["teamId"]
                     ?: return@post call.respond(HttpStatusCode.BadRequest, "Missing teamId")
@@ -271,9 +268,7 @@ fun Route.teamRoutes(
 
             // 🔵 UNSET RESULT
             delete("{teamId}/result") {
-                if (!call.requireOrganizer()) {
-                    call.respond(HttpStatusCode.Forbidden, "Admin only"); return@delete
-                }
+                call.requireOrganizer() ?: return@delete
 
                 val teamId = call.parameters["teamId"]
                     ?: return@delete call.respond(HttpStatusCode.BadRequest, "Missing teamId")
@@ -287,10 +282,7 @@ fun Route.teamRoutes(
             }
 
             get("{teamId}/result") {
-                if (!call.requireOrganizer()) {
-                    call.respond(HttpStatusCode.Forbidden, "Admin only")
-                    return@get
-                }
+                call.requireOrganizer() ?: return@get
 
                 val teamId = call.parameters["teamId"]
                     ?: return@get call.respond(HttpStatusCode.BadRequest, "Missing teamId")
