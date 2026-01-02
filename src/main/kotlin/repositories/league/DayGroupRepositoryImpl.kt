@@ -6,13 +6,18 @@ import io.ktor.client.call.body
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.request.patch
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import models.league.DayGroupResponse
 import models.league.LeaguePlayerResponse
+import models.league.UpdateDayGroupAssignmentRequest
 
 class DayGroupRepositoryImpl(
     private val client: HttpClient,
@@ -87,6 +92,18 @@ class DayGroupRepositoryImpl(
         } else {
             null
         }
+    }
+
+    override suspend fun updateAssignment(id: String, request: UpdateDayGroupAssignmentRequest): Boolean {
+        val response = client.patch("$apiUrl/day_groups") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("id", "eq.$id")
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(UpdateDayGroupAssignmentRequest.serializer(), request))
+        }
+
+        return response.status.isSuccess()
     }
 }
 

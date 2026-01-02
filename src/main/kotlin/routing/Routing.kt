@@ -17,8 +17,10 @@ import repositories.league.DoublesMatchRepository
 import repositories.league.LeagueCategoryRepository
 import repositories.league.LeaguePlayerRepository
 import repositories.league.MatchDayRepository
+import repositories.league.MatchdayScheduleOverridesRepository
 import repositories.league.RotationRepository
 import repositories.league.SeasonRepository
+import repositories.league.SeasonScheduleDefaultsRepository
 import repositories.organizer.OrganizerRepository
 import routing.auth.profileRoute
 import routing.draw.drawRoutes
@@ -30,6 +32,7 @@ import routing.league.leagueRankingRoutes
 import routing.league.matchDayOptimizedRoutes
 import routing.league.matchDayRoutes
 import routing.league.rotationRoutes
+import routing.league.scheduleRoutes
 import routing.league.seasonRoutes
 import routing.notifications.pushRoutes
 import routing.organizer.organizerRoutes
@@ -39,6 +42,7 @@ import routing.remoteconfig.remoteConfigRoutes
 import services.auth.AuthService
 import services.email.EmailService
 import services.league.LeagueCategoryService
+import services.league.MasterScheduleService
 import services.league.MatchDayService
 import services.league.RankingService
 import services.league.SeasonService
@@ -109,6 +113,13 @@ fun Application.configureRouting() {
             rotationRoutes(get<RotationRepository>())
             doublesMatchRoutes(get<DoublesMatchRepository>())
             leagueRankingRoutes(get<RankingService>())
+            scheduleRoutes(
+                get<SeasonScheduleDefaultsRepository>(),
+                get<MatchdayScheduleOverridesRepository>(),
+                get<DayGroupRepository>(),
+                get<MasterScheduleService>(),
+                get<SeasonRepository>()
+            )
         }
     }
 
