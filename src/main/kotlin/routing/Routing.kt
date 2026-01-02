@@ -49,7 +49,7 @@ fun Application.configureRouting() {
             teamRoutes(get<TeamService>(), get<EmailService>(), get<ExcelService>())
 
             // Códigos de inscripción
-            registrationCodeRoutes(get<RegistrationCodeService>(), get<EmailService>(), get<ExcelService>())
+            registrationCodeRoutes(get<RegistrationCodeService>(), get<EmailService>(), get<ExcelService>(), get())
 
             // Torneos
             tournamentRoutes(get(), get(), get())

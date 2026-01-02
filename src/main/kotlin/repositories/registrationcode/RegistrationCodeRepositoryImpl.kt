@@ -19,13 +19,14 @@ class RegistrationCodeRepositoryImpl(
     private val config: SupabaseConfig
 ) : RegistrationCodeRepository {
 
-    override suspend fun createCode(email: String): String {
+    override suspend fun createCode(email: String, organizerId: String?): String {
         val code = generateFriendlyCode()
 
-        val payload = mapOf(
-            "code" to code,
-            "created_by_email" to email
-        )
+        val payload = buildMap {
+            put("code", code)
+            put("created_by_email", email)
+            organizerId?.let { put("organizer_id", it) }
+        }
 
         val response = client.post("${config.apiUrl}/registration_codes") {
             header("apikey", config.apiKey)
@@ -35,7 +36,7 @@ class RegistrationCodeRepositoryImpl(
             setBody(listOf(payload))
         }
 
-        println("🧾 Código generado: $code → status: ${response.status}")
+        println("🧾 Código generado: $code → status: ${response.status} (organizer: $organizerId)")
         if (!response.status.isSuccess()) {
             println("❌ Supabase error [registration_codes]: ${response.bodyAsText()}")
             throw RuntimeException("Error al crear código de registro")

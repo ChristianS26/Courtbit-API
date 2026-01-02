@@ -12,4 +12,5 @@ data class RegistrationCode(
     val created_at: String? = null,
     val used_at: String? = null,
     val used_in_tournament_id: String? = null,
+    val organizer_id: String? = null,
 )

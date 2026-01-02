@@ -7,8 +7,8 @@ import repositories.registrationcode.RegistrationCodeRepository
 class RegistrationCodeService(
     private val repository: RegistrationCodeRepository
 ) {
-    suspend fun createRegistrationCode(email: String): String {
-        return repository.createCode(email)
+    suspend fun createRegistrationCode(email: String, organizerId: String? = null): String {
+        return repository.createCode(email, organizerId)
     }
 
     suspend fun getAllRegistrationCodes(): List<RegistrationCode> {
