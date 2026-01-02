@@ -52,7 +52,7 @@ class LeagueCategoryService(
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
             contentType(ContentType.Application.Json)
-            setBody(payload.toString())
+            setBody(payload)
         }
 
         return if (response.status.isSuccess()) {
