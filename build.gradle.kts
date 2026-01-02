@@ -72,3 +72,22 @@ dependencies {
     testImplementation("io.ktor:ktor-server-test-host:$ktor_version")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 }
+
+tasks.test {
+    // Security
+    environment("JWT_SECRET", "test-jwt-secret-for-testing-purposes-only")
+
+    // Supabase
+    environment("SUPABASE_API_KEY", "test-supabase-key")
+    environment("SUPABASE_API_URL", "https://test.supabase.co")
+
+    // Email (Resend)
+    environment("RESEND_API_KEY", "test-resend-key")
+    environment("RESEND_FROM_EMAIL", "test@example.com")
+
+    // Cloudinary
+    environment("CLOUDINARY_URL", "cloudinary://test:test@test")
+
+    // Stripe
+    environment("STRIPE_WEBHOOK_SECRET", "test-stripe-webhook-secret")
+}

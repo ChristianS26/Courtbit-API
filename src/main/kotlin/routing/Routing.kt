@@ -9,6 +9,7 @@ import com.incodap.routing.teams.teamRoutes
 import com.incodap.routing.tournament.tournamentRoutes
 import com.incodap.services.excel.ExcelService
 import io.ktor.server.application.*
+import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import org.koin.ktor.ext.get
 import repositories.league.DayGroupRepository
@@ -26,6 +27,7 @@ import routing.league.doublesMatchRoutes
 import routing.league.leagueCategoryRoutes
 import routing.league.leaguePlayerRoutes
 import routing.league.leagueRankingRoutes
+import routing.league.matchDayOptimizedRoutes
 import routing.league.matchDayRoutes
 import routing.league.rotationRoutes
 import routing.league.seasonRoutes
@@ -37,6 +39,7 @@ import routing.remoteconfig.remoteConfigRoutes
 import services.auth.AuthService
 import services.email.EmailService
 import services.league.LeagueCategoryService
+import services.league.MatchDayService
 import services.league.RankingService
 import services.league.SeasonService
 import services.organizer.OrganizerService
@@ -49,6 +52,11 @@ fun Application.configureRouting() {
 
     routing {
         rootRoute = this
+
+        // Root health check endpoint
+        get("/") {
+            call.respondText("CourtBit API is running ✅")
+        }
 
         route("/api") {
             // Profile
@@ -96,6 +104,7 @@ fun Application.configureRouting() {
             leagueCategoryRoutes(get<LeagueCategoryService>(), get<LeagueCategoryRepository>())
             leaguePlayerRoutes(get<LeaguePlayerRepository>())
             matchDayRoutes(get<MatchDayRepository>())
+            matchDayOptimizedRoutes(get<MatchDayService>())  // Optimized endpoint
             dayGroupRoutes(get<DayGroupRepository>())
             rotationRoutes(get<RotationRepository>())
             doublesMatchRoutes(get<DoublesMatchRepository>())

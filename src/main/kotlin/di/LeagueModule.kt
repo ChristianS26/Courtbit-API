@@ -3,6 +3,7 @@ package di
 import org.koin.dsl.module
 import repositories.league.*
 import services.league.LeagueCategoryService
+import services.league.MatchDayService
 import services.league.RankingService
 import services.league.SeasonService
 
@@ -20,4 +21,5 @@ val LeagueModule = module {
     single { SeasonService(get(), get(), get()) }
     single { LeagueCategoryService(get(), get(), get(), get(), get()) }
     single { RankingService(get(), get(), get()) }
+    single { MatchDayService(get(), get(), get()) }
 }
