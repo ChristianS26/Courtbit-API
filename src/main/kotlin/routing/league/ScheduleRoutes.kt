@@ -13,6 +13,8 @@ import models.league.UpdateDayGroupAssignmentRequest
 import models.league.UpdateMatchdayScheduleOverrideRequest
 import models.league.UpdateSeasonScheduleDefaultsRequest
 import repositories.league.*
+import routing.ContentTypeException
+import routing.receiveWithContentTypeCheck
 import services.league.MasterScheduleService
 
 fun Route.scheduleRoutes(
@@ -64,7 +66,12 @@ fun Route.scheduleRoutes(
                     val uid = call.requireOrganizer() ?: return@post
 
                     val request = try {
-                        call.receive<CreateSeasonScheduleDefaultsRequest>()
+                        call.receiveWithContentTypeCheck<CreateSeasonScheduleDefaultsRequest>()
+                    } catch (e: ContentTypeException) {
+                        return@post call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to e.message)
+                        )
                     } catch (e: Exception) {
                         return@post call.respond(
                             HttpStatusCode.BadRequest,
@@ -118,7 +125,12 @@ fun Route.scheduleRoutes(
                     }
 
                     val request = try {
-                        call.receive<UpdateSeasonScheduleDefaultsRequest>()
+                        call.receiveWithContentTypeCheck<UpdateSeasonScheduleDefaultsRequest>()
+                    } catch (e: ContentTypeException) {
+                        return@patch call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to e.message)
+                        )
                     } catch (e: Exception) {
                         return@patch call.respond(
                             HttpStatusCode.BadRequest,
@@ -155,7 +167,12 @@ fun Route.scheduleRoutes(
                     val uid = call.requireOrganizer() ?: return@post
 
                     val request = try {
-                        call.receive<CreateMatchdayScheduleOverrideRequest>()
+                        call.receiveWithContentTypeCheck<CreateMatchdayScheduleOverrideRequest>()
+                    } catch (e: ContentTypeException) {
+                        return@post call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to e.message)
+                        )
                     } catch (e: Exception) {
                         return@post call.respond(
                             HttpStatusCode.BadRequest,
@@ -203,7 +220,12 @@ fun Route.scheduleRoutes(
                     )
 
                     val request = try {
-                        call.receive<UpdateMatchdayScheduleOverrideRequest>()
+                        call.receiveWithContentTypeCheck<UpdateMatchdayScheduleOverrideRequest>()
+                    } catch (e: ContentTypeException) {
+                        return@patch call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to e.message)
+                        )
                     } catch (e: Exception) {
                         return@patch call.respond(
                             HttpStatusCode.BadRequest,
@@ -251,7 +273,12 @@ fun Route.scheduleRoutes(
                     )
 
                     val request = try {
-                        call.receive<UpdateDayGroupAssignmentRequest>()
+                        call.receiveWithContentTypeCheck<UpdateDayGroupAssignmentRequest>()
+                    } catch (e: ContentTypeException) {
+                        return@patch call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to e.message)
+                        )
                     } catch (e: Exception) {
                         return@patch call.respond(
                             HttpStatusCode.BadRequest,
