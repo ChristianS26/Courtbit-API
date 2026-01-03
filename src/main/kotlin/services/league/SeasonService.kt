@@ -15,16 +15,6 @@ class SeasonService(
         request: CreateSeasonRequest,
         organizerId: String
     ): Result<SeasonResponse> {
-        // Business rule: Only one active season per organizer
-        if (request.isActive) {
-            val existing = repository.getActiveByOrganizer(organizerId)
-            if (existing != null) {
-                return Result.failure(
-                    IllegalStateException("Only one active season allowed. Deactivate '${existing.name}' first.")
-                )
-            }
-        }
-
         // Auto-inject organizer
         val seasonWithOrganizer = request.copy(organizerId = organizerId)
 
