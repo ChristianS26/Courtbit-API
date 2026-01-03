@@ -11,6 +11,7 @@ data class LeaguePlayerResponse(
     val name: String,
     val email: String?,
     @SerialName("phone_number") val phoneNumber: String?,
+    @SerialName("is_waiting_list") val isWaitingList: Boolean = false,
     @SerialName("created_at") val createdAt: String
 )
 

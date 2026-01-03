@@ -13,6 +13,7 @@ data class LeagueCategoryResponse(
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String,
     @SerialName("player_count") val playerCount: Int? = null,
+    @SerialName("waiting_list_count") val waitingListCount: Int? = null,
     @SerialName("has_calendar") val hasCalendar: Boolean? = null
 )
 

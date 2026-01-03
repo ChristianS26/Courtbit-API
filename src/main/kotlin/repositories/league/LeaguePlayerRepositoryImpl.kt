@@ -70,13 +70,39 @@ class LeaguePlayerRepositoryImpl(
     }
 
     override suspend fun create(request: CreateLeaguePlayerRequest): LeaguePlayerResponse? {
+        // Check how many active players (not on waiting list) already exist
+        val existingPlayers = getByCategoryId(request.categoryId)
+        val activePlayers = existingPlayers.filter { !it.isWaitingList }
+        val isWaitingList = activePlayers.size >= 16
+
+        // Create a modified request with is_waiting_list set
+        val requestWithWaitingList = if (isWaitingList) {
+            kotlinx.serialization.json.buildJsonObject {
+                put("category_id", kotlinx.serialization.json.JsonPrimitive(request.categoryId))
+                put("name", kotlinx.serialization.json.JsonPrimitive(request.name))
+                request.userUid?.let { put("user_uid", kotlinx.serialization.json.JsonPrimitive(it)) }
+                request.email?.let { put("email", kotlinx.serialization.json.JsonPrimitive(it)) }
+                request.phoneNumber?.let { put("phone_number", kotlinx.serialization.json.JsonPrimitive(it)) }
+                put("is_waiting_list", kotlinx.serialization.json.JsonPrimitive(true))
+            }
+        } else {
+            kotlinx.serialization.json.buildJsonObject {
+                put("category_id", kotlinx.serialization.json.JsonPrimitive(request.categoryId))
+                put("name", kotlinx.serialization.json.JsonPrimitive(request.name))
+                request.userUid?.let { put("user_uid", kotlinx.serialization.json.JsonPrimitive(it)) }
+                request.email?.let { put("email", kotlinx.serialization.json.JsonPrimitive(it)) }
+                request.phoneNumber?.let { put("phone_number", kotlinx.serialization.json.JsonPrimitive(it)) }
+                put("is_waiting_list", kotlinx.serialization.json.JsonPrimitive(false))
+            }
+        }
+
         val url = "$apiUrl/league_players"
         val response = client.post(url) {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
             contentType(ContentType.Application.Json)
-            setBody(listOf(request))
+            setBody(listOf(requestWithWaitingList))
         }
 
         val status = response.status

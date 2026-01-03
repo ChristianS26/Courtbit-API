@@ -31,6 +31,7 @@ import routing.league.leaguePlayerRoutes
 import routing.league.leagueRankingRoutes
 import routing.league.matchDayOptimizedRoutes
 import routing.league.matchDayRoutes
+import routing.league.playoffRoutes
 import routing.league.rotationRoutes
 import routing.league.scheduleRoutes
 import routing.league.seasonRoutes
@@ -44,6 +45,7 @@ import services.email.EmailService
 import services.league.LeagueCategoryService
 import services.league.MasterScheduleService
 import services.league.MatchDayService
+import services.league.PlayoffService
 import services.league.RankingService
 import services.league.SeasonService
 import services.organizer.OrganizerService
@@ -113,6 +115,7 @@ fun Application.configureRouting() {
             rotationRoutes(get<RotationRepository>())
             doublesMatchRoutes(get<DoublesMatchRepository>())
             leagueRankingRoutes(get<RankingService>())
+            playoffRoutes(get<PlayoffService>(), get())
             scheduleRoutes(
                 get<SeasonScheduleDefaultsRepository>(),
                 get<MatchdayScheduleOverridesRepository>(),
