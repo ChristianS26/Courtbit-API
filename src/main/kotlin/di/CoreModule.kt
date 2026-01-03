@@ -22,6 +22,7 @@ val CoreModule = module {
             isLenient = true
             ignoreUnknownKeys = true
             encodeDefaults = true
+            explicitNulls = false  // Skip null values when encoding to JSON
         }
     }
 }
