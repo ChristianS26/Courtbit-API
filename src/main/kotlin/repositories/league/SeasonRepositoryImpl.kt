@@ -85,6 +85,8 @@ class SeasonRepositoryImpl(
             header("Prefer", "return=representation")
             contentType(ContentType.Application.Json)
             setBody(listOf(request))
+            // Include organizer data in the response
+            parameter("select", "*,organizers!organizer_id(name)")
         }
 
         val status = response.status
@@ -94,7 +96,9 @@ class SeasonRepositoryImpl(
         if (!status.isSuccess()) return null
 
         return bodyText.takeIf { it.isNotBlank() }?.let {
-            json.decodeFromString<List<SeasonResponse>>(it).firstOrNull()
+            // Decode as SeasonRawResponse to handle the joined organizer data
+            val rawList = json.decodeFromString<List<SeasonRawResponse>>(it)
+            rawList.firstOrNull()?.toSeasonResponse()
         }
     }
 
