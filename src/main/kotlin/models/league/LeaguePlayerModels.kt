@@ -28,5 +28,6 @@ data class CreateLeaguePlayerRequest(
 data class UpdateLeaguePlayerRequest(
     val name: String? = null,
     val email: String? = null,
-    @SerialName("phone_number") val phoneNumber: String? = null
+    @SerialName("phone_number") val phoneNumber: String? = null,
+    @SerialName("category_id") val categoryId: String? = null
 )
