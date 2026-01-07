@@ -19,6 +19,7 @@ import kotlinx.serialization.json.put
 import models.league.DoublesMatchResponse
 import models.league.LeaguePlayerResponse
 import models.league.UpdateMatchScoreRequest
+import org.slf4j.LoggerFactory
 
 class DoublesMatchRepositoryImpl(
     private val client: HttpClient,
@@ -27,8 +28,11 @@ class DoublesMatchRepositoryImpl(
 ) : DoublesMatchRepository {
     private val apiUrl = config.apiUrl
     private val apiKey = config.apiKey
+    private val logger = LoggerFactory.getLogger(DoublesMatchRepositoryImpl::class.java)
 
     override suspend fun getById(id: String): DoublesMatchResponse? {
+        logger.info("🔍 [DoublesMatchRepo] getById($id)")
+
         val response = client.get("$apiUrl/doubles_matches") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -37,10 +41,19 @@ class DoublesMatchRepositoryImpl(
             parameter("limit", "1")
         }
 
+        val bodyText = response.bodyAsText()
+        logger.info("🔍 [DoublesMatchRepo] Response: status=${response.status}, body=$bodyText")
+
         return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
             val rawList = json.decodeFromString<List<DoublesMatchRaw>>(bodyText)
-            val raw = rawList.firstOrNull() ?: return null
+            val raw = rawList.firstOrNull()
+
+            if (raw == null) {
+                logger.warn("⚠️ [DoublesMatchRepo] No match found for id=$id")
+                return null
+            }
+
+            logger.info("🔍 [DoublesMatchRepo] Found match, enriching with players...")
 
             // Enrich with players
             val team1Player1 = raw.team1Player1Id?.let { fetchPlayerById(it) }
@@ -50,6 +63,7 @@ class DoublesMatchRepositoryImpl(
 
             raw.toDoublesMatchResponse(team1Player1, team1Player2, team2Player1, team2Player2)
         } else {
+            logger.error("❌ [DoublesMatchRepo] Failed to fetch match: status=${response.status}")
             null
         }
     }

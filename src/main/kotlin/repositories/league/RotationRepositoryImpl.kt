@@ -13,6 +13,7 @@ import kotlinx.serialization.json.Json
 import models.league.DoublesMatchResponse
 import models.league.LeaguePlayerResponse
 import models.league.RotationResponse
+import org.slf4j.LoggerFactory
 
 class RotationRepositoryImpl(
     private val client: HttpClient,
@@ -22,8 +23,11 @@ class RotationRepositoryImpl(
 ) : RotationRepository {
     private val apiUrl = config.apiUrl
     private val apiKey = config.apiKey
+    private val logger = LoggerFactory.getLogger(RotationRepositoryImpl::class.java)
 
     override suspend fun getByDayGroupId(dayGroupId: String): List<RotationResponse> {
+        logger.info("🔍 [RotationRepo] getByDayGroupId($dayGroupId) - URL: $apiUrl/rotations")
+
         val response = client.get("$apiUrl/rotations") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -32,9 +36,12 @@ class RotationRepositoryImpl(
             parameter("order", "rotation_number.asc")
         }
 
+        val bodyText = response.bodyAsText()
+        logger.info("🔍 [RotationRepo] Response status: ${response.status}, body: $bodyText")
+
         return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
             val rawList = json.decodeFromString<List<RotationRaw>>(bodyText)
+            logger.info("🔍 [RotationRepo] Found ${rawList.size} rotations for dayGroupId=$dayGroupId")
 
             // Enrich with match
             rawList.map { raw ->
@@ -42,6 +49,7 @@ class RotationRepositoryImpl(
                 raw.toRotationResponse(match)
             }
         } else {
+            logger.error("❌ [RotationRepo] Failed to fetch rotations: status=${response.status}, body=$bodyText")
             emptyList()
         }
     }
@@ -69,6 +77,8 @@ class RotationRepositoryImpl(
     }
 
     private suspend fun fetchMatchByRotationId(rotationId: String): DoublesMatchResponse? {
+        logger.info("🔍 [RotationRepo] fetchMatchByRotationId($rotationId)")
+
         // Query by rotation_id
         val response = client.get("$apiUrl/doubles_matches") {
             header("apikey", apiKey)
@@ -78,14 +88,23 @@ class RotationRepositoryImpl(
             parameter("limit", "1")
         }
 
-        return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            val idList = json.decodeFromString<List<Map<String, String>>>(bodyText)
-            val matchId = idList.firstOrNull()?.get("id") ?: return null
+        val bodyText = response.bodyAsText()
+        logger.info("🔍 [RotationRepo] doubles_matches response: status=${response.status}, body=$bodyText")
 
+        return if (response.status.isSuccess()) {
+            val idList = json.decodeFromString<List<Map<String, String>>>(bodyText)
+            val matchId = idList.firstOrNull()?.get("id")
+
+            if (matchId == null) {
+                logger.warn("⚠️ [RotationRepo] No match found for rotationId=$rotationId")
+                return null
+            }
+
+            logger.info("🔍 [RotationRepo] Found matchId=$matchId, fetching full match")
             // Use DoublesMatchRepository to get full match with players
             doublesMatchRepository.getById(matchId)
         } else {
+            logger.error("❌ [RotationRepo] Failed to fetch match for rotation: status=${response.status}")
             null
         }
     }
