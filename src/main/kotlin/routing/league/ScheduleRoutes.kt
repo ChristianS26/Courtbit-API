@@ -7,6 +7,7 @@ import io.ktor.server.auth.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import models.league.AutoScheduleRequest
 import models.league.CreateMatchdayScheduleOverrideRequest
 import models.league.CreateSeasonScheduleDefaultsRequest
 import models.league.UpdateDayGroupAssignmentRequest
@@ -15,6 +16,7 @@ import models.league.UpdateSeasonScheduleDefaultsRequest
 import repositories.league.*
 import routing.ContentTypeException
 import routing.receiveWithContentTypeCheck
+import services.league.AutoSchedulingService
 import services.league.MasterScheduleService
 
 fun Route.scheduleRoutes(
@@ -22,7 +24,8 @@ fun Route.scheduleRoutes(
     overridesRepository: MatchdayScheduleOverridesRepository,
     dayGroupRepository: DayGroupRepository,
     masterScheduleService: MasterScheduleService,
-    seasonRepository: SeasonRepository
+    seasonRepository: SeasonRepository,
+    autoSchedulingService: AutoSchedulingService
 ) {
     route("/schedule") {
         // Get master schedule for a category
@@ -293,6 +296,47 @@ fun Route.scheduleRoutes(
                         call.respond(
                             HttpStatusCode.InternalServerError,
                             mapOf("error" to "Failed to update assignment")
+                        )
+                    }
+                }
+            }
+
+            // Auto-scheduling
+            route("/auto-schedule") {
+                // Auto-schedule all unassigned groups for a matchday
+                post {
+                    val uid = call.requireOrganizer() ?: return@post
+
+                    val request = try {
+                        call.receiveWithContentTypeCheck<AutoScheduleRequest>()
+                    } catch (e: ContentTypeException) {
+                        return@post call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to e.message)
+                        )
+                    } catch (e: Exception) {
+                        return@post call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to "Invalid request: ${e.localizedMessage}")
+                        )
+                    }
+
+                    // Verify season ownership
+                    val season = seasonRepository.getById(request.seasonId)
+                    if (season == null) {
+                        return@post call.respond(
+                            HttpStatusCode.NotFound,
+                            mapOf("error" to "Season not found")
+                        )
+                    }
+
+                    try {
+                        val result = autoSchedulingService.autoSchedule(request)
+                        call.respond(HttpStatusCode.OK, result)
+                    } catch (e: Exception) {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to "Auto-scheduling failed: ${e.localizedMessage}")
                         )
                     }
                 }

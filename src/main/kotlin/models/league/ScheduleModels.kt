@@ -93,3 +93,33 @@ data class DayGroupScheduleInfo(
     @SerialName("court_index") val courtIndex: Int?,
     @SerialName("created_at") val createdAt: String
 )
+
+// Auto-scheduling request/response
+@Serializable
+data class AutoScheduleRequest(
+    @SerialName("season_id") val seasonId: String,
+    @SerialName("matchday_number") val matchdayNumber: Int,
+    @SerialName("match_date") val matchDate: String,
+    @SerialName("respect_availability") val respectAvailability: Boolean = true
+)
+
+@Serializable
+data class AutoScheduleResponse(
+    @SerialName("total_groups") val totalGroups: Int,
+    @SerialName("assigned_groups") val assignedGroups: Int,
+    @SerialName("skipped_groups") val skippedGroups: Int,
+    val assignments: List<GroupAssignment>,
+    val warnings: List<String>
+)
+
+@Serializable
+data class GroupAssignment(
+    @SerialName("day_group_id") val dayGroupId: String,
+    @SerialName("group_number") val groupNumber: Int,
+    @SerialName("category_name") val categoryName: String,
+    @SerialName("match_date") val matchDate: String,
+    @SerialName("time_slot") val timeSlot: String,
+    @SerialName("court_index") val courtIndex: Int,
+    @SerialName("availability_score") val availabilityScore: Double,
+    @SerialName("unavailable_players") val unavailablePlayers: List<String>
+)

@@ -2,6 +2,7 @@ package di
 
 import org.koin.dsl.module
 import repositories.league.*
+import services.league.AutoSchedulingService
 import services.league.LeagueCategoryService
 import services.league.MasterScheduleService
 import services.league.MatchDayService
@@ -20,6 +21,7 @@ val LeagueModule = module {
     single<RotationRepository> { RotationRepositoryImpl(get(), get(), get(), get()) }
     single<SeasonScheduleDefaultsRepository> { SeasonScheduleDefaultsRepositoryImpl(get(), get(), get()) }
     single<MatchdayScheduleOverridesRepository> { MatchdayScheduleOverridesRepositoryImpl(get(), get(), get()) }
+    single<PlayerAvailabilityRepository> { PlayerAvailabilityRepositoryImpl(get(), get(), get(), get()) }
 
     // Services
     single { SeasonService(get(), get(), get()) }
@@ -28,4 +30,5 @@ val LeagueModule = module {
     single { MatchDayService(get(), get(), get()) }
     single { MasterScheduleService(get(), get(), get(), get(), get()) }
     single { PlayoffService(get(), get()) }
+    single { AutoSchedulingService(get(), get(), get(), get(), get(), get(), get(), get()) }
 }
