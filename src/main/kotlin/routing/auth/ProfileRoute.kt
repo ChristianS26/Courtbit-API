@@ -9,11 +9,13 @@ import io.ktor.server.auth.authenticate
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.route
 import models.profile.ProfileResponse
 import models.profile.UpdateProfileRequest
+import models.users.DeleteUserResult
 import utils.JwtService
 
 fun Route.profileRoute(
@@ -72,6 +74,38 @@ fun Route.profileRoute(
                 }
             }
 
+            delete("/me") {
+                try {
+                    when (val result = userRepository.deleteByUid(call.uid)) {
+                        DeleteUserResult.Deleted -> {
+                            call.respond(
+                                HttpStatusCode.OK,
+                                mapOf("message" to "Cuenta eliminada exitosamente")
+                            )
+                        }
+
+                        DeleteUserResult.NotFound -> {
+                            call.respond(
+                                HttpStatusCode.NotFound,
+                                mapOf("error" to "Usuario no encontrado")
+                            )
+                        }
+
+                        is DeleteUserResult.Error -> {
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to result.message)
+                            )
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Error interno del servidor")
+                    )
+                }
+            }
         }
     }
 }

@@ -13,6 +13,7 @@ fun UserDto.toPublicUser(): PublicUser {
         gender = gender,
         role = role,
         photoUrl = photoUrl,
+        emailVerified = emailVerified,
         shirtSize = shirtSize,
-        )
+    )
 }

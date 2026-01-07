@@ -14,6 +14,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import models.profile.UpdateProfileRequest
+import models.users.DeleteUserResult
 import org.slf4j.LoggerFactory
 
 class UserRepositoryImpl(
@@ -215,6 +216,7 @@ class UserRepositoryImpl(
                 request.gender?.let { put("gender", it) }
                 request.photoUrl?.let { put("photo_url", it) }
                 request.countryIso?.let { put("country_iso", it) }
+                request.shirtSize?.let { put("shirt_size", it) }
             }
 
             val response = client.patch("$apiUrl/users") {
@@ -325,6 +327,42 @@ class UserRepositoryImpl(
         } catch (e: Exception) {
             logger.error("❌ Error actualizando Stripe CustomerId: {}", e.message, e)
             false
+        }
+    }
+
+    // -------------------------------------------------------
+    // 🗑️ Delete User
+    // -------------------------------------------------------
+
+    override suspend fun deleteByUid(uid: String): DeleteUserResult {
+        return try {
+            val deleteResponse = client.delete("$apiUrl/users") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                header("Prefer", "return=representation")
+                parameter("uid", "eq.$uid")
+            }
+
+            val body = deleteResponse.bodyAsText()
+
+            if (!deleteResponse.status.isSuccess()) {
+                logger.warn("⚠️ deleteByUid failed: status={} body={}", deleteResponse.status, body)
+                return DeleteUserResult.Error("Database error")
+            }
+
+            // Caso ideal: body trae filas borradas
+            if (body.isNotBlank()) {
+                val deletedRows = json.decodeFromString(ListSerializer(UserDto.serializer()), body)
+                return if (deletedRows.isEmpty()) DeleteUserResult.NotFound else DeleteUserResult.Deleted
+            }
+
+            // Si el body viene vacío, confirmamos con un SELECT (única forma segura)
+            val stillExists = findByUid(uid) != null
+            if (stillExists) DeleteUserResult.NotFound else DeleteUserResult.Deleted
+
+        } catch (e: Exception) {
+            logger.error("❌ Error deleting user: {}", e.message, e)
+            DeleteUserResult.Error(e.message ?: "Unknown error")
         }
     }
 }

@@ -2,6 +2,7 @@ package com.incodap.repositories.users
 
 import com.incodap.models.users.UserDto
 import models.profile.UpdateProfileRequest
+import models.users.DeleteUserResult
 
 interface UserRepository {
     suspend fun findByEmail(email: String): UserDto?
@@ -13,4 +14,5 @@ interface UserRepository {
     suspend fun searchUsers(query: String): List<UserDto>
     suspend fun getStripeCustomerIdByUid(uid: String): String?
     suspend fun updateStripeCustomerId(uid: String, customerId: String): Boolean
+    suspend fun deleteByUid(uid: String): DeleteUserResult
 }
