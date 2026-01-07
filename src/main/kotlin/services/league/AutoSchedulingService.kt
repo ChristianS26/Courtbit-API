@@ -234,7 +234,7 @@ class AutoSchedulingService(
      */
     private suspend fun fetchUnassignedGroups(seasonId: String, matchdayNumber: Int): List<UnassignedGroup> {
         // First get all categories for this season
-        val categories = categoryRepository.getBySeason(seasonId)
+        val categories = categoryRepository.getBySeasonId(seasonId)
 
         val unassignedGroups = mutableListOf<UnassignedGroup>()
 
@@ -250,7 +250,7 @@ class AutoSchedulingService(
 
             if (response.status.isSuccess()) {
                 val bodyText = response.bodyAsText()
-                val matchDays = json.decodeFromString<List<MatchDayWithGroupsRaw>>(bodyText)
+                val matchDays = json.decodeFromString<List<AutoScheduleMatchDayRaw>>(bodyText)
 
                 for (matchDay in matchDays) {
                     for (dayGroup in matchDay.dayGroups) {
@@ -306,18 +306,18 @@ class AutoSchedulingService(
     )
 }
 
-// Raw response for deserialization (matches MasterScheduleService)
+// Raw response for deserialization
 @Serializable
-private data class MatchDayWithGroupsRaw(
+private data class AutoScheduleMatchDayRaw(
     val id: String,
     @SerialName("category_id") val categoryId: String,
     @SerialName("match_number") val matchNumber: Int,
     @SerialName("created_at") val createdAt: String,
-    @SerialName("day_groups") val dayGroups: List<DayGroupRaw>
+    @SerialName("day_groups") val dayGroups: List<AutoScheduleDayGroupRaw>
 )
 
 @Serializable
-private data class DayGroupRaw(
+private data class AutoScheduleDayGroupRaw(
     val id: String,
     @SerialName("match_day_id") val matchDayId: String,
     @SerialName("group_number") val groupNumber: Int,
