@@ -62,22 +62,16 @@ fun Route.dayGroupRoutes(
 
                 when (val result = dayGroupRepository.regenerateRotations(id)) {
                     is RegenerateResult.Success -> {
-                        call.respond(HttpStatusCode.OK, buildJsonObject {
-                            put("success", true)
-                            put("message", "Rotations created successfully")
-                        })
+                        call.respond(HttpStatusCode.OK, buildJsonObject { put("success", true) })
                     }
                     is RegenerateResult.AlreadyExists -> {
-                        call.respond(HttpStatusCode.OK, buildJsonObject {
-                            put("success", true)
-                            put("message", "Rotations already exist")
-                        })
+                        call.respond(HttpStatusCode.OK, buildJsonObject { put("success", true) })
                     }
                     is RegenerateResult.NotEnoughPlayers -> {
-                        call.respond(HttpStatusCode.BadRequest, buildJsonObject { put("error", "Day group needs exactly 4 players") })
+                        call.respond(HttpStatusCode.BadRequest, buildJsonObject { put("success", false) })
                     }
                     is RegenerateResult.Error -> {
-                        call.respond(HttpStatusCode.InternalServerError, buildJsonObject { put("error", result.message) })
+                        call.respond(HttpStatusCode.InternalServerError, buildJsonObject { put("success", false) })
                     }
                 }
             }
