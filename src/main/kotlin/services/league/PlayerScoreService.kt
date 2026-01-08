@@ -78,7 +78,8 @@ class PlayerScoreService(
             matchId = matchId,
             scoreTeam1 = scoreTeam1,
             scoreTeam2 = scoreTeam2,
-            submittedByUserId = userId
+            submittedByUserId = userId,
+            submittedByName = userName
         )
 
         return if (updated) {
@@ -220,12 +221,14 @@ class PlayerScoreService(
         matchId: String,
         scoreTeam1: Int,
         scoreTeam2: Int,
-        submittedByUserId: String
+        submittedByUserId: String,
+        submittedByName: String
     ): Boolean {
         val payload = buildJsonObject {
             put("score_team1", scoreTeam1)
             put("score_team2", scoreTeam2)
             put("submitted_by_user_id", submittedByUserId)
+            put("submitted_by_name", submittedByName)
             put("submitted_at", java.time.Instant.now().toString())
         }
 
