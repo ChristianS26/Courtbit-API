@@ -166,6 +166,7 @@ data class SeasonRawResponse(
     @SerialName("players_in_semifinals") val playersInSemifinals: Int = 4,
     @SerialName("organizer_id") val organizerId: String?,
     val organizers: OrganizerInfo?,
+    @SerialName("allow_player_scores") val allowPlayerScores: Boolean = true,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String
 ) {
@@ -180,6 +181,7 @@ data class SeasonRawResponse(
         playersInSemifinals = playersInSemifinals,
         organizerId = organizerId,
         organizerName = organizers?.name,
+        allowPlayerScores = allowPlayerScores,
         createdAt = createdAt,
         updatedAt = updatedAt
     )

@@ -6,6 +6,7 @@ import services.league.AutoSchedulingService
 import services.league.LeagueCategoryService
 import services.league.MasterScheduleService
 import services.league.MatchDayService
+import services.league.PlayerScoreService
 import services.league.PlayoffService
 import services.league.RankingService
 import services.league.SeasonService
@@ -31,4 +32,5 @@ val LeagueModule = module {
     single { MasterScheduleService(get(), get(), get(), get(), get(), get()) }
     single { PlayoffService(get(), get()) }
     single { AutoSchedulingService(get(), get(), get(), get(), get(), get(), get(), get()) }
+    single { PlayerScoreService(get(), get(), get()) }
 }

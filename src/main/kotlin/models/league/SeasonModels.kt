@@ -15,6 +15,7 @@ data class SeasonResponse(
     @SerialName("players_in_semifinals") val playersInSemifinals: Int = 4,
     @SerialName("organizer_id") val organizerId: String?,
     @SerialName("organizer_name") val organizerName: String?,
+    @SerialName("allow_player_scores") val allowPlayerScores: Boolean = true,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String
 )
@@ -38,5 +39,6 @@ data class UpdateSeasonRequest(
     @SerialName("start_date") val startDate: String? = null,
     @SerialName("end_date") val endDate: String? = null,
     @SerialName("is_active") val isActive: Boolean? = null,
-    @SerialName("registrations_open") val registrationsOpen: Boolean? = null
+    @SerialName("registrations_open") val registrationsOpen: Boolean? = null,
+    @SerialName("allow_player_scores") val allowPlayerScores: Boolean? = null
 )

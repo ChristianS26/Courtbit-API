@@ -4,17 +4,24 @@ import com.incodap.security.requireOrganizer
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
+import io.ktor.server.auth.jwt.JWTPrincipal
+import io.ktor.server.auth.principal
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
+import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import models.league.PlayerScoreRequest
 import models.league.UpdateMatchScoreRequest
 import repositories.league.DoublesMatchRepository
+import services.league.PlayerScoreResult
+import services.league.PlayerScoreService
 
 fun Route.doublesMatchRoutes(
-    doublesMatchRepository: DoublesMatchRepository
+    doublesMatchRepository: DoublesMatchRepository,
+    playerScoreService: PlayerScoreService
 ) {
     route("/doubles-matches") {
         // Get match by ID
@@ -66,6 +73,55 @@ fun Route.doublesMatchRoutes(
                         HttpStatusCode.InternalServerError,
                         mapOf("error" to "Failed to update score")
                     )
+                }
+            }
+
+            // Player score submission - requires player to be in the group
+            post("{id}/player-score") {
+                val principal = call.principal<JWTPrincipal>()
+                if (principal == null) {
+                    call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "Authentication required"))
+                    return@post
+                }
+
+                val matchId = call.parameters["id"] ?: return@post call.respond(
+                    HttpStatusCode.BadRequest, mapOf("error" to "Missing match ID")
+                )
+
+                val request = try {
+                    call.receive<PlayerScoreRequest>()
+                } catch (e: Exception) {
+                    return@post call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "Invalid request: ${e.localizedMessage}")
+                    )
+                }
+
+                // Validate scores
+                if (!((request.scoreTeam1 == 6 && request.scoreTeam2 in 0..5) ||
+                      (request.scoreTeam2 == 6 && request.scoreTeam1 in 0..5))) {
+                    return@post call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "Invalid score: one team must have 6, the other 0-5")
+                    )
+                }
+
+                // Submit score with validation
+                val result = playerScoreService.submitScore(
+                    matchId = matchId,
+                    playerId = request.playerId,
+                    playerName = request.playerName,
+                    scoreTeam1 = request.scoreTeam1,
+                    scoreTeam2 = request.scoreTeam2
+                )
+
+                when (result) {
+                    is PlayerScoreResult.Success -> {
+                        call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                    }
+                    is PlayerScoreResult.Error -> {
+                        call.respond(HttpStatusCode.Forbidden, mapOf("error" to result.message))
+                    }
                 }
             }
         }

@@ -48,6 +48,7 @@ import services.league.AutoSchedulingService
 import services.league.LeagueCategoryService
 import services.league.MasterScheduleService
 import services.league.MatchDayService
+import services.league.PlayerScoreService
 import services.league.PlayoffService
 import services.league.RankingService
 import services.league.SeasonService
@@ -116,7 +117,7 @@ fun Application.configureRouting() {
             matchDayOptimizedRoutes(get<MatchDayService>())  // Optimized endpoint
             dayGroupRoutes(get<DayGroupRepository>())
             rotationRoutes(get<RotationRepository>())
-            doublesMatchRoutes(get<DoublesMatchRepository>())
+            doublesMatchRoutes(get<DoublesMatchRepository>(), get<PlayerScoreService>())
             leagueRankingRoutes(get<RankingService>())
             playoffRoutes(get<PlayoffService>(), get())
             playerAvailabilityRoutes(get<PlayerAvailabilityRepository>())

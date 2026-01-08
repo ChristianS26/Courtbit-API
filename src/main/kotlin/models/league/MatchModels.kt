@@ -63,3 +63,11 @@ data class UpdateMatchScoreRequest(
     @SerialName("score_team1") val scoreTeam1: Int,
     @SerialName("score_team2") val scoreTeam2: Int
 )
+
+@Serializable
+data class PlayerScoreRequest(
+    @SerialName("player_id") val playerId: String,
+    @SerialName("player_name") val playerName: String,
+    @SerialName("score_team1") val scoreTeam1: Int,
+    @SerialName("score_team2") val scoreTeam2: Int
+)
