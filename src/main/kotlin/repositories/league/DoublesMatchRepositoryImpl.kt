@@ -116,7 +116,9 @@ private data class DoublesMatchRaw(
     @SerialName("score_team1") val scoreTeam1: Int? = null,
     @SerialName("score_team2") val scoreTeam2: Int? = null,
     @SerialName("created_at") val createdAt: String,
-    @SerialName("updated_at") val updatedAt: String
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("submitted_by_name") val submittedByName: String? = null,
+    @SerialName("submitted_at") val submittedAt: String? = null
 ) {
     fun toDoublesMatchResponse(
         team1Player1: LeaguePlayerResponse?,
@@ -137,6 +139,8 @@ private data class DoublesMatchRaw(
         team1Player1 = team1Player1,
         team1Player2 = team1Player2,
         team2Player1 = team2Player1,
-        team2Player2 = team2Player2
+        team2Player2 = team2Player2,
+        submittedByName = submittedByName,
+        submittedAt = submittedAt
     )
 }

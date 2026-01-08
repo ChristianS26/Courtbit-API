@@ -55,7 +55,9 @@ data class DoublesMatchResponse(
     @SerialName("team1_player1") val team1Player1: LeaguePlayerResponse? = null,
     @SerialName("team1_player2") val team1Player2: LeaguePlayerResponse? = null,
     @SerialName("team2_player1") val team2Player1: LeaguePlayerResponse? = null,
-    @SerialName("team2_player2") val team2Player2: LeaguePlayerResponse? = null
+    @SerialName("team2_player2") val team2Player2: LeaguePlayerResponse? = null,
+    @SerialName("submitted_by_name") val submittedByName: String? = null,
+    @SerialName("submitted_at") val submittedAt: String? = null
 )
 
 @Serializable
