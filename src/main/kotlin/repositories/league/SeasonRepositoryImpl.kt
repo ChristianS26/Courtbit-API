@@ -168,6 +168,7 @@ data class SeasonRawResponse(
     val organizers: OrganizerInfo?,
     @SerialName("allow_player_scores") val allowPlayerScores: Boolean = true,
     @SerialName("ranking_criteria") val rankingCriteria: List<String> = listOf("adjusted_points", "point_diff", "games_won"),
+    @SerialName("max_points_per_game") val maxPointsPerGame: Int = 6,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String
 ) {
@@ -184,6 +185,7 @@ data class SeasonRawResponse(
         organizerName = organizers?.name,
         allowPlayerScores = allowPlayerScores,
         rankingCriteria = rankingCriteria,
+        maxPointsPerGame = maxPointsPerGame,
         createdAt = createdAt,
         updatedAt = updatedAt
     )
