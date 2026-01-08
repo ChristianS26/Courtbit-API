@@ -40,6 +40,7 @@ import routing.league.rotationRoutes
 import routing.league.scheduleRoutes
 import routing.league.seasonRoutes
 import routing.notifications.pushRoutes
+import routing.organization.organizationTeamRoutes
 import routing.organizer.organizerRoutes
 import routing.payments.PaymentRoutes
 import routing.ranking.RankingRoutes
@@ -54,6 +55,7 @@ import services.league.PlayerScoreService
 import services.league.PlayoffService
 import services.league.RankingService
 import services.league.SeasonService
+import services.organization.OrganizationTeamService
 import services.organizer.OrganizerService
 import services.registrationcode.RegistrationCodeService
 import services.remoteconfig.RemoteConfigService
@@ -107,6 +109,9 @@ fun Application.configureRouting() {
 
             // Organizers
             organizerRoutes(get<OrganizerService>())
+
+            // Organization Team (members & invitations)
+            organizationTeamRoutes(get<OrganizationTeamService>())
 
             // Push notifications
             pushRoutes(get())
