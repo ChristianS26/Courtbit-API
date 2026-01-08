@@ -16,6 +16,7 @@ data class SeasonResponse(
     @SerialName("organizer_id") val organizerId: String?,
     @SerialName("organizer_name") val organizerName: String?,
     @SerialName("allow_player_scores") val allowPlayerScores: Boolean = true,
+    @SerialName("ranking_criteria") val rankingCriteria: List<String> = listOf("adjusted_points", "point_diff", "games_won"),
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String
 )
@@ -30,7 +31,8 @@ data class CreateSeasonRequest(
     @SerialName("matchday_dates") val matchdayDates: List<String>? = null,
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int = 2,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int = 4,
-    @SerialName("organizer_id") val organizerId: String? = null
+    @SerialName("organizer_id") val organizerId: String? = null,
+    @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null
 )
 
 @Serializable
@@ -40,5 +42,6 @@ data class UpdateSeasonRequest(
     @SerialName("end_date") val endDate: String? = null,
     @SerialName("is_active") val isActive: Boolean? = null,
     @SerialName("registrations_open") val registrationsOpen: Boolean? = null,
-    @SerialName("allow_player_scores") val allowPlayerScores: Boolean? = null
+    @SerialName("allow_player_scores") val allowPlayerScores: Boolean? = null,
+    @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null
 )
