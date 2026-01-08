@@ -201,7 +201,7 @@ class PlayerScoreService(
             oldScoreTeam2?.let { put("old_score_team2", it) }
             put("new_score_team1", newScoreTeam1)
             put("new_score_team2", newScoreTeam2)
-            put("changed_by_player_id", changedByUserId) // Using same column, stores user ID
+            put("changed_by_user_id", changedByUserId)
             put("changed_by_name", changedByName)
         }
 
