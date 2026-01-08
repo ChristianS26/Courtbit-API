@@ -123,3 +123,43 @@ data class GroupAssignment(
     @SerialName("availability_score") val availabilityScore: Double,
     @SerialName("unavailable_players") val unavailablePlayers: List<String>
 )
+
+// Bulk Schedule Response - optimized single-request endpoint
+@Serializable
+data class BulkScheduleResponse(
+    @SerialName("season_id") val seasonId: String,
+    @SerialName("matchday_number") val matchdayNumber: Int,
+    val categories: List<LeagueCategoryResponse>,
+    val defaults: SeasonScheduleDefaultsResponse?,
+    @SerialName("matchday_overrides") val matchdayOverrides: List<MatchdayScheduleOverrideResponse>,
+    @SerialName("category_schedules") val categorySchedules: List<CategoryScheduleData>
+)
+
+@Serializable
+data class CategoryScheduleData(
+    @SerialName("category_id") val categoryId: String,
+    @SerialName("match_day") val matchDay: MatchDayWithGroupsEnriched?
+)
+
+@Serializable
+data class MatchDayWithGroupsEnriched(
+    val id: String,
+    @SerialName("category_id") val categoryId: String,
+    @SerialName("match_number") val matchNumber: Int,
+    @SerialName("day_groups") val dayGroups: List<DayGroupEnriched>,
+    @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+data class DayGroupEnriched(
+    val id: String,
+    @SerialName("match_day_id") val matchDayId: String,
+    @SerialName("group_number") val groupNumber: Int,
+    @SerialName("player_ids") val playerIds: List<String>,
+    @SerialName("match_date") val matchDate: String?,
+    @SerialName("time_slot") val timeSlot: String?,
+    @SerialName("court_index") val courtIndex: Int?,
+    @SerialName("created_at") val createdAt: String,
+    val players: List<LeaguePlayerResponse>,
+    @SerialName("completed_rotations") val completedRotations: Int
+)
