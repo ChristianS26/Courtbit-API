@@ -29,7 +29,7 @@ interface OrganizationTeamRepository {
     /**
      * Join an organization using an invitation code (calls database function)
      */
-    suspend fun joinWithCode(code: String, userUid: String): JoinOrganizationResult
+    suspend fun joinWithCode(code: String, userUid: String, userEmail: String, userName: String): JoinOrganizationResult
 
     /**
      * Get all organizations a user belongs to (calls database function)

@@ -100,7 +100,9 @@ class OrganizationTeamService(
      */
     suspend fun joinWithCode(
         code: String,
-        userUid: String
+        userUid: String,
+        userEmail: String,
+        userName: String
     ): Result<JoinOrganizationResult> {
         // Validate code format (6 alphanumeric characters)
         val cleanCode = code.trim().uppercase()
@@ -110,7 +112,7 @@ class OrganizationTeamService(
             )
         }
 
-        val result = repository.joinWithCode(cleanCode, userUid)
+        val result = repository.joinWithCode(cleanCode, userUid, userEmail, userName)
 
         return if (result.success) {
             Result.success(result)

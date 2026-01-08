@@ -71,7 +71,9 @@ data class CreateInvitationRequest(
 
 @Serializable
 data class JoinOrganizationRequest(
-    val code: String
+    val code: String,
+    val email: String,
+    val name: String
 )
 
 @Serializable

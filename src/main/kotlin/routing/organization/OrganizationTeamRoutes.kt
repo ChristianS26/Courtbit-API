@@ -36,12 +36,12 @@ fun Route.organizationTeamRoutes(
                 } catch (e: Exception) {
                     call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to "Invalid request body")
+                        mapOf("error" to "Invalid request body. Required: code, email, name")
                     )
                     return@post
                 }
 
-                val result = service.joinWithCode(request.code, uid)
+                val result = service.joinWithCode(request.code, uid, request.email, request.name)
 
                 result.fold(
                     onSuccess = { joinResult ->

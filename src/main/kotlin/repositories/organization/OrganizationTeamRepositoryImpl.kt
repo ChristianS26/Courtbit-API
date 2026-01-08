@@ -149,21 +149,25 @@ class OrganizationTeamRepositoryImpl(
         }
     }
 
-    override suspend fun joinWithCode(code: String, userUid: String): JoinOrganizationResult {
+    override suspend fun joinWithCode(code: String, userUid: String, userEmail: String, userName: String): JoinOrganizationResult {
         return try {
             @Serializable
             data class JoinPayload(
-                @SerialName("invitation_code")
-                val invitationCode: String,
-                @SerialName("joining_user_uid")
-                val joiningUserUid: String
+                @SerialName("p_code")
+                val code: String,
+                @SerialName("p_user_uid")
+                val userUid: String,
+                @SerialName("p_user_email")
+                val userEmail: String,
+                @SerialName("p_user_name")
+                val userName: String
             )
 
             val response = client.post("$apiUrl/rpc/join_organization_with_code") {
                 header("apikey", apiKey)
                 header("Authorization", "Bearer $apiKey")
                 contentType(ContentType.Application.Json)
-                setBody(JoinPayload(code.uppercase(), userUid))
+                setBody(JoinPayload(code.uppercase(), userUid, userEmail, userName))
             }
 
             if (response.status.isSuccess()) {
