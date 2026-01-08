@@ -112,39 +112,78 @@ class PlayerScoreService(
     }
 
     private suspend fun getMatchInfo(matchId: String): MatchInfo? {
-        // Join through rotation -> day_group -> match_day -> category to get season_id
-        val selectQuery = """
-            id,
-            score_team1,
-            score_team2,
-            rotation:rotations!inner(
-                day_group:day_groups!inner(
-                    match_day:match_days!inner(
-                        category:league_categories!inner(
-                            season_id
-                        )
-                    )
-                )
-            )
-        """.trimIndent().replace("\n", "")
-
-        val response = client.get("$apiUrl/doubles_matches") {
+        // Step 1: Get match with rotation_id
+        val matchResponse = client.get("$apiUrl/doubles_matches") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", selectQuery)
+            parameter("select", "id,score_team1,score_team2,rotation_id")
             parameter("id", "eq.$matchId")
             parameter("limit", "1")
         }
 
-        return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            logger.debug("🔍 [PlayerScoreService] Match info response: $bodyText")
-            val matches = json.decodeFromString<List<MatchWithSeasonRaw>>(bodyText)
-            matches.firstOrNull()?.toMatchInfo()
-        } else {
-            logger.error("❌ [PlayerScoreService] Failed to get match info: ${response.status}")
-            null
+        if (!matchResponse.status.isSuccess()) {
+            logger.error("❌ [PlayerScoreService] Failed to get match: ${matchResponse.status}")
+            return null
         }
+
+        val matchBody = matchResponse.bodyAsText()
+        logger.debug("🔍 [PlayerScoreService] Match response: $matchBody")
+        val matchData = json.decodeFromString<List<MatchBasicInfo>>(matchBody).firstOrNull() ?: return null
+
+        // Step 2: Get rotation with day_group_id
+        val rotationResponse = client.get("$apiUrl/rotations") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "day_group_id")
+            parameter("id", "eq.${matchData.rotationId}")
+            parameter("limit", "1")
+        }
+
+        if (!rotationResponse.status.isSuccess()) return null
+        val rotationData = json.decodeFromString<List<RotationBasicInfo>>(rotationResponse.bodyAsText()).firstOrNull() ?: return null
+
+        // Step 3: Get day_group with match_day_id
+        val dayGroupResponse = client.get("$apiUrl/day_groups") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "match_day_id")
+            parameter("id", "eq.${rotationData.dayGroupId}")
+            parameter("limit", "1")
+        }
+
+        if (!dayGroupResponse.status.isSuccess()) return null
+        val dayGroupData = json.decodeFromString<List<DayGroupBasicInfo>>(dayGroupResponse.bodyAsText()).firstOrNull() ?: return null
+
+        // Step 4: Get match_day with category_id
+        val matchDayResponse = client.get("$apiUrl/match_days") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "category_id")
+            parameter("id", "eq.${dayGroupData.matchDayId}")
+            parameter("limit", "1")
+        }
+
+        if (!matchDayResponse.status.isSuccess()) return null
+        val matchDayData = json.decodeFromString<List<MatchDayBasicInfo>>(matchDayResponse.bodyAsText()).firstOrNull() ?: return null
+
+        // Step 5: Get category with season_id
+        val categoryResponse = client.get("$apiUrl/league_categories") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "season_id")
+            parameter("id", "eq.${matchDayData.categoryId}")
+            parameter("limit", "1")
+        }
+
+        if (!categoryResponse.status.isSuccess()) return null
+        val categoryData = json.decodeFromString<List<CategoryBasicInfo>>(categoryResponse.bodyAsText()).firstOrNull() ?: return null
+
+        return MatchInfo(
+            matchId = matchData.id,
+            scoreTeam1 = matchData.scoreTeam1,
+            scoreTeam2 = matchData.scoreTeam2,
+            seasonId = categoryData.seasonId
+        )
     }
 
     private suspend fun createScoreHistory(
@@ -209,44 +248,37 @@ sealed class UserScoreResult {
     data class Error(val message: String) : UserScoreResult()
 }
 
-// DTOs for parsing nested response
+// DTOs for parsing responses
 @Serializable
 private data class SeasonScoreSettings(
     @SerialName("allow_player_scores") val allowPlayerScores: Boolean?
 )
 
 @Serializable
-private data class MatchWithSeasonRaw(
+private data class MatchBasicInfo(
     val id: String,
     @SerialName("score_team1") val scoreTeam1: Int?,
     @SerialName("score_team2") val scoreTeam2: Int?,
-    val rotation: RotationWithSeasonRaw
-) {
-    fun toMatchInfo() = MatchInfo(
-        matchId = id,
-        scoreTeam1 = scoreTeam1,
-        scoreTeam2 = scoreTeam2,
-        seasonId = rotation.dayGroup.matchDay.category.seasonId
-    )
-}
-
-@Serializable
-private data class RotationWithSeasonRaw(
-    @SerialName("day_group") val dayGroup: DayGroupWithSeasonRaw
+    @SerialName("rotation_id") val rotationId: String
 )
 
 @Serializable
-private data class DayGroupWithSeasonRaw(
-    @SerialName("match_day") val matchDay: MatchDayWithCategoryRaw
+private data class RotationBasicInfo(
+    @SerialName("day_group_id") val dayGroupId: String
 )
 
 @Serializable
-private data class MatchDayWithCategoryRaw(
-    val category: CategoryWithSeasonRaw
+private data class DayGroupBasicInfo(
+    @SerialName("match_day_id") val matchDayId: String
 )
 
 @Serializable
-private data class CategoryWithSeasonRaw(
+private data class MatchDayBasicInfo(
+    @SerialName("category_id") val categoryId: String
+)
+
+@Serializable
+private data class CategoryBasicInfo(
     @SerialName("season_id") val seasonId: String
 )
 
