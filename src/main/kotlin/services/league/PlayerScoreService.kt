@@ -225,7 +225,7 @@ class PlayerScoreService(
         val payload = buildJsonObject {
             put("score_team1", scoreTeam1)
             put("score_team2", scoreTeam2)
-            put("submitted_by_player_id", submittedByUserId) // Using same column, stores user ID
+            put("submitted_by_user_id", submittedByUserId)
             put("submitted_at", java.time.Instant.now().toString())
         }
 
