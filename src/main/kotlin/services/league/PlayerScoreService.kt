@@ -20,7 +20,8 @@ import kotlinx.serialization.json.put
 import org.slf4j.LoggerFactory
 
 /**
- * Service for handling player score submissions with validation and audit trail
+ * Service for handling user score submissions with audit trail.
+ * Trusts authenticated users and logs their identity for accountability.
  */
 class PlayerScoreService(
     private val client: HttpClient,
@@ -32,73 +33,65 @@ class PlayerScoreService(
     private val logger = LoggerFactory.getLogger(PlayerScoreService::class.java)
 
     /**
-     * Submit a score as a player
-     * Validates:
-     * - Player is part of the day_group for this match
-     * - Season allows player score entry
-     * Creates audit trail in score_history
+     * Submit a score as an authenticated user.
+     * Validates that the season allows user score entry.
+     * Creates audit trail in score_history with user info.
      */
     suspend fun submitScore(
         matchId: String,
-        playerId: String,
-        playerName: String,
+        userId: String,
+        userName: String,
         scoreTeam1: Int,
         scoreTeam2: Int
-    ): PlayerScoreResult {
-        logger.info("🎯 [PlayerScoreService] Player $playerName submitting score for match $matchId")
+    ): UserScoreResult {
+        logger.info("🎯 [PlayerScoreService] User $userName ($userId) submitting score for match $matchId")
 
-        // 1. Get match with rotation and day_group info
-        val matchInfo = getMatchWithGroupInfo(matchId)
-            ?: return PlayerScoreResult.Error("Match not found")
+        // 1. Get match info to check season settings
+        val matchInfo = getMatchInfo(matchId)
+            ?: return UserScoreResult.Error("Match not found")
 
-        // 2. Check if player is in the day_group
-        if (!matchInfo.playerIds.contains(playerId)) {
-            logger.warn("⚠️ [PlayerScoreService] Player $playerId not in group ${matchInfo.dayGroupId}")
-            return PlayerScoreResult.Error("You are not part of this group")
+        // 2. Check if season allows user scores
+        val seasonAllowsScores = checkSeasonAllowsPlayerScores(matchInfo.seasonId)
+        if (!seasonAllowsScores) {
+            logger.warn("⚠️ [PlayerScoreService] Season ${matchInfo.seasonId} does not allow user scores")
+            return UserScoreResult.Error("Score entry is disabled for this league")
         }
 
-        // 3. Check if season allows player scores
-        val seasonAllowsPlayerScores = checkSeasonAllowsPlayerScores(matchInfo.seasonId)
-        if (!seasonAllowsPlayerScores) {
-            logger.warn("⚠️ [PlayerScoreService] Season ${matchInfo.seasonId} does not allow player scores")
-            return PlayerScoreResult.Error("Player score entry is disabled for this league")
-        }
-
-        // 4. Log to score_history (before updating)
+        // 3. Log to score_history (audit trail)
         val historyCreated = createScoreHistory(
             matchId = matchId,
             oldScoreTeam1 = matchInfo.scoreTeam1,
             oldScoreTeam2 = matchInfo.scoreTeam2,
             newScoreTeam1 = scoreTeam1,
             newScoreTeam2 = scoreTeam2,
-            changedByPlayerId = playerId,
-            changedByName = playerName
+            changedByUserId = userId,
+            changedByName = userName
         )
 
         if (!historyCreated) {
             logger.error("❌ [PlayerScoreService] Failed to create score history")
-            return PlayerScoreResult.Error("Failed to record score change")
+            return UserScoreResult.Error("Failed to record score change")
         }
 
-        // 5. Update the score with audit fields
+        // 4. Update the score with audit fields
         val updated = updateScoreWithAudit(
             matchId = matchId,
             scoreTeam1 = scoreTeam1,
             scoreTeam2 = scoreTeam2,
-            submittedByPlayerId = playerId
+            submittedByUserId = userId
         )
 
         return if (updated) {
-            logger.info("✅ [PlayerScoreService] Score updated successfully")
-            PlayerScoreResult.Success
+            logger.info("✅ [PlayerScoreService] Score updated successfully by $userName")
+            UserScoreResult.Success
         } else {
             logger.error("❌ [PlayerScoreService] Failed to update score")
-            PlayerScoreResult.Error("Failed to update score")
+            UserScoreResult.Error("Failed to update score")
         }
     }
 
     /**
-     * Check if a season allows player score entry
+     * Check if a season allows user score entry
      */
     suspend fun checkSeasonAllowsPlayerScores(seasonId: String): Boolean {
         val response = client.get("$apiUrl/seasons") {
@@ -118,16 +111,14 @@ class PlayerScoreService(
         }
     }
 
-    private suspend fun getMatchWithGroupInfo(matchId: String): MatchGroupInfo? {
-        // Join through rotation -> day_group -> match_day -> category -> season
+    private suspend fun getMatchInfo(matchId: String): MatchInfo? {
+        // Join through rotation -> day_group -> match_day -> category to get season_id
         val selectQuery = """
             id,
             score_team1,
             score_team2,
             rotation:rotations!inner(
                 day_group:day_groups!inner(
-                    id,
-                    player_ids,
                     match_day:match_days!inner(
                         category:league_categories!inner(
                             season_id
@@ -148,8 +139,8 @@ class PlayerScoreService(
         return if (response.status.isSuccess()) {
             val bodyText = response.bodyAsText()
             logger.debug("🔍 [PlayerScoreService] Match info response: $bodyText")
-            val matches = json.decodeFromString<List<MatchWithGroupRaw>>(bodyText)
-            matches.firstOrNull()?.toMatchGroupInfo()
+            val matches = json.decodeFromString<List<MatchWithSeasonRaw>>(bodyText)
+            matches.firstOrNull()?.toMatchInfo()
         } else {
             logger.error("❌ [PlayerScoreService] Failed to get match info: ${response.status}")
             null
@@ -162,7 +153,7 @@ class PlayerScoreService(
         oldScoreTeam2: Int?,
         newScoreTeam1: Int,
         newScoreTeam2: Int,
-        changedByPlayerId: String,
+        changedByUserId: String,
         changedByName: String
     ): Boolean {
         val payload = buildJsonObject {
@@ -171,7 +162,7 @@ class PlayerScoreService(
             oldScoreTeam2?.let { put("old_score_team2", it) }
             put("new_score_team1", newScoreTeam1)
             put("new_score_team2", newScoreTeam2)
-            put("changed_by_player_id", changedByPlayerId)
+            put("changed_by_player_id", changedByUserId) // Using same column, stores user ID
             put("changed_by_name", changedByName)
         }
 
@@ -190,12 +181,12 @@ class PlayerScoreService(
         matchId: String,
         scoreTeam1: Int,
         scoreTeam2: Int,
-        submittedByPlayerId: String
+        submittedByUserId: String
     ): Boolean {
         val payload = buildJsonObject {
             put("score_team1", scoreTeam1)
             put("score_team2", scoreTeam2)
-            put("submitted_by_player_id", submittedByPlayerId)
+            put("submitted_by_player_id", submittedByUserId) // Using same column, stores user ID
             put("submitted_at", java.time.Instant.now().toString())
         }
 
@@ -213,9 +204,9 @@ class PlayerScoreService(
 }
 
 // Result type for score submission
-sealed class PlayerScoreResult {
-    object Success : PlayerScoreResult()
-    data class Error(val message: String) : PlayerScoreResult()
+sealed class UserScoreResult {
+    object Success : UserScoreResult()
+    data class Error(val message: String) : UserScoreResult()
 }
 
 // DTOs for parsing nested response
@@ -225,31 +216,27 @@ private data class SeasonScoreSettings(
 )
 
 @Serializable
-private data class MatchWithGroupRaw(
+private data class MatchWithSeasonRaw(
     val id: String,
     @SerialName("score_team1") val scoreTeam1: Int?,
     @SerialName("score_team2") val scoreTeam2: Int?,
-    val rotation: RotationWithGroupRaw
+    val rotation: RotationWithSeasonRaw
 ) {
-    fun toMatchGroupInfo() = MatchGroupInfo(
+    fun toMatchInfo() = MatchInfo(
         matchId = id,
         scoreTeam1 = scoreTeam1,
         scoreTeam2 = scoreTeam2,
-        dayGroupId = rotation.dayGroup.id,
-        playerIds = rotation.dayGroup.playerIds,
         seasonId = rotation.dayGroup.matchDay.category.seasonId
     )
 }
 
 @Serializable
-private data class RotationWithGroupRaw(
-    @SerialName("day_group") val dayGroup: DayGroupWithMatchDayRaw
+private data class RotationWithSeasonRaw(
+    @SerialName("day_group") val dayGroup: DayGroupWithSeasonRaw
 )
 
 @Serializable
-private data class DayGroupWithMatchDayRaw(
-    val id: String,
-    @SerialName("player_ids") val playerIds: List<String>,
+private data class DayGroupWithSeasonRaw(
     @SerialName("match_day") val matchDay: MatchDayWithCategoryRaw
 )
 
@@ -263,11 +250,9 @@ private data class CategoryWithSeasonRaw(
     @SerialName("season_id") val seasonId: String
 )
 
-data class MatchGroupInfo(
+data class MatchInfo(
     val matchId: String,
     val scoreTeam1: Int?,
     val scoreTeam2: Int?,
-    val dayGroupId: String,
-    val playerIds: List<String>,
     val seasonId: String
 )

@@ -13,10 +13,10 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
-import models.league.PlayerScoreRequest
+import models.league.UserScoreRequest
 import models.league.UpdateMatchScoreRequest
 import repositories.league.DoublesMatchRepository
-import services.league.PlayerScoreResult
+import services.league.UserScoreResult
 import services.league.PlayerScoreService
 
 fun Route.doublesMatchRoutes(
@@ -76,8 +76,8 @@ fun Route.doublesMatchRoutes(
                 }
             }
 
-            // Player score submission - requires player to be in the group
-            post("{id}/player-score") {
+            // User score submission - logs user identity for accountability
+            post("{id}/user-score") {
                 val principal = call.principal<JWTPrincipal>()
                 if (principal == null) {
                     call.respond(HttpStatusCode.Unauthorized, mapOf("error" to "Authentication required"))
@@ -89,7 +89,7 @@ fun Route.doublesMatchRoutes(
                 )
 
                 val request = try {
-                    call.receive<PlayerScoreRequest>()
+                    call.receive<UserScoreRequest>()
                 } catch (e: Exception) {
                     return@post call.respond(
                         HttpStatusCode.BadRequest,
@@ -106,20 +106,20 @@ fun Route.doublesMatchRoutes(
                     )
                 }
 
-                // Submit score with validation
+                // Submit score with audit trail
                 val result = playerScoreService.submitScore(
                     matchId = matchId,
-                    playerId = request.playerId,
-                    playerName = request.playerName,
+                    userId = request.userId,
+                    userName = request.userName,
                     scoreTeam1 = request.scoreTeam1,
                     scoreTeam2 = request.scoreTeam2
                 )
 
                 when (result) {
-                    is PlayerScoreResult.Success -> {
+                    is UserScoreResult.Success -> {
                         call.respond(HttpStatusCode.OK, mapOf("success" to true))
                     }
-                    is PlayerScoreResult.Error -> {
+                    is UserScoreResult.Error -> {
                         call.respond(HttpStatusCode.Forbidden, mapOf("error" to result.message))
                     }
                 }
