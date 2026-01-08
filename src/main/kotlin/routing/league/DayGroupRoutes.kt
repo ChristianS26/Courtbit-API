@@ -9,6 +9,8 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import repositories.league.DayGroupRepository
 import repositories.league.RegenerateResult
 
@@ -19,7 +21,7 @@ fun Route.dayGroupRoutes(
         // Get all day groups for a match day
         get("/by-match-day") {
             val matchDayId = call.request.queryParameters["matchDayId"]
-                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "matchDayId required"))
+                ?: return@get call.respond(HttpStatusCode.BadRequest, buildJsonObject { put("error", "matchDayId required") })
 
             val dayGroups = dayGroupRepository.getByMatchDayId(matchDayId)
             call.respond(HttpStatusCode.OK, dayGroups)
@@ -28,25 +30,25 @@ fun Route.dayGroupRoutes(
         // Get day group by ID
         get("{id}") {
             val id = call.parameters["id"] ?: return@get call.respond(
-                HttpStatusCode.BadRequest, mapOf("error" to "Missing day group ID")
+                HttpStatusCode.BadRequest, buildJsonObject { put("error", "Missing day group ID") }
             )
 
             val dayGroup = dayGroupRepository.getById(id)
             if (dayGroup != null) {
                 call.respond(HttpStatusCode.OK, dayGroup)
             } else {
-                call.respond(HttpStatusCode.NotFound, mapOf("error" to "Day group not found"))
+                call.respond(HttpStatusCode.NotFound, buildJsonObject { put("error", "Day group not found") })
             }
         }
 
         // Get rotation count for a day group
         get("{id}/rotation-count") {
             val id = call.parameters["id"] ?: return@get call.respond(
-                HttpStatusCode.BadRequest, mapOf("error" to "Missing day group ID")
+                HttpStatusCode.BadRequest, buildJsonObject { put("error", "Missing day group ID") }
             )
 
             val count = dayGroupRepository.getRotationCount(id)
-            call.respond(HttpStatusCode.OK, mapOf("count" to count))
+            call.respond(HttpStatusCode.OK, buildJsonObject { put("count", count) })
         }
 
         authenticate("auth-jwt") {
@@ -55,21 +57,27 @@ fun Route.dayGroupRoutes(
                 call.requireOrganizer() ?: return@post
 
                 val id = call.parameters["id"] ?: return@post call.respond(
-                    HttpStatusCode.BadRequest, mapOf("error" to "Missing day group ID")
+                    HttpStatusCode.BadRequest, buildJsonObject { put("error", "Missing day group ID") }
                 )
 
                 when (val result = dayGroupRepository.regenerateRotations(id)) {
                     is RegenerateResult.Success -> {
-                        call.respond(HttpStatusCode.OK, mapOf("success" to true, "message" to "Rotations created successfully"))
+                        call.respond(HttpStatusCode.OK, buildJsonObject {
+                            put("success", true)
+                            put("message", "Rotations created successfully")
+                        })
                     }
                     is RegenerateResult.AlreadyExists -> {
-                        call.respond(HttpStatusCode.OK, mapOf("success" to true, "message" to "Rotations already exist"))
+                        call.respond(HttpStatusCode.OK, buildJsonObject {
+                            put("success", true)
+                            put("message", "Rotations already exist")
+                        })
                     }
                     is RegenerateResult.NotEnoughPlayers -> {
-                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Day group needs exactly 4 players"))
+                        call.respond(HttpStatusCode.BadRequest, buildJsonObject { put("error", "Day group needs exactly 4 players") })
                     }
                     is RegenerateResult.Error -> {
-                        call.respond(HttpStatusCode.InternalServerError, mapOf("error" to result.message))
+                        call.respond(HttpStatusCode.InternalServerError, buildJsonObject { put("error", result.message) })
                     }
                 }
             }
