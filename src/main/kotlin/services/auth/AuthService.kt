@@ -55,6 +55,7 @@ class AuthService(
             role = "user",
             photoUrl = "",
             countryIso = request.countryIso,
+            shirtSize = request.shirtSize,
         )
 
         val inserted = try {
