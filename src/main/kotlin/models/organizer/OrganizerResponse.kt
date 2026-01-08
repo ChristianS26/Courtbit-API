@@ -15,6 +15,7 @@ data class OrganizerResponse(
     @SerialName("contact_phone") val contactPhone: String = "",
     val instagram: String? = null,
     val facebook: String? = null,
+    @SerialName("is_verified") val isVerified: Boolean = false,
     @SerialName("created_by_uid") val createdByUid: String,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String
