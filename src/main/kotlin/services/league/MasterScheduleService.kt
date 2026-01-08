@@ -244,9 +244,8 @@ private data class DayGroupEnrichedRaw(
 
         // Count completed rotations (where both scores are non-null)
         val completedRotations = rotations.count { rotation ->
-            rotation.doublesMatches.any { match ->
-                match.scoreTeam1 != null && match.scoreTeam2 != null
-            }
+            val match = rotation.doublesMatch
+            match != null && match.scoreTeam1 != null && match.scoreTeam2 != null
         }
 
         return DayGroupEnriched(
@@ -267,7 +266,7 @@ private data class DayGroupEnrichedRaw(
 @Serializable
 private data class RotationWithMatchRaw(
     val id: String,
-    @SerialName("doubles_matches") val doublesMatches: List<DoublesMatchScoreRaw> = emptyList()
+    @SerialName("doubles_matches") val doublesMatch: DoublesMatchScoreRaw? = null
 )
 
 @Serializable
