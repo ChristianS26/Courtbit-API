@@ -38,3 +38,9 @@ data class CreateAdjustmentRequest(
     val value: Int,
     val reason: String
 )
+
+@Serializable
+data class UpdateAdjustmentRequest(
+    val value: Int? = null,
+    val reason: String? = null
+)
