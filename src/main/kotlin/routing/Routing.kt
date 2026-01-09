@@ -24,6 +24,7 @@ import repositories.league.RotationRepository
 import repositories.league.SeasonRepository
 import repositories.league.SeasonScheduleDefaultsRepository
 import repositories.organizer.OrganizerRepository
+import repositories.organization.OrganizationTeamRepository
 import routing.auth.profileRoute
 import routing.draw.drawRoutes
 import routing.league.adjustmentRoutes
@@ -117,7 +118,7 @@ fun Application.configureRouting() {
             pushRoutes(get())
 
             // League system
-            seasonRoutes(get<SeasonService>(), get<SeasonRepository>(), get<OrganizerRepository>())
+            seasonRoutes(get<SeasonService>(), get<SeasonRepository>(), get<OrganizerRepository>(), get<OrganizationTeamRepository>())
             leagueCategoryRoutes(get<LeagueCategoryService>(), get<LeagueCategoryRepository>())
             leaguePlayerRoutes(get<LeaguePlayerRepository>())
             matchDayRoutes(get<MatchDayRepository>())

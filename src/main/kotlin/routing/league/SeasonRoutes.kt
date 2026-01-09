@@ -16,12 +16,14 @@ import models.league.CreateSeasonRequest
 import models.league.UpdateSeasonRequest
 import repositories.league.SeasonRepository
 import repositories.organizer.OrganizerRepository
+import repositories.organization.OrganizationTeamRepository
 import services.league.SeasonService
 
 fun Route.seasonRoutes(
     seasonService: SeasonService,
     seasonRepository: SeasonRepository,
-    organizerRepository: OrganizerRepository
+    organizerRepository: OrganizerRepository,
+    organizationTeamRepository: OrganizationTeamRepository
 ) {
     route("/seasons") {
         // Public: Get all seasons
@@ -45,14 +47,25 @@ fun Route.seasonRoutes(
         }
 
         authenticate("auth-jwt") {
-            // Get my seasons (organizer-scoped)
+            // Get my seasons (organizer-scoped - works for owners and members)
             get("/me") {
                 val uid = call.requireOrganizer() ?: return@get
 
+                // First try to get organizer if user is owner
                 val organizer = organizerRepository.getByUserUid(uid)
-                val organizerId = organizer?.id ?: return@get call.respond(
-                    HttpStatusCode.Forbidden, mapOf("error" to "No organizer profile")
-                )
+                val organizerId = if (organizer != null) {
+                    organizer.id
+                } else {
+                    // If not owner, get from membership
+                    val organizations = organizationTeamRepository.getUserOrganizations(uid)
+                    organizations.firstOrNull()?.organizerId
+                }
+
+                if (organizerId == null) {
+                    return@get call.respond(
+                        HttpStatusCode.Forbidden, mapOf("error" to "No organizer profile")
+                    )
+                }
 
                 val seasons = seasonRepository.getByOrganizerId(organizerId)
                 call.respond(HttpStatusCode.OK, seasons)
