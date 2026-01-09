@@ -8,6 +8,7 @@ import io.ktor.server.response.respond
 import org.koin.ktor.ext.inject
 import org.koin.java.KoinJavaComponent.inject as koinInject
 import repositories.organizer.OrganizerRepository
+import repositories.organization.OrganizationTeamRepository
 
 const val ROLE_ADMIN = "admin"
 
@@ -60,12 +61,20 @@ suspend fun ApplicationCall.requireUserUid(): String? {
 suspend fun ApplicationCall.requireOrganizer(): String? {
     val uid = this.requireUserUid() ?: return null
 
+    // First check if user is an organizer owner
     val organizerRepository = application.inject<OrganizerRepository>().value
     val organizer = organizerRepository.getByUserUid(uid)
-    if (organizer == null) {
-        this.respond(HttpStatusCode.Forbidden, mapOf("error" to "Solo usuarios con organización pueden realizar esta acción"))
-        return null
+    if (organizer != null) {
+        return uid
     }
 
-    return uid
+    // If not an owner, check if user is a member of any organization
+    val teamRepository = application.inject<OrganizationTeamRepository>().value
+    val organizations = teamRepository.getUserOrganizations(uid)
+    if (organizations.isNotEmpty()) {
+        return uid
+    }
+
+    this.respond(HttpStatusCode.Forbidden, mapOf("error" to "Solo usuarios con organización pueden realizar esta acción"))
+    return null
 }
