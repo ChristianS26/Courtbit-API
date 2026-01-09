@@ -1,6 +1,7 @@
 package routing.league
 
-import com.incodap.security.requireOrganizer
+import com.incodap.security.getOrganizerId
+import com.incodap.security.hasAccessToOrganizer
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
@@ -15,15 +16,11 @@ import io.ktor.server.routing.route
 import models.league.CreateSeasonRequest
 import models.league.UpdateSeasonRequest
 import repositories.league.SeasonRepository
-import repositories.organizer.OrganizerRepository
-import repositories.organization.OrganizationTeamRepository
 import services.league.SeasonService
 
 fun Route.seasonRoutes(
     seasonService: SeasonService,
-    seasonRepository: SeasonRepository,
-    organizerRepository: OrganizerRepository,
-    organizationTeamRepository: OrganizationTeamRepository
+    seasonRepository: SeasonRepository
 ) {
     route("/seasons") {
         // Public: Get all seasons
@@ -49,23 +46,7 @@ fun Route.seasonRoutes(
         authenticate("auth-jwt") {
             // Get my seasons (organizer-scoped - works for owners and members)
             get("/me") {
-                val uid = call.requireOrganizer() ?: return@get
-
-                // First try to get organizer if user is owner
-                val organizer = organizerRepository.getByUserUid(uid)
-                val organizerId = if (organizer != null) {
-                    organizer.id
-                } else {
-                    // If not owner, get from membership
-                    val organizations = organizationTeamRepository.getUserOrganizations(uid)
-                    organizations.firstOrNull()?.organizerId
-                }
-
-                if (organizerId == null) {
-                    return@get call.respond(
-                        HttpStatusCode.Forbidden, mapOf("error" to "No organizer profile")
-                    )
-                }
+                val organizerId = call.getOrganizerId() ?: return@get
 
                 val seasons = seasonRepository.getByOrganizerId(organizerId)
                 call.respond(HttpStatusCode.OK, seasons)
@@ -73,12 +54,7 @@ fun Route.seasonRoutes(
 
             // Create season
             post {
-                val uid = call.requireOrganizer() ?: return@post
-
-                val organizer = organizerRepository.getByUserUid(uid)
-                val organizerId = organizer?.id ?: return@post call.respond(
-                    HttpStatusCode.Forbidden, mapOf("error" to "No organizer profile")
-                )
+                val organizerId = call.getOrganizerId() ?: return@post
 
                 val request = try {
                     call.receive<CreateSeasonRequest>()
@@ -103,18 +79,16 @@ fun Route.seasonRoutes(
 
             // Update season
             patch("{id}") {
-                val uid = call.requireOrganizer() ?: return@patch
                 val id = call.parameters["id"] ?: return@patch call.respond(
                     HttpStatusCode.BadRequest, mapOf("error" to "Missing season ID")
                 )
 
-                // Verify ownership
+                // Get the season and verify access
                 val season = seasonRepository.getById(id) ?: return@patch call.respond(
                     HttpStatusCode.NotFound, mapOf("error" to "Season not found")
                 )
 
-                val organizer = organizerRepository.getByUserUid(uid)
-                if (season.organizerId != organizer?.id) {
+                if (!call.hasAccessToOrganizer(season.organizerId)) {
                     return@patch call.respond(
                         HttpStatusCode.Forbidden,
                         mapOf("error" to "Not authorized")
@@ -136,14 +110,9 @@ fun Route.seasonRoutes(
 
             // Delete season
             delete("{id}") {
-                val uid = call.requireOrganizer() ?: return@delete
+                val organizerId = call.getOrganizerId() ?: return@delete
                 val id = call.parameters["id"] ?: return@delete call.respond(
                     HttpStatusCode.BadRequest, mapOf("error" to "Missing season ID")
-                )
-
-                val organizer = organizerRepository.getByUserUid(uid)
-                val organizerId = organizer?.id ?: return@delete call.respond(
-                    HttpStatusCode.Forbidden, mapOf("error" to "No organizer profile")
                 )
 
                 val result = seasonService.deleteSeason(id, organizerId)

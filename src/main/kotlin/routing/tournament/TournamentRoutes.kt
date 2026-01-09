@@ -1,7 +1,7 @@
 package com.incodap.routing.tournament
 
+import com.incodap.security.getOrganizerId
 import com.incodap.security.requireOrganizer
-import com.incodap.security.requireUserUid
 import io.ktor.server.auth.authenticate
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -18,14 +18,12 @@ import models.tournament.CreateTournamentWithCategoriesRequest
 import models.tournament.DeleteTournamentResult
 import models.tournament.UpdateFlyerRequest
 import models.tournament.UpdateTournamentWithCategoriesRequest
-import repositories.organizer.OrganizerRepository
 import services.category.CategoryService
 import services.tournament.TournamentService
 
 fun Route.tournamentRoutes(
     tournamentService: TournamentService,
-    categoryService: CategoryService,
-    organizerRepository: OrganizerRepository,
+    categoryService: CategoryService
 ) {
     route("/tournaments") {
 
@@ -59,8 +57,8 @@ fun Route.tournamentRoutes(
 
         authenticate("auth-jwt") {
             post {
-                // Verificar que el usuario tenga una organización
-                val uid = call.requireOrganizer() ?: return@post
+                // Get organizer ID (works for owners and members)
+                val organizerId = call.getOrganizerId() ?: return@post
 
                 val request = try {
                     call.receive<CreateTournamentWithCategoriesRequest>()
@@ -69,11 +67,7 @@ fun Route.tournamentRoutes(
                     return@post
                 }
 
-                // Obtener el organizer_id del usuario (si es organizador)
-                val organizer = organizerRepository.getByUserUid(uid)
-                val organizerId = organizer?.id
-
-                // Inyectar el organizer_id en el request
+                // Inject the organizer_id into the request
                 val tournamentWithOrganizer = request.tournament.copy(organizerId = organizerId)
 
                 val created = tournamentService.createTournament(

@@ -1,8 +1,8 @@
 package com.incodap.routing.registrationcode
 
 import com.incodap.security.email
+import com.incodap.security.getOrganizerId
 import com.incodap.security.requireOrganizer
-import com.incodap.security.requireUserUid
 import com.incodap.services.excel.ExcelService
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
@@ -14,15 +14,13 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.registrationcode.RegistrationCodeReportRequest
-import repositories.organizer.OrganizerRepository
 import services.email.EmailService
 import services.registrationcode.RegistrationCodeService
 
 fun Route.registrationCodeRoutes(
     registrationCodeService: RegistrationCodeService,
     emailService: EmailService,
-    excelService: ExcelService,
-    organizerRepository: OrganizerRepository
+    excelService: ExcelService
 ) {
     route("/registration-codes") {
         authenticate("auth-jwt") {
@@ -32,12 +30,8 @@ fun Route.registrationCodeRoutes(
                         throw IllegalArgumentException("Email no encontrado en el token")
                     }
 
-                    // Obtener UID del usuario autenticado
-                    val uid = call.requireUserUid()
-
-                    // Obtener el organizer_id del usuario (si es organizador)
-                    val organizer = uid?.let { organizerRepository.getByUserUid(it) }
-                    val organizerId = organizer?.id
+                    // Get organizer ID (works for owners and members)
+                    val organizerId = call.getOrganizerId()
 
                     val code = registrationCodeService.createRegistrationCode(email, organizerId)
                     call.respond(HttpStatusCode.Created, mapOf("code" to code))

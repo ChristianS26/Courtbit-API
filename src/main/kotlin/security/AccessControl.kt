@@ -78,3 +78,48 @@ suspend fun ApplicationCall.requireOrganizer(): String? {
     this.respond(HttpStatusCode.Forbidden, mapOf("error" to "Solo usuarios con organización pueden realizar esta acción"))
     return null
 }
+
+/**
+ * Gets the organizer ID for the current user.
+ * Works for both organizer owners and organization members.
+ * Returns null and responds with error if user has no organization access.
+ */
+suspend fun ApplicationCall.getOrganizerId(): String? {
+    val uid = this.requireUserUid() ?: return null
+
+    // First check if user is an organizer owner
+    val organizerRepository = application.inject<OrganizerRepository>().value
+    val organizer = organizerRepository.getByUserUid(uid)
+    if (organizer != null) {
+        return organizer.id
+    }
+
+    // If not an owner, get from membership
+    val teamRepository = application.inject<OrganizationTeamRepository>().value
+    val organizations = teamRepository.getUserOrganizations(uid)
+    val organizerId = organizations.firstOrNull()?.organizerId
+
+    if (organizerId == null) {
+        this.respond(HttpStatusCode.Forbidden, mapOf("error" to "No organizer profile"))
+    }
+
+    return organizerId
+}
+
+/**
+ * Checks if user has access to a specific organizer (as owner or member).
+ */
+suspend fun ApplicationCall.hasAccessToOrganizer(organizerId: String): Boolean {
+    val uid = this.requireUserUid() ?: return false
+
+    // Check if user owns this organizer
+    val organizerRepository = application.inject<OrganizerRepository>().value
+    val organizer = organizerRepository.getByUserUid(uid)
+    if (organizer?.id == organizerId) {
+        return true
+    }
+
+    // Check if user is a member of this organization
+    val teamRepository = application.inject<OrganizationTeamRepository>().value
+    return teamRepository.userHasAccess(uid, organizerId)
+}
