@@ -161,5 +161,6 @@ data class DayGroupEnriched(
     @SerialName("court_index") val courtIndex: Int?,
     @SerialName("created_at") val createdAt: String,
     val players: List<LeaguePlayerResponse>,
-    @SerialName("completed_rotations") val completedRotations: Int
+    @SerialName("completed_rotations") val completedRotations: Int,
+    @SerialName("total_rotations") val totalRotations: Int
 )

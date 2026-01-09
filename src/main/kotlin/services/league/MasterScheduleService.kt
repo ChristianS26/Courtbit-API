@@ -248,6 +248,9 @@ private data class DayGroupEnrichedRaw(
             match != null && match.scoreTeam1 != null && match.scoreTeam2 != null
         }
 
+        // Total rotations is the count of all rotations for this day group
+        val totalRotations = rotations.size
+
         return DayGroupEnriched(
             id = id,
             matchDayId = matchDayId,
@@ -258,7 +261,8 @@ private data class DayGroupEnrichedRaw(
             courtIndex = courtIndex,
             createdAt = createdAt,
             players = players,
-            completedRotations = completedRotations
+            completedRotations = completedRotations,
+            totalRotations = totalRotations
         )
     }
 }
