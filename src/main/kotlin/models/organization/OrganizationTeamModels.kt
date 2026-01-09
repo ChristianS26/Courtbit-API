@@ -47,6 +47,7 @@ data class JoinOrganizationResult(
     val organizerId: String? = null,
     @SerialName("organizer_name")
     val organizerName: String? = null,
+    @SerialName("error_message")
     val message: String? = null
 )
 

@@ -173,7 +173,12 @@ class OrganizationTeamRepositoryImpl(
             if (response.status.isSuccess()) {
                 val body = response.bodyAsText()
                 println("📦 [OrganizationTeamRepo] joinWithCode response: $body")
-                json.decodeFromString<JoinOrganizationResult>(body)
+                // Database function returns a table (array), get first element
+                val results = json.decodeFromString<List<JoinOrganizationResult>>(body)
+                results.firstOrNull() ?: JoinOrganizationResult(
+                    success = false,
+                    message = "No response from database"
+                )
             } else {
                 println("❌ [OrganizationTeamRepo] joinWithCode failed: ${response.bodyAsText()}")
                 JoinOrganizationResult(
