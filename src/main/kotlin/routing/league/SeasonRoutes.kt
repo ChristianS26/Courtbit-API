@@ -88,7 +88,11 @@ fun Route.seasonRoutes(
                     HttpStatusCode.NotFound, mapOf("error" to "Season not found")
                 )
 
-                if (!call.hasAccessToOrganizer(season.organizerId)) {
+                val seasonOrganizerId = season.organizerId ?: return@patch call.respond(
+                    HttpStatusCode.Forbidden, mapOf("error" to "Season has no organizer")
+                )
+
+                if (!call.hasAccessToOrganizer(seasonOrganizerId)) {
                     return@patch call.respond(
                         HttpStatusCode.Forbidden,
                         mapOf("error" to "Not authorized")
