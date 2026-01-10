@@ -15,7 +15,7 @@ val LeagueModule = module {
     // Repositories
     single<SeasonRepository> { SeasonRepositoryImpl(get(), get(), get()) }
     single<LeagueCategoryRepository> { LeagueCategoryRepositoryImpl(get(), get(), get()) }
-    single<LeaguePlayerRepository> { LeaguePlayerRepositoryImpl(get(), get(), get()) }
+    single<LeaguePlayerRepository> { LeaguePlayerRepositoryImpl(get(), get(), get(), get()) }
     single<MatchDayRepository> { MatchDayRepositoryImpl(get(), get(), get()) }
     single<DayGroupRepository> { DayGroupRepositoryImpl(get(), get(), get()) }
     single<DoublesMatchRepository> { DoublesMatchRepositoryImpl(get(), get(), get()) }

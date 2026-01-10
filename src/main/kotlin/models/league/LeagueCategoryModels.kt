@@ -15,6 +15,8 @@ data class LeagueCategoryResponse(
     @SerialName("player_count") val playerCount: Int? = null,
     @SerialName("waiting_list_count") val waitingListCount: Int? = null,
     @SerialName("has_calendar") val hasCalendar: Boolean? = null,
+    // Maximum players for this category (16 or 20)
+    @SerialName("max_players") val maxPlayers: Int = 16,
     // Playoff configuration (category override, null = use season default)
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null
@@ -36,9 +38,17 @@ data class UpdateLeagueCategoryRequest(
     val name: String? = null,
     val level: String? = null,
     @SerialName("color_hex") val colorHex: String? = null,
+    // Maximum players (16 or 20)
+    @SerialName("max_players") val maxPlayers: Int? = null,
     // Playoff configuration (optional, null = keep current value, explicit value = override)
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null
+)
+
+// Request to update max players and recalculate waiting list
+@Serializable
+data class UpdateCategoryMaxPlayersRequest(
+    @SerialName("max_players") val maxPlayers: Int
 )
 
 // Request to update only playoff configuration

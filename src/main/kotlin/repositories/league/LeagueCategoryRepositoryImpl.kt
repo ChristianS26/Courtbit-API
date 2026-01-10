@@ -120,6 +120,76 @@ class LeagueCategoryRepositoryImpl(
         }
     }
 
+    // MARK: - Max Players Configuration
+
+    override suspend fun updateMaxPlayers(categoryId: String, maxPlayers: Int): Boolean {
+        // Validate maxPlayers is 16 or 20
+        if (maxPlayers != 16 && maxPlayers != 20) {
+            println("❌ Invalid maxPlayers value: $maxPlayers. Must be 16 or 20.")
+            return false
+        }
+
+        // Update the category's max_players
+        val updateResponse = client.patch("$apiUrl/league_categories?id=eq.$categoryId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(kotlinx.serialization.json.buildJsonObject {
+                put("max_players", kotlinx.serialization.json.JsonPrimitive(maxPlayers))
+            })
+        }
+
+        if (!updateResponse.status.isSuccess()) {
+            println("❌ Error updating max_players: ${updateResponse.status}")
+            return false
+        }
+
+        // Recalculate waiting list status for all players in this category
+        // Get all players ordered by creation date (first registered = higher priority)
+        val playersResponse = client.get("$apiUrl/league_players") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("category_id", "eq.$categoryId")
+            parameter("order", "created_at.asc")
+        }
+
+        if (!playersResponse.status.isSuccess()) {
+            println("❌ Error fetching players for waiting list recalculation: ${playersResponse.status}")
+            return false
+        }
+
+        val players = json.decodeFromString<List<models.league.LeaguePlayerResponse>>(playersResponse.bodyAsText())
+
+        // Update each player's waiting list status based on their position
+        var activeCount = 0
+        for (player in players) {
+            val shouldBeWaitingList = activeCount >= maxPlayers
+
+            // Only update if status needs to change
+            if (player.isWaitingList != shouldBeWaitingList) {
+                val playerUpdateResponse = client.patch("$apiUrl/league_players?id=eq.${player.id}") {
+                    header("apikey", apiKey)
+                    header("Authorization", "Bearer $apiKey")
+                    contentType(ContentType.Application.Json)
+                    setBody(kotlinx.serialization.json.buildJsonObject {
+                        put("is_waiting_list", kotlinx.serialization.json.JsonPrimitive(shouldBeWaitingList))
+                    })
+                }
+
+                if (!playerUpdateResponse.status.isSuccess()) {
+                    println("⚠️ Failed to update waiting list status for player ${player.id}")
+                }
+            }
+
+            if (!shouldBeWaitingList) {
+                activeCount++
+            }
+        }
+
+        println("✅ Updated max_players to $maxPlayers and recalculated waiting list for $categoryId")
+        return true
+    }
+
     // MARK: - Playoff Configuration
 
     override suspend fun getEffectivePlayoffConfig(categoryId: String): CategoryPlayoffConfigResponse? {

@@ -13,7 +13,8 @@ import models.league.UpdateLeaguePlayerRequest
 class LeaguePlayerRepositoryImpl(
     private val client: HttpClient,
     private val json: Json,
-    private val config: SupabaseConfig
+    private val config: SupabaseConfig,
+    private val categoryRepository: LeagueCategoryRepository? = null
 ) : LeaguePlayerRepository {
 
     private val apiUrl = config.apiUrl
@@ -70,10 +71,13 @@ class LeaguePlayerRepositoryImpl(
     }
 
     override suspend fun create(request: CreateLeaguePlayerRequest): LeaguePlayerResponse? {
+        // Get category's max_players (default to 16 if not available)
+        val maxPlayers = categoryRepository?.getById(request.categoryId)?.maxPlayers ?: 16
+
         // Check how many active players (not on waiting list) already exist
         val existingPlayers = getByCategoryId(request.categoryId)
         val activePlayers = existingPlayers.filter { !it.isWaitingList }
-        val isWaitingList = activePlayers.size >= 16
+        val isWaitingList = activePlayers.size >= maxPlayers
 
         // Create a modified request with is_waiting_list set
         val requestWithWaitingList = if (isWaitingList) {

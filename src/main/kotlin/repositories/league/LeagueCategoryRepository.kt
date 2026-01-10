@@ -14,6 +14,9 @@ interface LeagueCategoryRepository {
     suspend fun update(id: String, request: UpdateLeagueCategoryRequest): Boolean
     suspend fun delete(id: String): Boolean
 
+    // Max players configuration
+    suspend fun updateMaxPlayers(categoryId: String, maxPlayers: Int): Boolean
+
     // Playoff configuration
     suspend fun getEffectivePlayoffConfig(categoryId: String): CategoryPlayoffConfigResponse?
     suspend fun updatePlayoffConfig(categoryId: String, request: UpdateCategoryPlayoffConfigRequest): Boolean

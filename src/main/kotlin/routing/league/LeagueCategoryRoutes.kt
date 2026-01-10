@@ -13,6 +13,7 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.league.CreateLeagueCategoryRequest
+import models.league.UpdateCategoryMaxPlayersRequest
 import models.league.UpdateCategoryPlayoffConfigRequest
 import models.league.UpdateLeagueCategoryRequest
 import repositories.league.LeagueCategoryRepository
@@ -97,105 +98,146 @@ fun Route.leagueCategoryRoutes(
                 }
             }
 
-            // Update category
-            patch("{id}") {
-                call.requireOrganizer() ?: return@patch
+            // Routes for specific category by ID
+            route("{id}") {
+                // Update category
+                patch {
+                    call.requireOrganizer() ?: return@patch
 
-                val id = call.parameters["id"] ?: return@patch call.respond(
-                    HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
-                )
-
-                val request = call.receive<UpdateLeagueCategoryRequest>()
-                val updated = leagueCategoryRepository.update(id, request)
-
-                if (updated) {
-                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
-                } else {
-                    call.respond(
-                        HttpStatusCode.InternalServerError,
-                        mapOf("error" to "Failed to update")
+                    val id = call.parameters["id"] ?: return@patch call.respond(
+                        HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
                     )
+
+                    val request = call.receive<UpdateLeagueCategoryRequest>()
+                    val updated = leagueCategoryRepository.update(id, request)
+
+                    if (updated) {
+                        call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                    } else {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to "Failed to update")
+                        )
+                    }
                 }
-            }
 
-            // Delete category
-            delete("{id}") {
-                call.requireOrganizer() ?: return@delete
+                // Delete category
+                delete {
+                    call.requireOrganizer() ?: return@delete
 
-                val id = call.parameters["id"] ?: return@delete call.respond(
-                    HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
-                )
-
-                val deleted = leagueCategoryRepository.delete(id)
-                if (deleted) {
-                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
-                } else {
-                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Failed to delete"))
-                }
-            }
-
-            // Get effective playoff config for category
-            get("{id}/playoff-config") {
-                val categoryId = call.parameters["id"] ?: return@get call.respond(
-                    HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
-                )
-
-                val config = leagueCategoryRepository.getEffectivePlayoffConfig(categoryId)
-                if (config != null) {
-                    call.respond(HttpStatusCode.OK, config)
-                } else {
-                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Category not found"))
-                }
-            }
-
-            // Update playoff config for category
-            patch("{id}/playoff-config") {
-                call.requireOrganizer() ?: return@patch
-
-                val categoryId = call.parameters["id"] ?: return@patch call.respond(
-                    HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
-                )
-
-                val request = try {
-                    call.receive<UpdateCategoryPlayoffConfigRequest>()
-                } catch (e: Exception) {
-                    return@patch call.respond(
-                        HttpStatusCode.BadRequest,
-                        mapOf("error" to "Invalid request: ${e.localizedMessage}")
+                    val id = call.parameters["id"] ?: return@delete call.respond(
+                        HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
                     )
+
+                    val deleted = leagueCategoryRepository.delete(id)
+                    if (deleted) {
+                        call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Failed to delete"))
+                    }
                 }
 
-                val updated = leagueCategoryRepository.updatePlayoffConfig(categoryId, request)
-                if (updated) {
-                    // Return the new effective config
+                // Update max players for category (and recalculate waiting list)
+                patch("max-players") {
+                    call.requireOrganizer() ?: return@patch
+
+                    val categoryId = call.parameters["id"] ?: return@patch call.respond(
+                        HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
+                    )
+
+                    val request = try {
+                        call.receive<UpdateCategoryMaxPlayersRequest>()
+                    } catch (e: Exception) {
+                        return@patch call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to "Invalid request: ${e.localizedMessage}")
+                        )
+                    }
+
+                    // Validate max_players value
+                    if (request.maxPlayers != 16 && request.maxPlayers != 20) {
+                        return@patch call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to "max_players must be 16 or 20")
+                        )
+                    }
+
+                    val updated = leagueCategoryRepository.updateMaxPlayers(categoryId, request.maxPlayers)
+                    if (updated) {
+                        // Return the updated category
+                        val category = leagueCategoryRepository.getById(categoryId)
+                        call.respond(HttpStatusCode.OK, category ?: mapOf("success" to true))
+                    } else {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to "Failed to update max players")
+                        )
+                    }
+                }
+
+                // Get effective playoff config for category
+                get("playoff-config") {
+                    val categoryId = call.parameters["id"] ?: return@get call.respond(
+                        HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
+                    )
+
                     val config = leagueCategoryRepository.getEffectivePlayoffConfig(categoryId)
-                    call.respond(HttpStatusCode.OK, config ?: mapOf("success" to true))
-                } else {
-                    call.respond(
-                        HttpStatusCode.InternalServerError,
-                        mapOf("error" to "Failed to update playoff config")
-                    )
+                    if (config != null) {
+                        call.respond(HttpStatusCode.OK, config)
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Category not found"))
+                    }
                 }
-            }
 
-            // Clear playoff config (revert to season defaults)
-            delete("{id}/playoff-config") {
-                call.requireOrganizer() ?: return@delete
+                // Update playoff config for category
+                patch("playoff-config") {
+                    call.requireOrganizer() ?: return@patch
 
-                val categoryId = call.parameters["id"] ?: return@delete call.respond(
-                    HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
-                )
-
-                val cleared = leagueCategoryRepository.clearPlayoffConfig(categoryId)
-                if (cleared) {
-                    // Return the new effective config (should be from season now)
-                    val config = leagueCategoryRepository.getEffectivePlayoffConfig(categoryId)
-                    call.respond(HttpStatusCode.OK, config ?: mapOf("success" to true))
-                } else {
-                    call.respond(
-                        HttpStatusCode.InternalServerError,
-                        mapOf("error" to "Failed to clear playoff config")
+                    val categoryId = call.parameters["id"] ?: return@patch call.respond(
+                        HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
                     )
+
+                    val request = try {
+                        call.receive<UpdateCategoryPlayoffConfigRequest>()
+                    } catch (e: Exception) {
+                        return@patch call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to "Invalid request: ${e.localizedMessage}")
+                        )
+                    }
+
+                    val updated = leagueCategoryRepository.updatePlayoffConfig(categoryId, request)
+                    if (updated) {
+                        // Return the new effective config
+                        val config = leagueCategoryRepository.getEffectivePlayoffConfig(categoryId)
+                        call.respond(HttpStatusCode.OK, config ?: mapOf("success" to true))
+                    } else {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to "Failed to update playoff config")
+                        )
+                    }
+                }
+
+                // Clear playoff config (revert to season defaults)
+                delete("playoff-config") {
+                    call.requireOrganizer() ?: return@delete
+
+                    val categoryId = call.parameters["id"] ?: return@delete call.respond(
+                        HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
+                    )
+
+                    val cleared = leagueCategoryRepository.clearPlayoffConfig(categoryId)
+                    if (cleared) {
+                        // Return the new effective config (should be from season now)
+                        val config = leagueCategoryRepository.getEffectivePlayoffConfig(categoryId)
+                        call.respond(HttpStatusCode.OK, config ?: mapOf("success" to true))
+                    } else {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to "Failed to clear playoff config")
+                        )
+                    }
                 }
             }
         }
