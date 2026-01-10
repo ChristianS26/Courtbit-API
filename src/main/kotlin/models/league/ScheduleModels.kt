@@ -64,6 +64,14 @@ data class UpdateDayGroupAssignmentRequest(
     @SerialName("court_index") val courtIndex: Int?
 )
 
+@Serializable
+data class UpdateAssignmentResponse(
+    val success: Boolean,
+    val action: String, // "assigned", "swapped", "displaced"
+    @SerialName("displaced_group_id") val displacedGroupId: String? = null,
+    @SerialName("displaced_group_number") val displacedGroupNumber: Int? = null
+)
+
 // Master Schedule Response (combines defaults + overrides + day groups)
 @Serializable
 data class MasterScheduleResponse(

@@ -10,6 +10,7 @@ import io.ktor.server.routing.*
 import models.league.AutoScheduleRequest
 import models.league.CreateMatchdayScheduleOverrideRequest
 import models.league.CreateSeasonScheduleDefaultsRequest
+import models.league.UpdateAssignmentResponse
 import models.league.UpdateDayGroupAssignmentRequest
 import models.league.UpdateMatchdayScheduleOverrideRequest
 import models.league.UpdateSeasonScheduleDefaultsRequest
@@ -368,12 +369,13 @@ fun Route.scheduleRoutes(
                             else -> "displaced"
                         }
 
-                        call.respond(HttpStatusCode.OK, mapOf(
-                            "success" to true,
-                            "action" to actionType,
-                            "displacedGroupId" to (if (isTargetOccupied) occupyingGroup?.id else null),
-                            "displacedGroupNumber" to (if (isTargetOccupied) occupyingGroup?.groupNumber else null)
-                        ))
+                        val response = UpdateAssignmentResponse(
+                            success = true,
+                            action = actionType,
+                            displacedGroupId = if (isTargetOccupied) occupyingGroup?.id else null,
+                            displacedGroupNumber = if (isTargetOccupied) occupyingGroup?.groupNumber else null
+                        )
+                        call.respond(HttpStatusCode.OK, response)
                     } else {
                         call.respond(
                             HttpStatusCode.InternalServerError,
