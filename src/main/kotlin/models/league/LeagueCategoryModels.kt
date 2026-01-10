@@ -19,7 +19,9 @@ data class LeagueCategoryResponse(
     @SerialName("max_players") val maxPlayers: Int = 16,
     // Playoff configuration (category override, null = use season default)
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
-    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null
+    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
+    // Recommended courts for auto-scheduling (null = no preference)
+    @SerialName("recommended_courts") val recommendedCourts: List<Int>? = null
 )
 
 @Serializable
@@ -65,4 +67,10 @@ data class CategoryPlayoffConfigResponse(
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int,
     @SerialName("config_source") val configSource: String // "category" or "season"
+)
+
+// Request to update recommended courts for auto-scheduling
+@Serializable
+data class UpdateCategoryRecommendedCourtsRequest(
+    @SerialName("recommended_courts") val recommendedCourts: List<Int>?
 )

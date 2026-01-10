@@ -242,6 +242,27 @@ class LeagueCategoryRepositoryImpl(
 
         return response.status.isSuccess()
     }
+
+    // MARK: - Recommended Courts Configuration
+
+    override suspend fun updateRecommendedCourts(categoryId: String, courts: List<Int>?): Boolean {
+        val response = client.patch("$apiUrl/league_categories?id=eq.$categoryId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(kotlinx.serialization.json.buildJsonObject {
+                if (courts != null) {
+                    put("recommended_courts", kotlinx.serialization.json.buildJsonArray {
+                        courts.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) }
+                    })
+                } else {
+                    put("recommended_courts", kotlinx.serialization.json.JsonNull)
+                }
+            })
+        }
+
+        return response.status.isSuccess()
+    }
 }
 
 // Internal DTO for the view response

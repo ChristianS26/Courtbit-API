@@ -137,10 +137,21 @@ class AutoSchedulingService(
 
         for (groupWithScores in sortedGroups) {
             val group = groupWithScores.group
+            val recommendedCourts = group.recommendedCourts
 
             // Find best available slot where ALL players are available (score = 1.0)
-            val perfectSlot = groupWithScores.slotScores.firstOrNull { slotScore ->
+            // Prioritize recommended courts if configured
+            val perfectSlots = groupWithScores.slotScores.filter { slotScore ->
                 !usedSlots.contains(slotScore.slot) && slotScore.score == 1.0
+            }
+
+            val perfectSlot = if (recommendedCourts != null && recommendedCourts.isNotEmpty()) {
+                // First try to find a perfect slot on a recommended court
+                perfectSlots.firstOrNull { it.slot.courtIndex in recommendedCourts }
+                    // Fall back to any perfect slot if no recommended court is available
+                    ?: perfectSlots.firstOrNull()
+            } else {
+                perfectSlots.firstOrNull()
             }
 
             if (perfectSlot != null) {
@@ -290,7 +301,8 @@ class AutoSchedulingService(
                                     groupNumber = dayGroup.groupNumber,
                                     categoryId = category.id,
                                     categoryName = category.name,
-                                    playerIds = dayGroup.playerIds
+                                    playerIds = dayGroup.playerIds,
+                                    recommendedCourts = category.recommendedCourts
                                 )
                             )
                         }
@@ -355,7 +367,8 @@ class AutoSchedulingService(
         val groupNumber: Int,
         val categoryId: String,
         val categoryName: String,
-        val playerIds: List<String>
+        val playerIds: List<String>,
+        val recommendedCourts: List<Int>? = null
     )
 
     private data class AvailabilityResult(

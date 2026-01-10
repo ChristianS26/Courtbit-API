@@ -21,4 +21,7 @@ interface LeagueCategoryRepository {
     suspend fun getEffectivePlayoffConfig(categoryId: String): CategoryPlayoffConfigResponse?
     suspend fun updatePlayoffConfig(categoryId: String, request: UpdateCategoryPlayoffConfigRequest): Boolean
     suspend fun clearPlayoffConfig(categoryId: String): Boolean
+
+    // Recommended courts configuration
+    suspend fun updateRecommendedCourts(categoryId: String, courts: List<Int>?): Boolean
 }

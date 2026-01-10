@@ -15,6 +15,7 @@ import io.ktor.server.routing.route
 import models.league.CreateLeagueCategoryRequest
 import models.league.UpdateCategoryMaxPlayersRequest
 import models.league.UpdateCategoryPlayoffConfigRequest
+import models.league.UpdateCategoryRecommendedCourtsRequest
 import models.league.UpdateLeagueCategoryRequest
 import repositories.league.LeagueCategoryRepository
 import services.league.LeagueCategoryService
@@ -236,6 +237,39 @@ fun Route.leagueCategoryRoutes(
                         call.respond(
                             HttpStatusCode.InternalServerError,
                             mapOf("error" to "Failed to clear playoff config")
+                        )
+                    }
+                }
+
+                // Update recommended courts for auto-scheduling
+                patch("recommended-courts") {
+                    call.requireOrganizer() ?: return@patch
+
+                    val categoryId = call.parameters["id"] ?: return@patch call.respond(
+                        HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
+                    )
+
+                    val request = try {
+                        call.receive<UpdateCategoryRecommendedCourtsRequest>()
+                    } catch (e: Exception) {
+                        return@patch call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to "Invalid request: ${e.localizedMessage}")
+                        )
+                    }
+
+                    val updated = leagueCategoryRepository.updateRecommendedCourts(
+                        categoryId,
+                        request.recommendedCourts
+                    )
+                    if (updated) {
+                        // Return the updated category
+                        val category = leagueCategoryRepository.getById(categoryId)
+                        call.respond(HttpStatusCode.OK, category ?: mapOf("success" to true))
+                    } else {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to "Failed to update recommended courts")
                         )
                     }
                 }
