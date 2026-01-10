@@ -13,6 +13,18 @@ import io.ktor.server.routing.route
 import kotlinx.serialization.json.Json
 import models.league.*
 import services.league.PlayoffService
+import org.slf4j.LoggerFactory
+
+private val logger = LoggerFactory.getLogger("PlayoffRoutes")
+
+/** Sanitize error messages to avoid exposing internal details to users */
+private fun sanitizeError(error: Throwable?, fallback: String): String {
+    val message = error?.message ?: return fallback
+    // Log the actual error for debugging
+    logger.error("Playoff error: $message", error)
+    // Return generic message to user
+    return fallback
+}
 
 fun Route.playoffRoutes(
     playoffService: PlayoffService,
@@ -33,7 +45,7 @@ fun Route.playoffRoutes(
             } else {
                 call.respond(
                     HttpStatusCode.InternalServerError,
-                    mapOf("error" to result.exceptionOrNull()?.message)
+                    mapOf("error" to sanitizeError(result.exceptionOrNull(), "Unable to load playoff bracket"))
                 )
             }
         }
@@ -60,7 +72,7 @@ fun Route.playoffRoutes(
             } else {
                 call.respond(
                     HttpStatusCode.InternalServerError,
-                    mapOf("error" to result.exceptionOrNull()?.message)
+                    mapOf("error" to sanitizeError(result.exceptionOrNull(), "Unable to load playoff status"))
                 )
             }
         }
@@ -92,10 +104,9 @@ fun Route.playoffRoutes(
 
                     call.respond(HttpStatusCode.OK, parsedResponse)
                 } else {
-                    val errorMessage = result.exceptionOrNull()?.message ?: "Failed to assign semifinals"
                     call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to errorMessage)
+                        mapOf("error" to sanitizeError(result.exceptionOrNull(), "Unable to assign semifinals"))
                     )
                 }
             }
@@ -126,10 +137,9 @@ fun Route.playoffRoutes(
 
                     call.respond(HttpStatusCode.OK, parsedResponse)
                 } else {
-                    val errorMessage = result.exceptionOrNull()?.message ?: "Failed to assign final"
                     call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to errorMessage)
+                        mapOf("error" to sanitizeError(result.exceptionOrNull(), "Unable to assign final"))
                     )
                 }
             }
@@ -149,7 +159,7 @@ fun Route.playoffRoutes(
                 } else {
                     call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to result.exceptionOrNull()?.message)
+                        mapOf("error" to sanitizeError(result.exceptionOrNull(), "Unable to resolve tie"))
                     )
                 }
             }
@@ -169,7 +179,7 @@ fun Route.playoffRoutes(
                 } else {
                     call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to result.exceptionOrNull()?.message)
+                        mapOf("error" to sanitizeError(result.exceptionOrNull(), "Unable to save standings"))
                     )
                 }
             }
@@ -199,7 +209,7 @@ fun Route.playoffRoutes(
             } else {
                 call.respond(
                     HttpStatusCode.InternalServerError,
-                    mapOf("error" to result.exceptionOrNull()?.message)
+                    mapOf("error" to sanitizeError(result.exceptionOrNull(), "Unable to load standings"))
                 )
             }
         }
@@ -226,7 +236,7 @@ fun Route.playoffRoutes(
             } else {
                 call.respond(
                     HttpStatusCode.InternalServerError,
-                    mapOf("error" to result.exceptionOrNull()?.message)
+                    mapOf("error" to sanitizeError(result.exceptionOrNull(), "Unable to detect ties"))
                 )
             }
         }
