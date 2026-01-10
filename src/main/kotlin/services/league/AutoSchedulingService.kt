@@ -120,10 +120,11 @@ class AutoSchedulingService(
             GroupWithScores(group, slotScores)
         }
 
-        // 6. Sort by MRV - groups with fewer high-scoring slots first
+        // 6. Sort by MRV - groups with fewer perfect slots (score = 1.0) first
+        // This gives priority to groups with less availability options
         val sortedGroups = groupSlotScores.sortedBy { groupScores ->
-            // Count slots with score >= 0.75 (at least 75% available)
-            groupScores.slotScores.count { it.score >= 0.75 }
+            // Count slots where ALL 4 players are available
+            groupScores.slotScores.count { it.score == 1.0 }
         }
 
         // 7. Assign groups using greedy algorithm with MRV ordering
