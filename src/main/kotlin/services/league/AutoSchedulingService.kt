@@ -22,8 +22,10 @@ import java.time.format.DateTimeFormatter
  * 1. Get all unassigned day groups for the matchday across all categories
  * 2. Get available slots (time slots × courts)
  * 3. For each group, calculate availability score for each slot
- * 4. Sort groups by MRV (Minimum Remaining Values) - groups with fewer good slots first
- * 5. Assign groups to their best available slot
+ * 4. Sort groups by:
+ *    a) Category level (1st category first, then 2nd, etc.) - higher priority categories get first pick
+ *    b) Within same category, MRV (groups with fewer perfect slots first)
+ * 5. Assign groups to their best available slot, prioritizing recommended courts
  * 6. Return assignments and any warnings
  */
 class AutoSchedulingService(
@@ -116,12 +118,17 @@ class AutoSchedulingService(
             GroupWithScores(group, slotScores)
         }
 
-        // 6. Sort by MRV - groups with fewer perfect slots (score = 1.0) first
-        // This gives priority to groups with less availability options
-        val sortedGroups = groupSlotScores.sortedBy { groupScores ->
-            // Count slots where ALL 4 players are available
-            groupScores.slotScores.count { it.score == 1.0 }
-        }
+        // 6. Sort groups by:
+        //    a) Category level (1st category first, then 2nd, etc.) - higher priority categories get first pick
+        //    b) Within same category, MRV (groups with fewer perfect slots first)
+        val sortedGroups = groupSlotScores.sortedWith(
+            compareBy(
+                // Primary: category level (lower = higher priority, e.g., 1ra before 7ma)
+                { it.group.categoryLevel },
+                // Secondary: MRV - fewer perfect slots = more constrained = higher priority
+                { it.slotScores.count { slot -> slot.score == 1.0 } }
+            )
+        )
 
         // 7. Assign groups using greedy algorithm with MRV ordering
         // IMPORTANT: Only assign if ALL 4 players are available (score = 1.0)
@@ -292,6 +299,9 @@ class AutoSchedulingService(
                 val bodyText = response.bodyAsText()
                 val matchDays = json.decodeFromString<List<AutoScheduleMatchDayRaw>>(bodyText)
 
+                // Parse category level (e.g., "1", "2", "3" -> 1, 2, 3)
+                val categoryLevel = category.level.toIntOrNull() ?: 99
+
                 for (matchDay in matchDays) {
                     for (dayGroup in matchDay.dayGroups) {
                         // Check if unassigned (no match_date, time_slot, or court_index)
@@ -302,6 +312,7 @@ class AutoSchedulingService(
                                     groupNumber = dayGroup.groupNumber,
                                     categoryId = category.id,
                                     categoryName = category.name,
+                                    categoryLevel = categoryLevel,
                                     playerIds = dayGroup.playerIds,
                                     recommendedCourts = category.recommendedCourts
                                 )
@@ -368,6 +379,7 @@ class AutoSchedulingService(
         val groupNumber: Int,
         val categoryId: String,
         val categoryName: String,
+        val categoryLevel: Int, // 1 = highest priority, 7 = lowest
         val playerIds: List<String>,
         val recommendedCourts: List<Int>? = null
     )
