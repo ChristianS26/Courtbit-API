@@ -5,9 +5,12 @@ import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import models.league.CategoryPlayoffConfigResponse
 import models.league.CreateLeagueCategoryRequest
 import models.league.LeagueCategoryResponse
+import models.league.UpdateCategoryPlayoffConfigRequest
 import models.league.UpdateLeagueCategoryRequest
 
 class LeagueCategoryRepositoryImpl(
@@ -116,4 +119,80 @@ class LeagueCategoryRepositoryImpl(
             false
         }
     }
+
+    // MARK: - Playoff Configuration
+
+    override suspend fun getEffectivePlayoffConfig(categoryId: String): CategoryPlayoffConfigResponse? {
+        // Use the view that calculates effective config
+        val response = client.get("$apiUrl/category_playoff_config") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("category_id", "eq.$categoryId")
+        }
+
+        return if (response.status.isSuccess()) {
+            val bodyText = response.bodyAsText()
+            val list = json.decodeFromString<List<CategoryPlayoffConfigViewRow>>(bodyText)
+            list.firstOrNull()?.let {
+                CategoryPlayoffConfigResponse(
+                    categoryId = it.categoryId,
+                    playersDirectToFinal = it.effectiveDirectToFinal,
+                    playersInSemifinals = it.effectiveInSemifinals,
+                    configSource = it.configSource
+                )
+            }
+        } else {
+            println("❌ Error getEffectivePlayoffConfig: ${response.status}")
+            null
+        }
+    }
+
+    override suspend fun updatePlayoffConfig(
+        categoryId: String,
+        request: UpdateCategoryPlayoffConfigRequest
+    ): Boolean {
+        val response = client.patch("$apiUrl/league_categories?id=eq.$categoryId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }
+
+        return response.status.isSuccess()
+    }
+
+    override suspend fun clearPlayoffConfig(categoryId: String): Boolean {
+        // Set both fields to null to revert to season defaults
+        val response = client.patch("$apiUrl/league_categories?id=eq.$categoryId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(ClearPlayoffConfigRequest())
+        }
+
+        return response.status.isSuccess()
+    }
 }
+
+// Internal DTO for the view response
+@Serializable
+private data class CategoryPlayoffConfigViewRow(
+    @kotlinx.serialization.SerialName("category_id") val categoryId: String,
+    @kotlinx.serialization.SerialName("category_name") val categoryName: String,
+    @kotlinx.serialization.SerialName("season_id") val seasonId: String,
+    @kotlinx.serialization.SerialName("season_name") val seasonName: String,
+    @kotlinx.serialization.SerialName("category_direct_to_final") val categoryDirectToFinal: Int?,
+    @kotlinx.serialization.SerialName("category_in_semifinals") val categoryInSemifinals: Int?,
+    @kotlinx.serialization.SerialName("season_direct_to_final") val seasonDirectToFinal: Int?,
+    @kotlinx.serialization.SerialName("season_in_semifinals") val seasonInSemifinals: Int?,
+    @kotlinx.serialization.SerialName("effective_direct_to_final") val effectiveDirectToFinal: Int,
+    @kotlinx.serialization.SerialName("effective_in_semifinals") val effectiveInSemifinals: Int,
+    @kotlinx.serialization.SerialName("config_source") val configSource: String
+)
+
+// Request to clear playoff config (set to null)
+@Serializable
+private data class ClearPlayoffConfigRequest(
+    @kotlinx.serialization.SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
+    @kotlinx.serialization.SerialName("players_in_semifinals") val playersInSemifinals: Int? = null
+)
