@@ -48,7 +48,7 @@ fun Route.scheduleRoutes(
         }
 
         // Get bulk schedule data for a season and matchday (optimized single request)
-        // Returns flat groups structure for mobile apps (Android/iOS)
+        // This replaces multiple API calls with a single efficient endpoint
         get("/bulk/{seasonId}/{matchdayNumber}") {
             val seasonId = call.parameters["seasonId"] ?: return@get call.respond(
                 HttpStatusCode.BadRequest, mapOf("error" to "Missing season ID")
@@ -57,7 +57,7 @@ fun Route.scheduleRoutes(
                 HttpStatusCode.BadRequest, mapOf("error" to "Invalid matchday number")
             )
 
-            val bulkSchedule = masterScheduleService.getBulkScheduleFlat(seasonId, matchdayNumber)
+            val bulkSchedule = masterScheduleService.getBulkSchedule(seasonId, matchdayNumber)
             call.respond(HttpStatusCode.OK, bulkSchedule)
         }
 
