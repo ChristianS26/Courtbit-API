@@ -100,15 +100,49 @@ class DayGroupRepositoryImpl(
     }
 
     override suspend fun updateAssignment(id: String, request: UpdateDayGroupAssignmentRequest): Boolean {
+        // Build JSON manually to include explicit nulls (needed for clearing assignments)
+        // The global Json config has explicitNulls=false which would skip null values
+        val jsonBody = buildJsonObject {
+            put("match_date", request.matchDate?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+            put("time_slot", request.timeSlot?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+            put("court_index", request.courtIndex?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+        }
+
         val response = client.patch("$apiUrl/day_groups") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("id", "eq.$id")
             contentType(ContentType.Application.Json)
-            setBody(json.encodeToString(UpdateDayGroupAssignmentRequest.serializer(), request))
+            setBody(jsonBody.toString())
         }
 
         return response.status.isSuccess()
+    }
+
+    override suspend fun findBySlot(matchDate: String, timeSlot: String, courtIndex: Int): DayGroupResponse? {
+        val response = client.get("$apiUrl/day_groups") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "*")
+            parameter("match_date", "eq.$matchDate")
+            parameter("time_slot", "eq.$timeSlot")
+            parameter("court_index", "eq.$courtIndex")
+            parameter("limit", "1")
+        }
+
+        return if (response.status.isSuccess()) {
+            val bodyText = response.bodyAsText()
+            val rawList = json.decodeFromString<List<DayGroupRaw>>(bodyText)
+            val raw = rawList.firstOrNull() ?: return null
+
+            // Enrich with players
+            val players = raw.playerIds.mapNotNull { playerId ->
+                fetchPlayerById(playerId)
+            }
+            raw.toDayGroupResponse(players)
+        } else {
+            null
+        }
     }
 
     override suspend fun getRotationCount(dayGroupId: String): Int {

@@ -282,7 +282,7 @@ fun Route.scheduleRoutes(
 
             // Day group assignments
             route("/assignments") {
-                // Update day group assignment
+                // Update day group assignment (with automatic swap if slot is occupied)
                 patch("/{dayGroupId}") {
                     val uid = call.requireOrganizer() ?: return@patch
                     val dayGroupId = call.parameters["dayGroupId"] ?: return@patch call.respond(
@@ -303,9 +303,48 @@ fun Route.scheduleRoutes(
                         )
                     }
 
+                    // Get the current day group to know its current assignment
+                    val currentGroup = dayGroupRepository.getById(dayGroupId)
+                    if (currentGroup == null) {
+                        return@patch call.respond(
+                            HttpStatusCode.NotFound,
+                            mapOf("error" to "Day group not found")
+                        )
+                    }
+
+                    // Check if target slot is already occupied by another group
+                    val occupyingGroup = if (request.matchDate != null && request.timeSlot != null && request.courtIndex != null) {
+                        dayGroupRepository.findBySlot(request.matchDate, request.timeSlot, request.courtIndex)
+                    } else {
+                        null
+                    }
+
+                    // If occupied by a different group, perform swap
+                    if (occupyingGroup != null && occupyingGroup.id != dayGroupId) {
+                        // Swap: move the occupying group to the current group's old slot
+                        val swapRequest = UpdateDayGroupAssignmentRequest(
+                            matchDate = currentGroup.matchDate,
+                            timeSlot = currentGroup.timeSlot,
+                            courtIndex = currentGroup.courtIndex
+                        )
+                        val swapSuccess = dayGroupRepository.updateAssignment(occupyingGroup.id, swapRequest)
+                        if (!swapSuccess) {
+                            return@patch call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to "Failed to swap: could not move existing group")
+                            )
+                        }
+                    }
+
+                    // Now update the original group to the target slot
                     val updated = dayGroupRepository.updateAssignment(dayGroupId, request)
                     if (updated) {
-                        call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                        val wasSwap = occupyingGroup != null && occupyingGroup.id != dayGroupId
+                        call.respond(HttpStatusCode.OK, mapOf(
+                            "success" to true,
+                            "swapped" to wasSwap,
+                            "swappedGroupId" to (if (wasSwap) occupyingGroup?.id else null)
+                        ))
                     } else {
                         call.respond(
                             HttpStatusCode.InternalServerError,

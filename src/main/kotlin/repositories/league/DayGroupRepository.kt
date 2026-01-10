@@ -9,6 +9,12 @@ interface DayGroupRepository {
     suspend fun updateAssignment(id: String, request: UpdateDayGroupAssignmentRequest): Boolean
     suspend fun getRotationCount(dayGroupId: String): Int
     suspend fun regenerateRotations(dayGroupId: String): RegenerateResult
+
+    /**
+     * Find a day group occupying a specific slot (date + time + court)
+     * Used for detecting conflicts and enabling swaps
+     */
+    suspend fun findBySlot(matchDate: String, timeSlot: String, courtIndex: Int): DayGroupResponse?
 }
 
 sealed class RegenerateResult {
