@@ -91,6 +91,9 @@ class AutoSchedulingService(
             emptyMap()
         }
 
+        // 3.5. Build player ID to name map for better warnings
+        val playerNameMap = buildPlayerNameMap(request.seasonId)
+
         // 4. Build available slots grid
         val availableSlots = mutableSetOf<Slot>()
         for (courtIndex in 1..numberOfCourts) {
@@ -124,58 +127,82 @@ class AutoSchedulingService(
         }
 
         // 7. Assign groups using greedy algorithm with MRV ordering
+        // IMPORTANT: Only assign if ALL 4 players are available (score = 1.0)
+        // Groups without full availability are left unassigned for manual scheduling
         val assignments = mutableListOf<GroupAssignment>()
         val usedSlots = mutableSetOf<Slot>()
         var skippedGroups = 0
+        val skippedGroupDetails = mutableListOf<String>()
 
         for (groupWithScores in sortedGroups) {
             val group = groupWithScores.group
 
-            // Find best available slot
-            val bestSlot = groupWithScores.slotScores.firstOrNull { slotScore ->
-                !usedSlots.contains(slotScore.slot)
+            // Find best available slot where ALL players are available (score = 1.0)
+            val perfectSlot = groupWithScores.slotScores.firstOrNull { slotScore ->
+                !usedSlots.contains(slotScore.slot) && slotScore.score == 1.0
             }
 
-            if (bestSlot != null) {
-                // Assign the group to this slot
+            if (perfectSlot != null) {
+                // Assign the group to this slot - all players are available
                 val updateRequest = UpdateDayGroupAssignmentRequest(
-                    matchDate = bestSlot.slot.date,
-                    timeSlot = bestSlot.slot.timeSlot,
-                    courtIndex = bestSlot.slot.courtIndex
+                    matchDate = perfectSlot.slot.date,
+                    timeSlot = perfectSlot.slot.timeSlot,
+                    courtIndex = perfectSlot.slot.courtIndex
                 )
 
                 val updated = dayGroupRepository.updateAssignment(group.id, updateRequest)
                 if (updated) {
-                    usedSlots.add(bestSlot.slot)
+                    usedSlots.add(perfectSlot.slot)
                     assignments.add(
                         GroupAssignment(
                             dayGroupId = group.id,
                             groupNumber = group.groupNumber,
                             categoryName = group.categoryName,
-                            matchDate = bestSlot.slot.date,
-                            timeSlot = bestSlot.slot.timeSlot,
-                            courtIndex = bestSlot.slot.courtIndex,
-                            availabilityScore = bestSlot.score,
-                            unavailablePlayers = bestSlot.unavailablePlayers
+                            matchDate = perfectSlot.slot.date,
+                            timeSlot = perfectSlot.slot.timeSlot,
+                            courtIndex = perfectSlot.slot.courtIndex,
+                            availabilityScore = perfectSlot.score,
+                            unavailablePlayers = emptyList()
                         )
                     )
-
-                    // Add warning if availability score is low
-                    if (bestSlot.score < 1.0 && bestSlot.unavailablePlayers.isNotEmpty()) {
-                        warnings.add(
-                            "Group ${group.groupNumber} (${group.categoryName}): " +
-                            "${bestSlot.unavailablePlayers.size} player(s) may not be available"
-                        )
-                    }
                 } else {
                     skippedGroups++
-                    warnings.add("Failed to assign Group ${group.groupNumber} (${group.categoryName})")
+                    skippedGroupDetails.add("Grupo ${group.groupNumber} (${group.categoryName}): Error al guardar asignación")
                 }
             } else {
+                // No slot with 100% availability - leave unassigned for manual scheduling
                 skippedGroups++
-                warnings.add("No available slots for Group ${group.groupNumber} (${group.categoryName})")
+
+                // Find the best partial slot to explain why it couldn't be assigned
+                val bestPartialSlot = groupWithScores.slotScores
+                    .filter { !usedSlots.contains(it.slot) }
+                    .maxByOrNull { it.score }
+
+                if (bestPartialSlot != null && bestPartialSlot.unavailablePlayers.isNotEmpty()) {
+                    val unavailableNames = bestPartialSlot.unavailablePlayers
+                        .take(4)
+                        .map { playerId -> playerNameMap[playerId] ?: playerId }
+                        .joinToString(", ")
+                    skippedGroupDetails.add(
+                        "Grupo ${group.groupNumber} (${group.categoryName}): " +
+                        "Sin horario común disponible. Jugadores no disponibles: $unavailableNames"
+                    )
+                } else if (groupWithScores.slotScores.all { usedSlots.contains(it.slot) }) {
+                    skippedGroupDetails.add(
+                        "Grupo ${group.groupNumber} (${group.categoryName}): " +
+                        "Todos los horarios ya están ocupados"
+                    )
+                } else {
+                    skippedGroupDetails.add(
+                        "Grupo ${group.groupNumber} (${group.categoryName}): " +
+                        "Sin horario común disponible para los 4 jugadores"
+                    )
+                }
             }
         }
+
+        // Add all skipped group details as warnings
+        warnings.addAll(skippedGroupDetails)
 
         return AutoScheduleResponse(
             totalGroups = unassignedGroups.size,
@@ -274,6 +301,36 @@ class AutoSchedulingService(
         return unassignedGroups
     }
 
+    /**
+     * Build a map of player ID to player name for all players in the season
+     */
+    private suspend fun buildPlayerNameMap(seasonId: String): Map<String, String> {
+        val playerNameMap = mutableMapOf<String, String>()
+
+        // Get all categories for the season
+        val categories = categoryRepository.getBySeasonId(seasonId)
+
+        for (category in categories) {
+            // Fetch players for each category
+            val response = client.get("$apiUrl/league_players") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                parameter("category_id", "eq.${category.id}")
+                parameter("select", "id,name")
+            }
+
+            if (response.status.isSuccess()) {
+                val bodyText = response.bodyAsText()
+                val players = json.decodeFromString<List<PlayerNameOnly>>(bodyText)
+                for (player in players) {
+                    playerNameMap[player.id] = player.name
+                }
+            }
+        }
+
+        return playerNameMap
+    }
+
     // Helper data classes
     private data class Slot(
         val date: String,
@@ -326,4 +383,10 @@ private data class AutoScheduleDayGroupRaw(
     @SerialName("time_slot") val timeSlot: String?,
     @SerialName("court_index") val courtIndex: Int?,
     @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+private data class PlayerNameOnly(
+    val id: String,
+    val name: String
 )
