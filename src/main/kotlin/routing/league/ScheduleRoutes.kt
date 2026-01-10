@@ -319,31 +319,60 @@ fun Route.scheduleRoutes(
                         null
                     }
 
-                    // If occupied by a different group, perform swap
-                    if (occupyingGroup != null && occupyingGroup.id != dayGroupId) {
-                        // Swap: move the occupying group to the current group's old slot
-                        val swapRequest = UpdateDayGroupAssignmentRequest(
-                            matchDate = currentGroup.matchDate,
-                            timeSlot = currentGroup.timeSlot,
-                            courtIndex = currentGroup.courtIndex
-                        )
-                        val swapSuccess = dayGroupRepository.updateAssignment(occupyingGroup.id, swapRequest)
-                        if (!swapSuccess) {
-                            return@patch call.respond(
-                                HttpStatusCode.InternalServerError,
-                                mapOf("error" to "Failed to swap: could not move existing group")
+                    // Determine the action type for UX feedback
+                    val hasCurrentAssignment = currentGroup.matchDate != null &&
+                            currentGroup.timeSlot != null &&
+                            currentGroup.courtIndex != null
+                    val isTargetOccupied = occupyingGroup != null && occupyingGroup.id != dayGroupId
+
+                    // If occupied by a different group, perform swap or displacement
+                    if (isTargetOccupied) {
+                        if (hasCurrentAssignment) {
+                            // Swap: move the occupying group to the current group's old slot
+                            val swapRequest = UpdateDayGroupAssignmentRequest(
+                                matchDate = currentGroup.matchDate,
+                                timeSlot = currentGroup.timeSlot,
+                                courtIndex = currentGroup.courtIndex
                             )
+                            val swapSuccess = dayGroupRepository.updateAssignment(occupyingGroup!!.id, swapRequest)
+                            if (!swapSuccess) {
+                                return@patch call.respond(
+                                    HttpStatusCode.InternalServerError,
+                                    mapOf("error" to "Failed to swap: could not move existing group")
+                                )
+                            }
+                        } else {
+                            // Displacement: the occupying group becomes unassigned
+                            val clearRequest = UpdateDayGroupAssignmentRequest(
+                                matchDate = null,
+                                timeSlot = null,
+                                courtIndex = null
+                            )
+                            val clearSuccess = dayGroupRepository.updateAssignment(occupyingGroup!!.id, clearRequest)
+                            if (!clearSuccess) {
+                                return@patch call.respond(
+                                    HttpStatusCode.InternalServerError,
+                                    mapOf("error" to "Failed to displace existing group")
+                                )
+                            }
                         }
                     }
 
                     // Now update the original group to the target slot
                     val updated = dayGroupRepository.updateAssignment(dayGroupId, request)
                     if (updated) {
-                        val wasSwap = occupyingGroup != null && occupyingGroup.id != dayGroupId
+                        // Determine action type for frontend UX
+                        val actionType = when {
+                            !isTargetOccupied -> "assigned"
+                            hasCurrentAssignment -> "swapped"
+                            else -> "displaced"
+                        }
+
                         call.respond(HttpStatusCode.OK, mapOf(
                             "success" to true,
-                            "swapped" to wasSwap,
-                            "swappedGroupId" to (if (wasSwap) occupyingGroup?.id else null)
+                            "action" to actionType,
+                            "displacedGroupId" to (if (isTargetOccupied) occupyingGroup?.id else null),
+                            "displacedGroupNumber" to (if (isTargetOccupied) occupyingGroup?.groupNumber else null)
                         ))
                     } else {
                         call.respond(
