@@ -22,24 +22,28 @@ class LeagueCategoryService(
     suspend fun getCategoryWithStatus(id: String): LeagueCategoryResponse? {
         val category = repository.getById(id) ?: return null
 
-        // Enrich with player count
-        val playerCount = playerRepository.getByCategoryId(id).size
+        // Get all players and separate by waiting list status
+        val allPlayers = playerRepository.getByCategoryId(id)
+        val activePlayers = allPlayers.filter { !it.isWaitingList }
+        val waitingListPlayers = allPlayers.filter { it.isWaitingList }
 
         // Check if calendar exists
         val hasCalendar = matchDayRepository.getByCategoryId(id).isNotEmpty()
 
         return category.copy(
-            playerCount = playerCount,
+            playerCount = activePlayers.size,
+            waitingListCount = waitingListPlayers.size,
             hasCalendar = hasCalendar
         )
     }
 
     suspend fun generateCalendar(categoryId: String): Result<String> {
-        // Validate player count
-        val players = playerRepository.getByCategoryId(categoryId)
-        if (players.size != 16) {
+        // Validate player count - only count active players (not on waiting list)
+        val allPlayers = playerRepository.getByCategoryId(categoryId)
+        val activePlayers = allPlayers.filter { !it.isWaitingList }
+        if (activePlayers.size != 16 && activePlayers.size != 20) {
             return Result.failure(
-                IllegalStateException("Category must have exactly 16 players (has ${players.size})")
+                IllegalStateException("Category must have exactly 16 or 20 active players (has ${activePlayers.size})")
             )
         }
 
