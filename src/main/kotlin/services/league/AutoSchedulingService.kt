@@ -244,22 +244,26 @@ class AutoSchedulingService(
 
         for (playerId in playerIds) {
             val availability = playerAvailability[playerId]
-            if (availability == null) {
-                // No availability set - assume available
+            if (availability == null || availability.isEmpty()) {
+                // No availability set at all - assume available
                 availableCount++
                 continue
             }
 
             val dayAvailability = availability.find { it.dayOfWeek == dayOfWeek }
             if (dayAvailability == null) {
-                // No availability for this day - assume unavailable
-                unavailablePlayers.add(playerId)
+                // Player has set availability for OTHER days but not this one
+                // Assume available (they didn't say they're unavailable for this day)
+                availableCount++
                 continue
             }
 
+            // Player has explicitly set availability for this day
+            // Check if they're available at this time slot
             if (dayAvailability.availableTimeSlots.contains(timeSlot)) {
                 availableCount++
             } else {
+                // Player explicitly said they're NOT available at this time
                 unavailablePlayers.add(playerId)
             }
         }
