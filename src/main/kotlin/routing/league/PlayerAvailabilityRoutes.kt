@@ -17,7 +17,7 @@ fun Route.playerAvailabilityRoutes(
 
         // ==================== Public Read Endpoints ====================
 
-        // Get weekly availability for a player in a season
+        // Get matchday availability for a player in a season
         get("/player/{playerId}") {
             val playerId = call.parameters["playerId"]
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "playerId required"))
@@ -37,7 +37,18 @@ fun Route.playerAvailabilityRoutes(
             call.respond(HttpStatusCode.OK, availability)
         }
 
-        // Get full summary for a player (weekly + overrides)
+        // Get availability for a specific matchday
+        get("/season/{seasonId}/matchday/{matchdayNumber}") {
+            val seasonId = call.parameters["seasonId"]
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "seasonId required"))
+            val matchdayNumber = call.parameters["matchdayNumber"]?.toIntOrNull()
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "matchdayNumber required"))
+
+            val availability = repository.getBySeasonAndMatchday(seasonId, matchdayNumber)
+            call.respond(HttpStatusCode.OK, availability)
+        }
+
+        // Get full summary for a player
         get("/summary/{playerId}") {
             val playerId = call.parameters["playerId"]
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "playerId required"))
@@ -58,12 +69,12 @@ fun Route.playerAvailabilityRoutes(
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "categoryId required"))
             val seasonId = call.request.queryParameters["seasonId"]
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "seasonId required"))
-            val date = call.request.queryParameters["date"]
-                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "date required (yyyy-MM-dd)"))
+            val matchdayNumber = call.request.queryParameters["matchdayNumber"]?.toIntOrNull()
+                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "matchdayNumber required (1-7)"))
             val timeSlot = call.request.queryParameters["timeSlot"]
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "timeSlot required (HH:mm:ss)"))
 
-            val result = repository.getAvailabilityForSlot(categoryId, seasonId, date, timeSlot)
+            val result = repository.getAvailabilityForSlot(categoryId, seasonId, matchdayNumber, timeSlot)
             call.respond(HttpStatusCode.OK, result)
         }
 
@@ -94,7 +105,7 @@ fun Route.playerAvailabilityRoutes(
                 }
             }
 
-            // Batch upsert availability (replace all days for a player in a season)
+            // Batch upsert availability (replace all matchdays for a player in a season)
             post("/batch") {
                 call.requireOrganizer() ?: return@post
 
@@ -157,101 +168,6 @@ fun Route.playerAvailabilityRoutes(
                     call.respond(HttpStatusCode.OK, mapOf("success" to true))
                 } else {
                     call.respond(HttpStatusCode.NotFound, mapOf("error" to "Failed to delete availability"))
-                }
-            }
-        }
-    }
-
-    // ==================== Overrides Routes ====================
-
-    route("/player-availability-overrides") {
-
-        // Get overrides for a player in a season
-        get("/player/{playerId}") {
-            val playerId = call.parameters["playerId"]
-                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "playerId required"))
-            val seasonId = call.request.queryParameters["seasonId"]
-                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "seasonId required"))
-
-            val overrides = repository.getOverridesByPlayerId(playerId, seasonId)
-            call.respond(HttpStatusCode.OK, overrides)
-        }
-
-        // Get all overrides for a specific date
-        get("/date") {
-            val seasonId = call.request.queryParameters["seasonId"]
-                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "seasonId required"))
-            val date = call.request.queryParameters["date"]
-                ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "date required"))
-
-            val overrides = repository.getOverridesBySeasonAndDate(seasonId, date)
-            call.respond(HttpStatusCode.OK, overrides)
-        }
-
-        authenticate("auth-jwt") {
-            // Create override
-            post {
-                call.requireOrganizer() ?: return@post
-
-                val request = try {
-                    call.receive<CreatePlayerAvailabilityOverrideRequest>()
-                } catch (e: Exception) {
-                    return@post call.respond(
-                        HttpStatusCode.BadRequest,
-                        mapOf("error" to "Invalid request: ${e.localizedMessage}")
-                    )
-                }
-
-                val created = repository.createOverride(request)
-                if (created != null) {
-                    call.respond(HttpStatusCode.Created, created)
-                } else {
-                    call.respond(
-                        HttpStatusCode.InternalServerError,
-                        mapOf("error" to "Failed to create override")
-                    )
-                }
-            }
-
-            // Update override
-            patch("/{id}") {
-                call.requireOrganizer() ?: return@patch
-
-                val id = call.parameters["id"]
-                    ?: return@patch call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
-
-                val request = try {
-                    call.receive<UpdatePlayerAvailabilityOverrideRequest>()
-                } catch (e: Exception) {
-                    return@patch call.respond(
-                        HttpStatusCode.BadRequest,
-                        mapOf("error" to "Invalid request: ${e.localizedMessage}")
-                    )
-                }
-
-                val success = repository.updateOverride(id, request)
-                if (success) {
-                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
-                } else {
-                    call.respond(
-                        HttpStatusCode.InternalServerError,
-                        mapOf("error" to "Failed to update override")
-                    )
-                }
-            }
-
-            // Delete override
-            delete("/{id}") {
-                call.requireOrganizer() ?: return@delete
-
-                val id = call.parameters["id"]
-                    ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "id required"))
-
-                val success = repository.deleteOverride(id)
-                if (success) {
-                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
-                } else {
-                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Failed to delete override"))
                 }
             }
         }

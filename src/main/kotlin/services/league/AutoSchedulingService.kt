@@ -35,7 +35,7 @@ class AutoSchedulingService(
     private val defaultsRepository: SeasonScheduleDefaultsRepository,
     private val overridesRepository: MatchdayScheduleOverridesRepository,
     private val dayGroupRepository: DayGroupRepository,
-    private val matchdayAvailabilityRepository: PlayerMatchdayAvailabilityRepository,
+    private val availabilityRepository: PlayerAvailabilityRepository,
     private val categoryRepository: LeagueCategoryRepository
 ) {
     private val apiUrl = config.apiUrl
@@ -87,7 +87,7 @@ class AutoSchedulingService(
 
         // 3. Get player availability data for this specific matchday
         val playerAvailability = if (request.respectAvailability) {
-            matchdayAvailabilityRepository.getBySeasonAndMatchday(request.seasonId, request.matchdayNumber)
+            availabilityRepository.getBySeasonAndMatchday(request.seasonId, request.matchdayNumber)
                 .groupBy { it.playerId }
         } else {
             emptyMap()
@@ -232,12 +232,12 @@ class AutoSchedulingService(
      * Calculate availability score for a group at a specific time slot
      * Returns score from 0.0 (no one available) to 1.0 (everyone available)
      *
-     * Uses matchday-specific availability (not day-of-week).
+     * Uses matchday-specific availability.
      * If a player hasn't set availability for this matchday, they're assumed available.
      */
     private fun calculateAvailabilityScore(
         playerIds: List<String>,
-        playerAvailability: Map<String, List<PlayerMatchdayAvailabilityResponse>>,
+        playerAvailability: Map<String, List<PlayerAvailabilityResponse>>,
         timeSlot: String
     ): AvailabilityResult {
         if (playerIds.isEmpty()) {

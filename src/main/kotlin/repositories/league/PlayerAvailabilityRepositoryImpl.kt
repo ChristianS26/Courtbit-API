@@ -8,9 +8,6 @@ import io.ktor.http.*
 import kotlinx.serialization.json.*
 import models.league.*
 import org.slf4j.LoggerFactory
-import java.time.DayOfWeek
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 
 class PlayerAvailabilityRepositoryImpl(
     private val client: HttpClient,
@@ -22,16 +19,15 @@ class PlayerAvailabilityRepositoryImpl(
     private val apiUrl = config.apiUrl
     private val apiKey = config.apiKey
     private val logger = LoggerFactory.getLogger(PlayerAvailabilityRepositoryImpl::class.java)
-
-    // ==================== Default Weekly Availability ====================
+    private val tableName = "player_matchday_availability"
 
     override suspend fun getByPlayerId(playerId: String, seasonId: String): List<PlayerAvailabilityResponse> {
-        val response = client.get("$apiUrl/player_availability") {
+        val response = client.get("$apiUrl/$tableName") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("player_id", "eq.$playerId")
             parameter("season_id", "eq.$seasonId")
-            parameter("order", "day_of_week.asc")
+            parameter("order", "matchday_number.asc")
         }
 
         return if (response.status.isSuccess()) {
@@ -44,11 +40,11 @@ class PlayerAvailabilityRepositoryImpl(
     }
 
     override suspend fun getBySeasonId(seasonId: String): List<PlayerAvailabilityResponse> {
-        val response = client.get("$apiUrl/player_availability") {
+        val response = client.get("$apiUrl/$tableName") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("season_id", "eq.$seasonId")
-            parameter("order", "player_id.asc,day_of_week.asc")
+            parameter("order", "player_id.asc,matchday_number.asc")
         }
 
         return if (response.status.isSuccess()) {
@@ -60,15 +56,32 @@ class PlayerAvailabilityRepositoryImpl(
         }
     }
 
+    override suspend fun getBySeasonAndMatchday(seasonId: String, matchdayNumber: Int): List<PlayerAvailabilityResponse> {
+        val response = client.get("$apiUrl/$tableName") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("season_id", "eq.$seasonId")
+            parameter("matchday_number", "eq.$matchdayNumber")
+        }
+
+        return if (response.status.isSuccess()) {
+            val bodyText = response.bodyAsText()
+            json.decodeFromString<List<PlayerAvailabilityResponse>>(bodyText)
+        } else {
+            logger.error("Failed to get availability by season and matchday: ${response.status}")
+            emptyList()
+        }
+    }
+
     override suspend fun create(request: CreatePlayerAvailabilityRequest): PlayerAvailabilityResponse? {
         val payload = buildJsonObject {
             put("player_id", request.playerId)
             put("season_id", request.seasonId)
-            put("day_of_week", request.dayOfWeek)
+            put("matchday_number", request.matchdayNumber)
             put("available_time_slots", JsonArray(request.availableTimeSlots.map { JsonPrimitive(it) }))
         }
 
-        val response = client.post("$apiUrl/player_availability") {
+        val response = client.post("$apiUrl/$tableName") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
@@ -91,7 +104,7 @@ class PlayerAvailabilityRepositoryImpl(
             put("updated_at", JsonPrimitive("now()"))
         }
 
-        val response = client.patch("$apiUrl/player_availability?id=eq.$id") {
+        val response = client.patch("$apiUrl/$tableName?id=eq.$id") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             contentType(ContentType.Application.Json)
@@ -102,7 +115,7 @@ class PlayerAvailabilityRepositoryImpl(
     }
 
     override suspend fun delete(id: String): Boolean {
-        val response = client.delete("$apiUrl/player_availability?id=eq.$id") {
+        val response = client.delete("$apiUrl/$tableName?id=eq.$id") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=minimal")
@@ -113,7 +126,7 @@ class PlayerAvailabilityRepositoryImpl(
 
     override suspend fun upsertBatch(request: BatchPlayerAvailabilityRequest): Boolean {
         // First delete all existing availability for this player+season
-        val deleteResponse = client.delete("$apiUrl/player_availability") {
+        val deleteResponse = client.delete("$apiUrl/$tableName") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=minimal")
@@ -131,16 +144,16 @@ class PlayerAvailabilityRepositoryImpl(
             return true
         }
 
-        val payload = request.availabilities.map { dayAvailability ->
+        val payload = request.availabilities.map { matchdayAvailability ->
             buildJsonObject {
                 put("player_id", request.playerId)
                 put("season_id", request.seasonId)
-                put("day_of_week", dayAvailability.dayOfWeek)
-                put("available_time_slots", JsonArray(dayAvailability.availableTimeSlots.map { JsonPrimitive(it) }))
+                put("matchday_number", matchdayAvailability.matchdayNumber)
+                put("available_time_slots", JsonArray(matchdayAvailability.availableTimeSlots.map { JsonPrimitive(it) }))
             }
         }
 
-        val response = client.post("$apiUrl/player_availability") {
+        val response = client.post("$apiUrl/$tableName") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=minimal")
@@ -151,108 +164,6 @@ class PlayerAvailabilityRepositoryImpl(
         return response.status.isSuccess()
     }
 
-    // ==================== Overrides ====================
-
-    override suspend fun getOverridesByPlayerId(
-        playerId: String,
-        seasonId: String
-    ): List<PlayerAvailabilityOverrideResponse> {
-        val response = client.get("$apiUrl/player_availability_overrides") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("player_id", "eq.$playerId")
-            parameter("season_id", "eq.$seasonId")
-            parameter("order", "override_date.asc")
-        }
-
-        return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            json.decodeFromString<List<PlayerAvailabilityOverrideResponse>>(bodyText)
-        } else {
-            logger.error("Failed to get overrides by player: ${response.status}")
-            emptyList()
-        }
-    }
-
-    override suspend fun getOverridesBySeasonAndDate(
-        seasonId: String,
-        date: String
-    ): List<PlayerAvailabilityOverrideResponse> {
-        val response = client.get("$apiUrl/player_availability_overrides") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("season_id", "eq.$seasonId")
-            parameter("override_date", "eq.$date")
-        }
-
-        return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            json.decodeFromString<List<PlayerAvailabilityOverrideResponse>>(bodyText)
-        } else {
-            logger.error("Failed to get overrides by date: ${response.status}")
-            emptyList()
-        }
-    }
-
-    override suspend fun createOverride(request: CreatePlayerAvailabilityOverrideRequest): PlayerAvailabilityOverrideResponse? {
-        val payload = buildJsonObject {
-            put("player_id", request.playerId)
-            put("season_id", request.seasonId)
-            put("override_date", request.overrideDate)
-            put("available_time_slots", JsonArray(request.availableTimeSlots.map { JsonPrimitive(it) }))
-            put("is_unavailable", request.isUnavailable)
-            request.reason?.let { put("reason", it) }
-        }
-
-        val response = client.post("$apiUrl/player_availability_overrides") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            header("Prefer", "return=representation")
-            contentType(ContentType.Application.Json)
-            setBody(listOf(payload))
-        }
-
-        return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            json.decodeFromString<List<PlayerAvailabilityOverrideResponse>>(bodyText).firstOrNull()
-        } else {
-            logger.error("Failed to create override: ${response.status}")
-            null
-        }
-    }
-
-    override suspend fun updateOverride(id: String, request: UpdatePlayerAvailabilityOverrideRequest): Boolean {
-        val payload = buildJsonObject {
-            request.availableTimeSlots?.let {
-                put("available_time_slots", JsonArray(it.map { slot -> JsonPrimitive(slot) }))
-            }
-            request.isUnavailable?.let { put("is_unavailable", it) }
-            request.reason?.let { put("reason", it) }
-            put("updated_at", JsonPrimitive("now()"))
-        }
-
-        val response = client.patch("$apiUrl/player_availability_overrides?id=eq.$id") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            contentType(ContentType.Application.Json)
-            setBody(payload.toString())
-        }
-
-        return response.status.isSuccess()
-    }
-
-    override suspend fun deleteOverride(id: String): Boolean {
-        val response = client.delete("$apiUrl/player_availability_overrides?id=eq.$id") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            header("Prefer", "return=minimal")
-        }
-
-        return response.status.isSuccess()
-    }
-
-    // ==================== Combined Queries ====================
-
     override suspend fun getPlayerAvailabilitySummary(
         playerId: String,
         seasonId: String
@@ -260,79 +171,54 @@ class PlayerAvailabilityRepositoryImpl(
         // Get player info
         val player = leaguePlayerRepository.getById(playerId) ?: return null
 
-        // Get weekly availability
-        val weeklyAvailability = getByPlayerId(playerId, seasonId)
-        val weeklyMap = weeklyAvailability.associate { it.dayOfWeek to it.availableTimeSlots }
-
-        // Get overrides
-        val overrides = getOverridesByPlayerId(playerId, seasonId)
+        // Get matchday availability
+        val matchdayAvailability = getByPlayerId(playerId, seasonId)
+        val matchdayMap = matchdayAvailability.associate { it.matchdayNumber to it.availableTimeSlots }
 
         return PlayerAvailabilitySummary(
             playerId = playerId,
             playerName = player.name,
-            weeklyAvailability = weeklyMap,
-            overrides = overrides
+            matchdayAvailability = matchdayMap
         )
     }
 
     override suspend fun getAvailabilityForSlot(
         categoryId: String,
         seasonId: String,
-        date: String,
+        matchdayNumber: Int,
         timeSlot: String
     ): SlotAvailabilityResponse {
         // Get all players in the category
         val players = leaguePlayerRepository.getByCategoryId(categoryId)
             .filter { !it.isWaitingList }
 
-        // Get all weekly availability for this season
-        val weeklyAvailability = getBySeasonId(seasonId)
-        val weeklyByPlayer = weeklyAvailability.groupBy { it.playerId }
-
-        // Get all overrides for this specific date
-        val overrides = getOverridesBySeasonAndDate(seasonId, date)
-        val overridesByPlayer = overrides.associateBy { it.playerId }
-
-        // Determine day of week from date
-        val localDate = LocalDate.parse(date)
-        val dayOfWeek = localDate.dayOfWeek.value % 7 // Convert to 0-6 (Sunday = 0)
+        // Get all availability for this matchday
+        val matchdayAvailability = getBySeasonAndMatchday(seasonId, matchdayNumber)
+        val availabilityByPlayer = matchdayAvailability.associateBy { it.playerId }
 
         val availablePlayers = mutableListOf<AvailablePlayer>()
         val unavailablePlayers = mutableListOf<UnavailablePlayer>()
 
         for (player in players) {
-            val override = overridesByPlayer[player.id]
-            val weekly = weeklyByPlayer[player.id]?.find { it.dayOfWeek == dayOfWeek }
+            val availability = availabilityByPlayer[player.id]
 
-            val (isAvailable, reason) = when {
-                // Check override first
-                override != null -> {
-                    if (override.isUnavailable) {
-                        false to override.reason
-                    } else {
-                        (timeSlot in override.availableTimeSlots) to null
-                    }
-                }
-                // Fall back to weekly availability
-                weekly != null -> {
-                    (timeSlot in weekly.availableTimeSlots) to null
-                }
-                // No availability data = unavailable
-                else -> {
-                    false to "No availability set"
-                }
+            val isAvailable = when {
+                // Player has set availability for this matchday
+                availability != null -> timeSlot in availability.availableTimeSlots
+                // No availability data = assume available (hasn't set restrictions)
+                else -> true
             }
 
             if (isAvailable) {
                 availablePlayers.add(AvailablePlayer(player.id, player.name))
             } else {
-                unavailablePlayers.add(UnavailablePlayer(player.id, player.name, reason))
+                unavailablePlayers.add(UnavailablePlayer(player.id, player.name, "No disponible en este horario"))
             }
         }
 
         return SlotAvailabilityResponse(
             timeSlot = timeSlot,
-            date = date,
+            matchdayNumber = matchdayNumber,
             availablePlayers = availablePlayers,
             unavailablePlayers = unavailablePlayers
         )
