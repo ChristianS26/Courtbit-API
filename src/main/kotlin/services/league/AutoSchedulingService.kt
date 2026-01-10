@@ -33,7 +33,7 @@ class AutoSchedulingService(
     private val defaultsRepository: SeasonScheduleDefaultsRepository,
     private val overridesRepository: MatchdayScheduleOverridesRepository,
     private val dayGroupRepository: DayGroupRepository,
-    private val availabilityRepository: PlayerAvailabilityRepository,
+    private val matchdayAvailabilityRepository: PlayerMatchdayAvailabilityRepository,
     private val categoryRepository: LeagueCategoryRepository
 ) {
     private val apiUrl = config.apiUrl
@@ -83,9 +83,9 @@ class AutoSchedulingService(
             )
         }
 
-        // 3. Get player availability data
+        // 3. Get player availability data for this specific matchday
         val playerAvailability = if (request.respectAvailability) {
-            availabilityRepository.getBySeasonId(request.seasonId)
+            matchdayAvailabilityRepository.getBySeasonAndMatchday(request.seasonId, request.matchdayNumber)
                 .groupBy { it.playerId }
         } else {
             emptyMap()
@@ -103,15 +103,11 @@ class AutoSchedulingService(
         }
 
         // 5. Calculate availability scores for each group-slot combination
-        val matchDate = LocalDate.parse(request.matchDate)
-        val dayOfWeek = matchDate.dayOfWeek.value % 7 // Convert to 0=Sunday format
-
         val groupSlotScores = unassignedGroups.map { group ->
             val slotScores = availableSlots.map { slot ->
                 val score = calculateAvailabilityScore(
                     group.playerIds,
                     playerAvailability,
-                    dayOfWeek,
                     slot.timeSlot
                 )
                 SlotScore(slot, score.score, score.unavailablePlayers)
@@ -228,11 +224,13 @@ class AutoSchedulingService(
     /**
      * Calculate availability score for a group at a specific time slot
      * Returns score from 0.0 (no one available) to 1.0 (everyone available)
+     *
+     * Uses matchday-specific availability (not day-of-week).
+     * If a player hasn't set availability for this matchday, they're assumed available.
      */
     private fun calculateAvailabilityScore(
         playerIds: List<String>,
-        playerAvailability: Map<String, List<PlayerAvailabilityResponse>>,
-        dayOfWeek: Int,
+        playerAvailability: Map<String, List<PlayerMatchdayAvailabilityResponse>>,
         timeSlot: String
     ): AvailabilityResult {
         if (playerIds.isEmpty()) {
@@ -245,22 +243,21 @@ class AutoSchedulingService(
         for (playerId in playerIds) {
             val availability = playerAvailability[playerId]
             if (availability == null || availability.isEmpty()) {
-                // No availability set at all - assume available
+                // No availability set for this matchday - assume available
                 availableCount++
                 continue
             }
 
-            val dayAvailability = availability.find { it.dayOfWeek == dayOfWeek }
-            if (dayAvailability == null) {
-                // Player has set availability for OTHER days but not this one
-                // Assume available (they didn't say they're unavailable for this day)
+            // Player has set availability for this matchday
+            // Get their available time slots (should be just one record per matchday)
+            val matchdayAvailability = availability.firstOrNull()
+            if (matchdayAvailability == null) {
                 availableCount++
                 continue
             }
 
-            // Player has explicitly set availability for this day
             // Check if they're available at this time slot
-            if (dayAvailability.availableTimeSlots.contains(timeSlot)) {
+            if (matchdayAvailability.availableTimeSlots.contains(timeSlot)) {
                 availableCount++
             } else {
                 // Player explicitly said they're NOT available at this time

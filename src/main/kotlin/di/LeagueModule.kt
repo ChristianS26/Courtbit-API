@@ -23,6 +23,7 @@ val LeagueModule = module {
     single<SeasonScheduleDefaultsRepository> { SeasonScheduleDefaultsRepositoryImpl(get(), get(), get()) }
     single<MatchdayScheduleOverridesRepository> { MatchdayScheduleOverridesRepositoryImpl(get(), get(), get()) }
     single<PlayerAvailabilityRepository> { PlayerAvailabilityRepositoryImpl(get(), get(), get(), get()) }
+    single<PlayerMatchdayAvailabilityRepository> { PlayerMatchdayAvailabilityRepositoryImpl(get(), get(), get()) }
     single<AdjustmentRepository> { AdjustmentRepositoryImpl(get(), get(), get()) }
 
     // Services
