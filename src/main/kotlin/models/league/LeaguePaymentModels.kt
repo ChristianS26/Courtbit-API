@@ -75,6 +75,7 @@ data class SeasonPaymentReportRow(
     @SerialName("player_id") val playerId: String,
     @SerialName("player_name") val playerName: String,
     @SerialName("player_email") val playerEmail: String? = null,
+    @SerialName("player_phone") val playerPhone: String? = null,
     @SerialName("category_id") val categoryId: String,
     @SerialName("category_name") val categoryName: String,
     @SerialName("registration_fee") val registrationFee: Long,
@@ -85,6 +86,7 @@ data class SeasonPaymentReportRow(
     @SerialName("balance_due") val balanceDue: Long,
     @SerialName("payment_count") val paymentCount: Int,
     @SerialName("last_payment_at") val lastPaymentAt: String? = null,
+    @SerialName("last_payment_method") val lastPaymentMethod: String? = null,
     @SerialName("is_fully_paid") val isFullyPaid: Boolean
 )
 

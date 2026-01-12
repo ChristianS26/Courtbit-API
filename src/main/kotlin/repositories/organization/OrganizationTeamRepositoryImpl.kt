@@ -25,49 +25,45 @@ class OrganizationTeamRepositoryImpl(
 
     override suspend fun getMembers(organizerId: String): List<OrganizationMemberResponse> {
         return try {
-            // Query organization_members with joined profile data
             val response = client.get("$apiUrl/organization_members") {
                 header("apikey", apiKey)
                 header("Authorization", "Bearer $apiKey")
-                parameter("select", "id,organizer_id,user_uid,role,created_at,profiles(display_name,email)")
+                parameter("select", "id,organizer_id,user_uid,role,joined_at,user_name,user_email")
                 parameter("organizer_id", "eq.$organizerId")
-                parameter("order", "created_at.asc")
+                parameter("order", "joined_at.asc")
             }
 
             if (response.status.isSuccess()) {
                 @Serializable
-                data class ProfileData(
-                    @SerialName("display_name")
-                    val displayName: String? = null,
-                    val email: String? = null
-                )
-
-                @Serializable
-                data class MemberWithProfile(
+                data class MemberRow(
                     val id: String,
                     @SerialName("organizer_id")
                     val organizerId: String,
                     @SerialName("user_uid")
                     val userUid: String,
                     val role: String,
-                    @SerialName("created_at")
-                    val createdAt: String,
-                    val profiles: ProfileData? = null
+                    @SerialName("joined_at")
+                    val joinedAt: String,
+                    @SerialName("user_name")
+                    val userName: String? = null,
+                    @SerialName("user_email")
+                    val userEmail: String? = null
                 )
 
-                val members = json.decodeFromString<List<MemberWithProfile>>(response.bodyAsText())
+                val members = json.decodeFromString<List<MemberRow>>(response.bodyAsText())
                 members.map { member ->
                     OrganizationMemberResponse(
                         id = member.id,
                         organizerId = member.organizerId,
                         userUid = member.userUid,
                         role = member.role,
-                        createdAt = member.createdAt,
-                        userName = member.profiles?.displayName,
-                        userEmail = member.profiles?.email
+                        createdAt = member.joinedAt,
+                        userName = member.userName,
+                        userEmail = member.userEmail
                     )
                 }
             } else {
+                println("❌ [OrganizationTeamRepo] getMembers failed: ${response.bodyAsText()}")
                 emptyList()
             }
         } catch (e: Exception) {
@@ -271,12 +267,39 @@ class OrganizationTeamRepositoryImpl(
             val response = client.get("$apiUrl/organization_members") {
                 header("apikey", apiKey)
                 header("Authorization", "Bearer $apiKey")
-                parameter("select", "*")
+                parameter("select", "id,organizer_id,user_uid,role,joined_at,user_name,user_email")
                 parameter("id", "eq.$memberId")
             }
 
             if (response.status.isSuccess()) {
-                json.decodeFromString<List<OrganizationMemberResponse>>(response.bodyAsText()).firstOrNull()
+                @Serializable
+                data class MemberRow(
+                    val id: String,
+                    @SerialName("organizer_id")
+                    val organizerId: String,
+                    @SerialName("user_uid")
+                    val userUid: String,
+                    val role: String,
+                    @SerialName("joined_at")
+                    val joinedAt: String,
+                    @SerialName("user_name")
+                    val userName: String? = null,
+                    @SerialName("user_email")
+                    val userEmail: String? = null
+                )
+
+                val members = json.decodeFromString<List<MemberRow>>(response.bodyAsText())
+                members.firstOrNull()?.let { member ->
+                    OrganizationMemberResponse(
+                        id = member.id,
+                        organizerId = member.organizerId,
+                        userUid = member.userUid,
+                        role = member.role,
+                        createdAt = member.joinedAt,
+                        userName = member.userName,
+                        userEmail = member.userEmail
+                    )
+                }
             } else {
                 null
             }
