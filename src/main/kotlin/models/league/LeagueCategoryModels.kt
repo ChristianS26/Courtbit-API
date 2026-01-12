@@ -21,7 +21,9 @@ data class LeagueCategoryResponse(
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
     // Recommended courts for auto-scheduling (null = no preference)
-    @SerialName("recommended_courts") val recommendedCourts: List<Int>? = null
+    @SerialName("recommended_courts") val recommendedCourts: List<Int>? = null,
+    // Registration fee override (null = use season default)
+    @SerialName("registration_fee") val registrationFee: Long? = null
 )
 
 @Serializable
@@ -32,7 +34,9 @@ data class CreateLeagueCategoryRequest(
     @SerialName("color_hex") val colorHex: String = "#007AFF",
     // Playoff configuration (optional, null = use season default)
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
-    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null
+    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
+    // Registration fee override (optional, null = use season default)
+    @SerialName("registration_fee") val registrationFee: Long? = null
 )
 
 @Serializable
@@ -44,7 +48,9 @@ data class UpdateLeagueCategoryRequest(
     @SerialName("max_players") val maxPlayers: Int? = null,
     // Playoff configuration (optional, null = keep current value, explicit value = override)
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
-    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null
+    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
+    // Registration fee override (optional, null = keep current value)
+    @SerialName("registration_fee") val registrationFee: Long? = null
 )
 
 // Request to update max players and recalculate waiting list
