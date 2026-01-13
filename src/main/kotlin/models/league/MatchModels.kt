@@ -57,7 +57,12 @@ data class DoublesMatchResponse(
     @SerialName("team2_player1") val team2Player1: LeaguePlayerResponse? = null,
     @SerialName("team2_player2") val team2Player2: LeaguePlayerResponse? = null,
     @SerialName("submitted_by_name") val submittedByName: String? = null,
-    @SerialName("submitted_at") val submittedAt: String? = null
+    @SerialName("submitted_at") val submittedAt: String? = null,
+    // Forfeit fields
+    @SerialName("is_forfeit") val isForfeit: Boolean = false,
+    @SerialName("forfeited_player_ids") val forfeitedPlayerIds: List<String> = emptyList(),
+    @SerialName("forfeit_recorded_by_uid") val forfeitRecordedByUid: String? = null,
+    @SerialName("forfeit_recorded_at") val forfeitRecordedAt: String? = null
 )
 
 @Serializable
@@ -72,4 +77,16 @@ data class UserScoreRequest(
     @SerialName("user_name") val userName: String,
     @SerialName("score_team1") val scoreTeam1: Int,
     @SerialName("score_team2") val scoreTeam2: Int
+)
+
+@Serializable
+data class MarkForfeitRequest(
+    @SerialName("forfeited_player_ids") val forfeitedPlayerIds: List<String>,
+    @SerialName("score_team1") val scoreTeam1: Int,
+    @SerialName("score_team2") val scoreTeam2: Int
+)
+
+@Serializable
+data class ReverseForfeitRequest(
+    @SerialName("clear_scores") val clearScores: Boolean = true
 )

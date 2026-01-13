@@ -19,6 +19,8 @@ data class SeasonResponse(
     @SerialName("ranking_criteria") val rankingCriteria: List<String> = listOf("adjusted_points", "point_diff", "games_won"),
     @SerialName("max_points_per_game") val maxPointsPerGame: Int = 6,
     @SerialName("registration_fee") val registrationFee: Long = 0,
+    @SerialName("forfeit_winner_points") val forfeitWinnerPoints: Int = 15,
+    @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int = 12,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String
 )
@@ -36,7 +38,9 @@ data class CreateSeasonRequest(
     @SerialName("organizer_id") val organizerId: String? = null,
     @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null,
     @SerialName("max_points_per_game") val maxPointsPerGame: Int? = null,
-    @SerialName("registration_fee") val registrationFee: Long = 0
+    @SerialName("registration_fee") val registrationFee: Long = 0,
+    @SerialName("forfeit_winner_points") val forfeitWinnerPoints: Int = 15,
+    @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int = 12
 )
 
 @Serializable
@@ -49,5 +53,7 @@ data class UpdateSeasonRequest(
     @SerialName("allow_player_scores") val allowPlayerScores: Boolean? = null,
     @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null,
     @SerialName("max_points_per_game") val maxPointsPerGame: Int? = null,
-    @SerialName("registration_fee") val registrationFee: Long? = null
+    @SerialName("registration_fee") val registrationFee: Long? = null,
+    @SerialName("forfeit_winner_points") val forfeitWinnerPoints: Int? = null,
+    @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int? = null
 )

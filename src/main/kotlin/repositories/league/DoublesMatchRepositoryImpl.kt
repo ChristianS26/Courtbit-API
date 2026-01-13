@@ -68,10 +68,14 @@ class DoublesMatchRepositoryImpl(
         }
     }
 
-    override suspend fun updateScore(matchId: String, request: UpdateMatchScoreRequest): Boolean {
+    override suspend fun updateScore(matchId: String, request: UpdateMatchScoreRequest, submittedByName: String?): Boolean {
         val payload = buildJsonObject {
             put("score_team1", request.scoreTeam1)
             put("score_team2", request.scoreTeam2)
+            if (submittedByName != null) {
+                put("submitted_by_name", submittedByName)
+                put("submitted_at", java.time.Instant.now().toString())
+            }
         }
 
         val response = client.patch("$apiUrl/doubles_matches") {
@@ -83,6 +87,66 @@ class DoublesMatchRepositoryImpl(
             setBody(payload.toString())
         }
 
+        return response.status.isSuccess()
+    }
+
+    override suspend fun markForfeit(
+        matchId: String,
+        forfeitedPlayerIds: List<String>,
+        scoreTeam1: Int,
+        scoreTeam2: Int,
+        recordedByUid: String
+    ): Boolean {
+        logger.info("🏳️ [DoublesMatchRepo] markForfeit($matchId, players=$forfeitedPlayerIds, score=$scoreTeam1-$scoreTeam2)")
+
+        val payload = buildJsonObject {
+            put("is_forfeit", true)
+            put("forfeited_player_ids", kotlinx.serialization.json.JsonArray(
+                forfeitedPlayerIds.map { kotlinx.serialization.json.JsonPrimitive(it) }
+            ))
+            put("forfeit_recorded_by_uid", recordedByUid)
+            put("forfeit_recorded_at", java.time.Instant.now().toString())
+            put("score_team1", scoreTeam1)
+            put("score_team2", scoreTeam2)
+        }
+
+        val response = client.patch("$apiUrl/doubles_matches") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=minimal")
+            contentType(ContentType.Application.Json)
+            parameter("id", "eq.$matchId")
+            setBody(payload.toString())
+        }
+
+        logger.info("🏳️ [DoublesMatchRepo] markForfeit response: status=${response.status}")
+        return response.status.isSuccess()
+    }
+
+    override suspend fun reverseForfeit(matchId: String, clearScores: Boolean): Boolean {
+        logger.info("↩️ [DoublesMatchRepo] reverseForfeit($matchId, clearScores=$clearScores)")
+
+        val payload = buildJsonObject {
+            put("is_forfeit", false)
+            put("forfeited_player_ids", kotlinx.serialization.json.JsonArray(emptyList()))
+            put("forfeit_recorded_by_uid", kotlinx.serialization.json.JsonNull)
+            put("forfeit_recorded_at", kotlinx.serialization.json.JsonNull)
+            if (clearScores) {
+                put("score_team1", kotlinx.serialization.json.JsonNull)
+                put("score_team2", kotlinx.serialization.json.JsonNull)
+            }
+        }
+
+        val response = client.patch("$apiUrl/doubles_matches") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=minimal")
+            contentType(ContentType.Application.Json)
+            parameter("id", "eq.$matchId")
+            setBody(payload.toString())
+        }
+
+        logger.info("↩️ [DoublesMatchRepo] reverseForfeit response: status=${response.status}")
         return response.status.isSuccess()
     }
 
@@ -118,7 +182,11 @@ private data class DoublesMatchRaw(
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String,
     @SerialName("submitted_by_name") val submittedByName: String? = null,
-    @SerialName("submitted_at") val submittedAt: String? = null
+    @SerialName("submitted_at") val submittedAt: String? = null,
+    @SerialName("is_forfeit") val isForfeit: Boolean = false,
+    @SerialName("forfeited_player_ids") val forfeitedPlayerIds: List<String> = emptyList(),
+    @SerialName("forfeit_recorded_by_uid") val forfeitRecordedByUid: String? = null,
+    @SerialName("forfeit_recorded_at") val forfeitRecordedAt: String? = null
 ) {
     fun toDoublesMatchResponse(
         team1Player1: LeaguePlayerResponse?,
@@ -141,6 +209,10 @@ private data class DoublesMatchRaw(
         team2Player1 = team2Player1,
         team2Player2 = team2Player2,
         submittedByName = submittedByName,
-        submittedAt = submittedAt
+        submittedAt = submittedAt,
+        isForfeit = isForfeit,
+        forfeitedPlayerIds = forfeitedPlayerIds,
+        forfeitRecordedByUid = forfeitRecordedByUid,
+        forfeitRecordedAt = forfeitRecordedAt
     )
 }
