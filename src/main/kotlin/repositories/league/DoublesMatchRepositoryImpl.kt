@@ -70,21 +70,28 @@ class DoublesMatchRepositoryImpl(
 
     override suspend fun updateScore(matchId: String, request: UpdateMatchScoreRequest, submittedByName: String?): Boolean {
         val isReset = request.scoreTeam1 == 0 && request.scoreTeam2 == 0
+        logger.info("📝 [DoublesMatchRepo] updateScore($matchId, ${request.scoreTeam1}-${request.scoreTeam2}, isReset=$isReset)")
 
         val payload = buildJsonObject {
-            put("score_team1", request.scoreTeam1)
-            put("score_team2", request.scoreTeam2)
             if (isReset) {
-                // Clear submitter info and forfeit data when resetting
+                // Reset: set scores to null so match appears as "not played"
+                put("score_team1", kotlinx.serialization.json.JsonNull)
+                put("score_team2", kotlinx.serialization.json.JsonNull)
+                // Clear submitter info and forfeit data
                 put("submitted_by_name", kotlinx.serialization.json.JsonNull)
                 put("submitted_at", kotlinx.serialization.json.JsonNull)
                 put("is_forfeit", false)
                 put("forfeited_player_ids", kotlinx.serialization.json.JsonArray(emptyList()))
                 put("forfeit_recorded_by_uid", kotlinx.serialization.json.JsonNull)
                 put("forfeit_recorded_at", kotlinx.serialization.json.JsonNull)
-            } else if (submittedByName != null) {
-                put("submitted_by_name", submittedByName)
-                put("submitted_at", java.time.Instant.now().toString())
+            } else {
+                // Normal score update
+                put("score_team1", request.scoreTeam1)
+                put("score_team2", request.scoreTeam2)
+                if (submittedByName != null) {
+                    put("submitted_by_name", submittedByName)
+                    put("submitted_at", java.time.Instant.now().toString())
+                }
             }
         }
 
@@ -97,7 +104,12 @@ class DoublesMatchRepositoryImpl(
             setBody(payload.toString())
         }
 
-        return response.status.isSuccess()
+        val success = response.status.isSuccess()
+        logger.info("📝 [DoublesMatchRepo] updateScore response: status=${response.status}, success=$success")
+        if (!success) {
+            logger.error("❌ [DoublesMatchRepo] updateScore failed: ${response.bodyAsText()}")
+        }
+        return success
     }
 
     override suspend fun markForfeit(
