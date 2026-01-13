@@ -9,8 +9,6 @@ interface DoublesMatchRepository {
     suspend fun markForfeit(
         matchId: String,
         forfeitedPlayerIds: List<String>,
-        scoreTeam1: Int,
-        scoreTeam2: Int,
         recordedByUid: String
     ): Boolean
     suspend fun reverseForfeit(matchId: String, clearScores: Boolean): Boolean

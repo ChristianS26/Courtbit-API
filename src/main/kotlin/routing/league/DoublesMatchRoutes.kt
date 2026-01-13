@@ -141,6 +141,7 @@ fun Route.doublesMatchRoutes(
             }
 
             // Mark match as forfeit
+            // Points are assigned based on season forfeit settings, not rotation scores
             post("{id}/forfeit") {
                 val organizerUid = call.requireOrganizer() ?: return@post
 
@@ -165,22 +166,9 @@ fun Route.doublesMatchRoutes(
                     )
                 }
 
-                // Validate: one team must have 6 points (winner) or both 0 for double forfeit
-                val validScore = (request.scoreTeam1 == 6 && request.scoreTeam2 == 0) ||
-                                 (request.scoreTeam2 == 6 && request.scoreTeam1 == 0) ||
-                                 (request.scoreTeam1 == 0 && request.scoreTeam2 == 0) // double forfeit
-                if (!validScore) {
-                    return@post call.respond(
-                        HttpStatusCode.BadRequest,
-                        mapOf("error" to "Invalid forfeit score: winner gets 6-0, or 0-0 for double forfeit")
-                    )
-                }
-
                 val success = doublesMatchRepository.markForfeit(
                     matchId = matchId,
                     forfeitedPlayerIds = request.forfeitedPlayerIds,
-                    scoreTeam1 = request.scoreTeam1,
-                    scoreTeam2 = request.scoreTeam2,
                     recordedByUid = organizerUid
                 )
 

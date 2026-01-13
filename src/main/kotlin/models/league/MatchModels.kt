@@ -81,9 +81,7 @@ data class UserScoreRequest(
 
 @Serializable
 data class MarkForfeitRequest(
-    @SerialName("forfeited_player_ids") val forfeitedPlayerIds: List<String>,
-    @SerialName("score_team1") val scoreTeam1: Int,
-    @SerialName("score_team2") val scoreTeam2: Int
+    @SerialName("forfeited_player_ids") val forfeitedPlayerIds: List<String>
 )
 
 @Serializable

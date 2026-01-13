@@ -115,11 +115,11 @@ class DoublesMatchRepositoryImpl(
     override suspend fun markForfeit(
         matchId: String,
         forfeitedPlayerIds: List<String>,
-        scoreTeam1: Int,
-        scoreTeam2: Int,
         recordedByUid: String
     ): Boolean {
-        logger.info("🏳️ [DoublesMatchRepo] markForfeit($matchId, players=$forfeitedPlayerIds, score=$scoreTeam1-$scoreTeam2)")
+        // Points are assigned based on season forfeit settings during ranking calculation
+        // We only record which players forfeited here
+        logger.info("🏳️ [DoublesMatchRepo] markForfeit($matchId, players=$forfeitedPlayerIds)")
 
         val payload = buildJsonObject {
             put("is_forfeit", true)
@@ -128,8 +128,6 @@ class DoublesMatchRepositoryImpl(
             ))
             put("forfeit_recorded_by_uid", recordedByUid)
             put("forfeit_recorded_at", java.time.Instant.now().toString())
-            put("score_team1", scoreTeam1)
-            put("score_team2", scoreTeam2)
         }
 
         val response = client.patch("$apiUrl/doubles_matches") {
