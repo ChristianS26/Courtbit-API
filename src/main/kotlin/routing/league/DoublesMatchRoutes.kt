@@ -60,12 +60,14 @@ fun Route.doublesMatchRoutes(
                     )
                 }
 
-                // Validate scores (one team must have 6, the other 0-5)
-                if (!((request.scoreTeam1 == 6 && request.scoreTeam2 in 0..5) ||
-                      (request.scoreTeam2 == 6 && request.scoreTeam1 in 0..5))) {
+                // Validate scores (one team must have 6, the other 0-5) OR 0-0 for reset
+                val isValidScore = (request.scoreTeam1 == 6 && request.scoreTeam2 in 0..5) ||
+                                   (request.scoreTeam2 == 6 && request.scoreTeam1 in 0..5) ||
+                                   (request.scoreTeam1 == 0 && request.scoreTeam2 == 0) // Allow reset
+                if (!isValidScore) {
                     return@patch call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to "Invalid score: one team must have 6, the other 0-5")
+                        mapOf("error" to "Invalid score: one team must have 6 (other 0-5), or 0-0 to reset")
                     )
                 }
 
