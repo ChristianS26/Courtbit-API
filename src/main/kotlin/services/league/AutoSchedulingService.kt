@@ -96,6 +96,13 @@ class AutoSchedulingService(
         // 3.5. Build player ID to name map for better warnings
         val playerNameMap = buildPlayerNameMap(request.seasonId)
 
+        // 3.6. Get historical time slots for players (for variety scoring)
+        val playerTimeSlotHistory = if (request.preferTimeSlotVariety && request.matchdayNumber > 1) {
+            fetchPlayerTimeSlotHistory(request.seasonId, request.matchdayNumber)
+        } else {
+            emptyMap()
+        }
+
         // 4. Build available slots grid
         val availableSlots = mutableSetOf<Slot>()
         for (courtIndex in 1..numberOfCourts) {
@@ -143,18 +150,33 @@ class AutoSchedulingService(
             val recommendedCourts = group.recommendedCourts
 
             // Find best available slot where ALL players are available (score = 1.0)
-            // Prioritize recommended courts if configured
+            // Prioritize: 1) availability, 2) recommended courts, 3) time slot variety
             val perfectSlots = groupWithScores.slotScores.filter { slotScore ->
                 !usedSlots.contains(slotScore.slot) && slotScore.score == 1.0
             }
 
-            val perfectSlot = if (recommendedCourts != null && recommendedCourts.isNotEmpty()) {
-                // First try to find a perfect slot on a recommended court
-                perfectSlots.firstOrNull { it.slot.courtIndex in recommendedCourts }
-                    // Fall back to any perfect slot if no recommended court is available
-                    ?: perfectSlots.firstOrNull()
+            // Calculate variety scores for perfect slots if enabled
+            val slotsWithVariety = if (request.preferTimeSlotVariety && playerTimeSlotHistory.isNotEmpty()) {
+                perfectSlots.map { slotScore ->
+                    val varietyScore = calculateVarietyScore(
+                        group.playerIds,
+                        slotScore.slot.timeSlot,
+                        playerTimeSlotHistory
+                    )
+                    SlotWithVariety(slotScore, varietyScore)
+                }.sortedByDescending { it.varietyScore }
             } else {
-                perfectSlots.firstOrNull()
+                perfectSlots.map { SlotWithVariety(it, 1.0) }
+            }
+
+            val perfectSlot = if (recommendedCourts != null && recommendedCourts.isNotEmpty()) {
+                // First try to find a perfect slot on a recommended court with best variety
+                slotsWithVariety.firstOrNull { it.slotScore.slot.courtIndex in recommendedCourts }?.slotScore
+                    // Fall back to best variety slot regardless of court
+                    ?: slotsWithVariety.firstOrNull()?.slotScore
+            } else {
+                // Pick slot with best variety score
+                slotsWithVariety.firstOrNull()?.slotScore
             }
 
             if (perfectSlot != null) {
@@ -356,6 +378,78 @@ class AutoSchedulingService(
         return playerNameMap
     }
 
+    /**
+     * Fetch historical time slots for all players in the season from previous matchdays.
+     * Returns a map of playerId to set of time slots they've played at.
+     */
+    private suspend fun fetchPlayerTimeSlotHistory(
+        seasonId: String,
+        currentMatchdayNumber: Int
+    ): Map<String, Set<String>> {
+        val playerHistory = mutableMapOf<String, MutableSet<String>>()
+
+        // Get all categories for the season
+        val categories = categoryRepository.getBySeasonId(seasonId)
+
+        for (category in categories) {
+            // Fetch all match days before the current one with their day groups
+            for (matchdayNum in 1 until currentMatchdayNumber) {
+                val response = client.get("$apiUrl/match_days") {
+                    header("apikey", apiKey)
+                    header("Authorization", "Bearer $apiKey")
+                    parameter("select", "*,day_groups(*)")
+                    parameter("category_id", "eq.${category.id}")
+                    parameter("match_number", "eq.$matchdayNum")
+                }
+
+                if (response.status.isSuccess()) {
+                    val bodyText = response.bodyAsText()
+                    val matchDays = json.decodeFromString<List<AutoScheduleMatchDayRaw>>(bodyText)
+
+                    for (matchDay in matchDays) {
+                        for (dayGroup in matchDay.dayGroups) {
+                            // Only consider assigned groups (with time_slot)
+                            val timeSlot = dayGroup.timeSlot
+                            if (timeSlot != null) {
+                                // Record this time slot for each player in the group
+                                for (playerId in dayGroup.playerIds) {
+                                    playerHistory.getOrPut(playerId) { mutableSetOf() }.add(timeSlot)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return playerHistory
+    }
+
+    /**
+     * Calculate variety score for a group at a specific time slot.
+     * Returns 1.0 if all players are playing at a NEW time slot (best variety).
+     * Returns 0.0 if all players have already played at this time slot (no variety).
+     */
+    private fun calculateVarietyScore(
+        playerIds: List<String>,
+        timeSlot: String,
+        playerTimeSlotHistory: Map<String, Set<String>>
+    ): Double {
+        if (playerIds.isEmpty()) return 1.0
+
+        var playersWithNewTimeSlot = 0
+
+        for (playerId in playerIds) {
+            val previousTimeSlots = playerTimeSlotHistory[playerId]
+            if (previousTimeSlots == null || !previousTimeSlots.contains(timeSlot)) {
+                // Player hasn't played at this time slot before - this is variety!
+                playersWithNewTimeSlot++
+            }
+        }
+
+        return playersWithNewTimeSlot.toDouble() / playerIds.size
+    }
+
     // Helper data classes
     private data class Slot(
         val date: String,
@@ -387,6 +481,11 @@ class AutoSchedulingService(
     private data class AvailabilityResult(
         val score: Double,
         val unavailablePlayers: List<String>
+    )
+
+    private data class SlotWithVariety(
+        val slotScore: SlotScore,
+        val varietyScore: Double
     )
 }
 

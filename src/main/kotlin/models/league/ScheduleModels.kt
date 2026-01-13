@@ -108,7 +108,8 @@ data class AutoScheduleRequest(
     @SerialName("season_id") val seasonId: String,
     @SerialName("matchday_number") val matchdayNumber: Int,
     @SerialName("match_date") val matchDate: String,
-    @SerialName("respect_availability") val respectAvailability: Boolean = true
+    @SerialName("respect_availability") val respectAvailability: Boolean = true,
+    @SerialName("prefer_time_slot_variety") val preferTimeSlotVariety: Boolean = true
 )
 
 @Serializable
