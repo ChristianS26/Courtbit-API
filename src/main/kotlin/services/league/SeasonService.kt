@@ -23,6 +23,13 @@ class SeasonService(
         else Result.failure(IllegalStateException("Failed to create season"))
     }
 
+    /**
+     * Get all seasons with open registrations (for player discovery)
+     */
+    suspend fun getPublicSeasons(): List<SeasonResponse> {
+        return repository.getAll().filter { it.registrationsOpen }
+    }
+
     suspend fun deleteSeason(id: String, organizerId: String): Result<Boolean> {
         // Verify ownership
         val season = repository.getById(id)

@@ -14,7 +14,8 @@ data class LeaguePlayerResponse(
     @SerialName("is_waiting_list") val isWaitingList: Boolean = false,
     @SerialName("discount_amount") val discountAmount: Long = 0,
     @SerialName("discount_reason") val discountReason: String? = null,
-    @SerialName("created_at") val createdAt: String
+    @SerialName("created_at") val createdAt: String,
+    @SerialName("has_paid") val hasPaid: Boolean = false
 )
 
 @Serializable
@@ -36,4 +37,26 @@ data class UpdateLeaguePlayerRequest(
     @SerialName("category_id") val categoryId: String? = null,
     @SerialName("discount_amount") val discountAmount: Long? = null,
     @SerialName("discount_reason") val discountReason: String? = null
+)
+
+/**
+ * Request for player self-registration (player registers themselves)
+ * Unlike CreateLeaguePlayerRequest, this doesn't have discount fields
+ * and the userUid is extracted from the JWT token
+ */
+@Serializable
+data class SelfRegisterRequest(
+    @SerialName("category_id") val categoryId: String,
+    val name: String,
+    val email: String? = null,
+    @SerialName("phone_number") val phoneNumber: String? = null
+)
+
+/**
+ * Error response for self-registration failures
+ */
+@Serializable
+data class SelfRegisterError(
+    val error: String,
+    val code: String
 )

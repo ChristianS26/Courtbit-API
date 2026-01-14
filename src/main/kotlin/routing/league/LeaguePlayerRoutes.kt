@@ -1,6 +1,7 @@
 package routing.league
 
 import com.incodap.security.requireOrganizer
+import com.incodap.security.requireUserUid
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
@@ -13,6 +14,8 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.league.CreateLeaguePlayerRequest
+import models.league.SelfRegisterRequest
+import models.league.SelfRegisterError
 import models.league.UpdateLeaguePlayerRequest
 import repositories.league.LeaguePlayerRepository
 
@@ -50,7 +53,52 @@ fun Route.leaguePlayerRoutes(
         }
 
         authenticate("auth-jwt") {
-            // Create player
+            // Self-registration for players (user registers themselves)
+            post("/register") {
+                val userUid = call.requireUserUid() ?: return@post
+
+                val request = try {
+                    call.receive<SelfRegisterRequest>()
+                } catch (e: Exception) {
+                    return@post call.respond(
+                        HttpStatusCode.BadRequest,
+                        SelfRegisterError(
+                            error = "Invalid request: ${e.localizedMessage}",
+                            code = "INVALID_REQUEST"
+                        )
+                    )
+                }
+
+                val result = leaguePlayerRepository.selfRegister(userUid, request)
+
+                result.fold(
+                    onSuccess = { player ->
+                        call.respond(HttpStatusCode.Created, player)
+                    },
+                    onFailure = { error ->
+                        val (statusCode, errorCode) = when (error) {
+                            is IllegalArgumentException -> HttpStatusCode.NotFound to "NOT_FOUND"
+                            is IllegalStateException -> when {
+                                error.message?.contains("closed") == true ->
+                                    HttpStatusCode.Forbidden to "REGISTRATIONS_CLOSED"
+                                error.message?.contains("already registered") == true ->
+                                    HttpStatusCode.Conflict to "ALREADY_REGISTERED"
+                                else -> HttpStatusCode.BadRequest to "REGISTRATION_FAILED"
+                            }
+                            else -> HttpStatusCode.InternalServerError to "UNKNOWN_ERROR"
+                        }
+                        call.respond(
+                            statusCode,
+                            SelfRegisterError(
+                                error = error.message ?: "Registration failed",
+                                code = errorCode
+                            )
+                        )
+                    }
+                )
+            }
+
+            // Create player (organizer-only)
             post {
                 call.requireOrganizer() ?: return@post
 

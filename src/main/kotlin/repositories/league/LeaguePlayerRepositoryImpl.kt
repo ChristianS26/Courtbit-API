@@ -8,13 +8,15 @@ import io.ktor.http.*
 import kotlinx.serialization.json.Json
 import models.league.CreateLeaguePlayerRequest
 import models.league.LeaguePlayerResponse
+import models.league.SelfRegisterRequest
 import models.league.UpdateLeaguePlayerRequest
 
 class LeaguePlayerRepositoryImpl(
     private val client: HttpClient,
     private val json: Json,
     private val config: SupabaseConfig,
-    private val categoryRepository: LeagueCategoryRepository? = null
+    private val categoryRepository: LeagueCategoryRepository? = null,
+    private val seasonRepository: SeasonRepository? = null
 ) : LeaguePlayerRepository {
 
     private val apiUrl = config.apiUrl
@@ -144,6 +146,62 @@ class LeaguePlayerRepositoryImpl(
         } catch (e: Exception) {
             println("🧨 Supabase DELETE exception for league player $id: ${e.stackTraceToString()}")
             false
+        }
+    }
+
+    override suspend fun getByUserUidAndCategoryId(userUid: String, categoryId: String): LeaguePlayerResponse? {
+        val response = client.get("$apiUrl/league_players") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("user_uid", "eq.$userUid")
+            parameter("category_id", "eq.$categoryId")
+        }
+
+        return if (response.status.isSuccess()) {
+            val bodyText = response.bodyAsText()
+            val list = json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
+            list.firstOrNull()
+        } else {
+            println("❌ Error getByUserUidAndCategoryId: ${response.status}")
+            null
+        }
+    }
+
+    override suspend fun selfRegister(userUid: String, request: SelfRegisterRequest): Result<LeaguePlayerResponse> {
+        // 1. Get the category to validate it exists
+        val category = categoryRepository?.getById(request.categoryId)
+            ?: return Result.failure(IllegalArgumentException("Category not found"))
+
+        // 2. Get the season to check if registrations are open
+        val season = seasonRepository?.getById(category.seasonId)
+            ?: return Result.failure(IllegalArgumentException("Season not found"))
+
+        if (!season.registrationsOpen) {
+            return Result.failure(IllegalStateException("Registrations are closed for this season"))
+        }
+
+        // 3. Check if user is already registered in this category
+        val existingPlayer = getByUserUidAndCategoryId(userUid, request.categoryId)
+        if (existingPlayer != null) {
+            return Result.failure(IllegalStateException("You are already registered in this category"))
+        }
+
+        // 4. Create the player using the existing create method
+        val createRequest = CreateLeaguePlayerRequest(
+            categoryId = request.categoryId,
+            userUid = userUid,
+            name = request.name,
+            email = request.email,
+            phoneNumber = request.phoneNumber,
+            discountAmount = 0,
+            discountReason = null
+        )
+
+        val created = create(createRequest)
+        return if (created != null) {
+            Result.success(created)
+        } else {
+            Result.failure(IllegalStateException("Failed to create player registration"))
         }
     }
 }

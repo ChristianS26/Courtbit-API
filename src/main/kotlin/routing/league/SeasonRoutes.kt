@@ -29,6 +29,12 @@ fun Route.seasonRoutes(
             call.respond(HttpStatusCode.OK, seasons)
         }
 
+        // Public: Get seasons with open registrations (for player discovery)
+        get("/public") {
+            val seasons = seasonService.getPublicSeasons()
+            call.respond(HttpStatusCode.OK, seasons)
+        }
+
         // Public: Get by ID
         get("{id}") {
             val id = call.parameters["id"] ?: return@get call.respond(
