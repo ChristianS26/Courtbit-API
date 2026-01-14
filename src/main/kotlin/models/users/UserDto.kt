@@ -18,4 +18,5 @@ data class UserDto(
     @SerialName("country_iso") val countryIso: String? = null,
     @SerialName("email_verified") val emailVerified: Boolean? = false,
     @SerialName("shirt_size") val shirtSize: String? = null,
+    @SerialName("shirt_style") val shirtStyle: String? = null,
 )
