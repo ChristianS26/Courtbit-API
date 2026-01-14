@@ -91,6 +91,7 @@ class MasterScheduleService(
 
     /**
      * Fetch all players for a season (for bulk loading)
+     * Includes payment status for each player
      */
     private suspend fun fetchAllPlayersForSeason(seasonId: String): List<LeaguePlayerResponse> {
         // First get all category IDs for this season
@@ -100,7 +101,7 @@ class MasterScheduleService(
         if (categoryIds.isEmpty()) return emptyList()
 
         // Fetch all players from these categories
-        val response = client.get("$apiUrl/league_players") {
+        val playersResponse = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("select", "*")
@@ -108,11 +109,32 @@ class MasterScheduleService(
             parameter("is_waiting_list", "eq.false")
         }
 
-        return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
+        if (!playersResponse.status.isSuccess()) return emptyList()
+
+        val players = json.decodeFromString<List<LeaguePlayerRaw>>(playersResponse.bodyAsText())
+        val playerIds = players.map { it.id }
+
+        if (playerIds.isEmpty()) return players.map { it.toResponse(false) }
+
+        // Fetch payment status for all players in a single query
+        val paymentsResponse = client.get("$apiUrl/league_payments") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "league_player_id")
+            parameter("league_player_id", "in.(${playerIds.joinToString(",")})")
+            parameter("status", "eq.succeeded")
+        }
+
+        val paidPlayerIds = if (paymentsResponse.status.isSuccess()) {
+            val payments = json.decodeFromString<List<PaymentPlayerIdRaw>>(paymentsResponse.bodyAsText())
+            payments.map { it.leaguePlayerId }.toSet()
         } else {
-            emptyList()
+            emptySet()
+        }
+
+        // Map players with payment status
+        return players.map { player ->
+            player.toResponse(hasPaid = paidPlayerIds.contains(player.id))
         }
     }
 
@@ -277,4 +299,39 @@ private data class RotationWithMatchRaw(
 private data class DoublesMatchScoreRaw(
     @SerialName("score_team1") val scoreTeam1: Int?,
     @SerialName("score_team2") val scoreTeam2: Int?
+)
+
+// Raw player response for parsing before enriching with payment status
+@Serializable
+private data class LeaguePlayerRaw(
+    val id: String,
+    @SerialName("category_id") val categoryId: String,
+    @SerialName("user_uid") val userUid: String?,
+    val name: String,
+    val email: String?,
+    @SerialName("phone_number") val phoneNumber: String?,
+    @SerialName("is_waiting_list") val isWaitingList: Boolean = false,
+    @SerialName("discount_amount") val discountAmount: Long = 0,
+    @SerialName("discount_reason") val discountReason: String? = null,
+    @SerialName("created_at") val createdAt: String
+) {
+    fun toResponse(hasPaid: Boolean) = LeaguePlayerResponse(
+        id = id,
+        categoryId = categoryId,
+        userUid = userUid,
+        name = name,
+        email = email,
+        phoneNumber = phoneNumber,
+        isWaitingList = isWaitingList,
+        discountAmount = discountAmount,
+        discountReason = discountReason,
+        createdAt = createdAt,
+        hasPaid = hasPaid
+    )
+}
+
+// Raw payment response for checking which players have paid
+@Serializable
+private data class PaymentPlayerIdRaw(
+    @SerialName("league_player_id") val leaguePlayerId: String
 )

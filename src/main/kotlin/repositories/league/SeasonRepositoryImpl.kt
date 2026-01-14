@@ -169,6 +169,10 @@ data class SeasonRawResponse(
     @SerialName("allow_player_scores") val allowPlayerScores: Boolean = true,
     @SerialName("ranking_criteria") val rankingCriteria: List<String> = listOf("adjusted_points", "point_diff", "games_won"),
     @SerialName("max_points_per_game") val maxPointsPerGame: Int = 6,
+    @SerialName("forfeit_winner_points") val forfeitWinnerPoints: Int = 15,
+    @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int = 12,
+    @SerialName("requires_shirt_size") val requiresShirtSize: Boolean = false,
+    @SerialName("requires_shirt_name") val requiresShirtName: Boolean = false,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String
 ) {
@@ -186,6 +190,10 @@ data class SeasonRawResponse(
         allowPlayerScores = allowPlayerScores,
         rankingCriteria = rankingCriteria,
         maxPointsPerGame = maxPointsPerGame,
+        forfeitWinnerPoints = forfeitWinnerPoints,
+        forfeitLoserPoints = forfeitLoserPoints,
+        requiresShirtSize = requiresShirtSize,
+        requiresShirtName = requiresShirtName,
         createdAt = createdAt,
         updatedAt = updatedAt
     )
