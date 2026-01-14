@@ -2,6 +2,7 @@ package repositories.league
 
 import models.league.CreateLeaguePlayerRequest
 import models.league.LeaguePlayerResponse
+import models.league.MyLeagueRegistrationResponse
 import models.league.SelfRegisterRequest
 import models.league.UpdateLeaguePlayerRequest
 
@@ -19,4 +20,9 @@ interface LeaguePlayerRepository {
      * Returns the created player or null if validation fails
      */
     suspend fun selfRegister(userUid: String, request: SelfRegisterRequest): Result<LeaguePlayerResponse>
+
+    /**
+     * Get all league registrations for a user with season and category info
+     */
+    suspend fun getMyRegistrations(userUid: String): List<MyLeagueRegistrationResponse>
 }

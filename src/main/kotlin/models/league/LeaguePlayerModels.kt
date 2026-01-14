@@ -14,6 +14,8 @@ data class LeaguePlayerResponse(
     @SerialName("is_waiting_list") val isWaitingList: Boolean = false,
     @SerialName("discount_amount") val discountAmount: Long = 0,
     @SerialName("discount_reason") val discountReason: String? = null,
+    @SerialName("shirt_size") val shirtSize: String? = null,
+    @SerialName("shirt_name") val shirtName: String? = null,
     @SerialName("created_at") val createdAt: String,
     @SerialName("has_paid") val hasPaid: Boolean = false
 )
@@ -26,7 +28,9 @@ data class CreateLeaguePlayerRequest(
     val email: String?,
     @SerialName("phone_number") val phoneNumber: String?,
     @SerialName("discount_amount") val discountAmount: Long = 0,
-    @SerialName("discount_reason") val discountReason: String? = null
+    @SerialName("discount_reason") val discountReason: String? = null,
+    @SerialName("shirt_size") val shirtSize: String? = null,
+    @SerialName("shirt_name") val shirtName: String? = null
 )
 
 @Serializable
@@ -36,7 +40,9 @@ data class UpdateLeaguePlayerRequest(
     @SerialName("phone_number") val phoneNumber: String? = null,
     @SerialName("category_id") val categoryId: String? = null,
     @SerialName("discount_amount") val discountAmount: Long? = null,
-    @SerialName("discount_reason") val discountReason: String? = null
+    @SerialName("discount_reason") val discountReason: String? = null,
+    @SerialName("shirt_size") val shirtSize: String? = null,
+    @SerialName("shirt_name") val shirtName: String? = null
 )
 
 /**
@@ -49,7 +55,9 @@ data class SelfRegisterRequest(
     @SerialName("category_id") val categoryId: String,
     val name: String,
     val email: String? = null,
-    @SerialName("phone_number") val phoneNumber: String? = null
+    @SerialName("phone_number") val phoneNumber: String? = null,
+    @SerialName("shirt_size") val shirtSize: String? = null,
+    @SerialName("shirt_name") val shirtName: String? = null
 )
 
 /**
@@ -60,3 +68,34 @@ data class SelfRegisterError(
     val error: String,
     val code: String
 )
+
+/**
+ * Response for user's league registrations with season and category info
+ */
+@Serializable
+data class MyLeagueRegistrationResponse(
+    @SerialName("player_id") val playerId: String,
+    @SerialName("is_waiting_list") val isWaitingList: Boolean,
+    @SerialName("has_paid") val hasPaid: Boolean,
+    @SerialName("registered_at") val registeredAt: String,
+    val season: SeasonInfo,
+    val category: CategoryInfo
+) {
+    @Serializable
+    data class SeasonInfo(
+        val id: String,
+        val name: String,
+        @SerialName("start_date") val startDate: String,
+        @SerialName("end_date") val endDate: String?,
+        @SerialName("is_active") val isActive: Boolean,
+        @SerialName("organizer_name") val organizerName: String?
+    )
+
+    @Serializable
+    data class CategoryInfo(
+        val id: String,
+        val name: String,
+        val level: String,
+        @SerialName("color_hex") val colorHex: String
+    )
+}

@@ -21,6 +21,8 @@ data class SeasonResponse(
     @SerialName("registration_fee") val registrationFee: Long = 0,
     @SerialName("forfeit_winner_points") val forfeitWinnerPoints: Int = 15,
     @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int = 12,
+    @SerialName("requires_shirt_size") val requiresShirtSize: Boolean = false,
+    @SerialName("requires_shirt_name") val requiresShirtName: Boolean = false,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String
 )
@@ -40,7 +42,9 @@ data class CreateSeasonRequest(
     @SerialName("max_points_per_game") val maxPointsPerGame: Int? = null,
     @SerialName("registration_fee") val registrationFee: Long = 0,
     @SerialName("forfeit_winner_points") val forfeitWinnerPoints: Int = 15,
-    @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int = 12
+    @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int = 12,
+    @SerialName("requires_shirt_size") val requiresShirtSize: Boolean = false,
+    @SerialName("requires_shirt_name") val requiresShirtName: Boolean = false
 )
 
 @Serializable
@@ -55,5 +59,7 @@ data class UpdateSeasonRequest(
     @SerialName("max_points_per_game") val maxPointsPerGame: Int? = null,
     @SerialName("registration_fee") val registrationFee: Long? = null,
     @SerialName("forfeit_winner_points") val forfeitWinnerPoints: Int? = null,
-    @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int? = null
+    @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int? = null,
+    @SerialName("requires_shirt_size") val requiresShirtSize: Boolean? = null,
+    @SerialName("requires_shirt_name") val requiresShirtName: Boolean? = null
 )

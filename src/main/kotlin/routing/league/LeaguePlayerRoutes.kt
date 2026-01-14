@@ -53,6 +53,14 @@ fun Route.leaguePlayerRoutes(
         }
 
         authenticate("auth-jwt") {
+            // Get my league registrations (user's own registrations)
+            get("/me/registrations") {
+                val userUid = call.requireUserUid() ?: return@get
+
+                val registrations = leaguePlayerRepository.getMyRegistrations(userUid)
+                call.respond(HttpStatusCode.OK, registrations)
+            }
+
             // Self-registration for players (user registers themselves)
             post("/register") {
                 val userUid = call.requireUserUid() ?: return@post
