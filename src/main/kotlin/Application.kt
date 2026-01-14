@@ -41,6 +41,7 @@ fun Application.module() {
             OrganizerModule,
             OrganizationTeamModule,
             LeagueModule,
+            ShirtSizeModule,
         )
     }
 

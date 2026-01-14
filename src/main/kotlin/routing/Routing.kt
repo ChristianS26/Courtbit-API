@@ -45,6 +45,7 @@ import routing.organizer.organizerRoutes
 import routing.payments.PaymentRoutes
 import routing.ranking.RankingRoutes
 import routing.remoteconfig.remoteConfigRoutes
+import routing.shirtSizeRoutes
 import services.auth.AuthService
 import services.email.EmailService
 import services.league.AutoSchedulingService
@@ -116,6 +117,9 @@ fun Application.configureRouting() {
 
             // Push notifications
             pushRoutes(get())
+
+            // Shirt sizes catalog (public)
+            shirtSizeRoutes()
 
             // League system
             seasonRoutes(get<SeasonService>(), get<SeasonRepository>())
