@@ -126,7 +126,7 @@ fun Route.scheduleRoutes(
                     }
                 }
 
-                // Update defaults
+                // Update defaults (upsert: creates if not exists)
                 patch("/season/{seasonId}") {
                     val uid = call.requireOrganizer() ?: return@patch
                     val seasonId = call.parameters["seasonId"] ?: return@patch call.respond(
@@ -156,14 +156,35 @@ fun Route.scheduleRoutes(
                         )
                     }
 
-                    val updated = defaultsRepository.update(seasonId, request)
-                    if (updated) {
-                        call.respond(HttpStatusCode.OK, mapOf("success" to true))
-                    } else {
-                        call.respond(
-                            HttpStatusCode.InternalServerError,
-                            mapOf("error" to "Failed to update defaults")
+                    // Check if defaults exist - if not, create them (upsert behavior)
+                    val existing = defaultsRepository.getBySeasonId(seasonId)
+                    if (existing == null) {
+                        // Create new defaults with the provided values (or defaults if not provided)
+                        val createRequest = CreateSeasonScheduleDefaultsRequest(
+                            seasonId = seasonId,
+                            defaultNumberOfCourts = request.defaultNumberOfCourts ?: 4,
+                            defaultTimeSlots = request.defaultTimeSlots ?: listOf("18:30:00", "19:45:00", "21:00:00")
                         )
+                        val created = defaultsRepository.create(createRequest)
+                        if (created != null) {
+                            call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                        } else {
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to "Failed to create defaults")
+                            )
+                        }
+                    } else {
+                        // Update existing defaults
+                        val updated = defaultsRepository.update(seasonId, request)
+                        if (updated) {
+                            call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                        } else {
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to "Failed to update defaults")
+                            )
+                        }
                     }
                 }
             }

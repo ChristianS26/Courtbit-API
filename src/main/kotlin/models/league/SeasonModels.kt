@@ -61,5 +61,7 @@ data class UpdateSeasonRequest(
     @SerialName("forfeit_winner_points") val forfeitWinnerPoints: Int? = null,
     @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int? = null,
     @SerialName("requires_shirt_size") val requiresShirtSize: Boolean? = null,
-    @SerialName("requires_shirt_name") val requiresShirtName: Boolean? = null
+    @SerialName("requires_shirt_name") val requiresShirtName: Boolean? = null,
+    @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
+    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null
 )
