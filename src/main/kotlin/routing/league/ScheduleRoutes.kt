@@ -7,6 +7,7 @@ import io.ktor.server.auth.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import models.league.AutoSchedulePreviewRequest
 import models.league.AutoScheduleRequest
 import models.league.CreateMatchdayScheduleOverrideRequest
 import models.league.CreateSeasonScheduleDefaultsRequest
@@ -407,6 +408,46 @@ fun Route.scheduleRoutes(
             }
 
             // Auto-scheduling
+            // Preview auto-scheduling (dry-run)
+            route("/preview") {
+                post {
+                    val uid = call.requireOrganizer() ?: return@post
+
+                    val request = try {
+                        call.receiveWithContentTypeCheck<AutoSchedulePreviewRequest>()
+                    } catch (e: ContentTypeException) {
+                        return@post call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to e.message)
+                        )
+                    } catch (e: Exception) {
+                        return@post call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to "Invalid request: ${e.localizedMessage}")
+                        )
+                    }
+
+                    // Verify season ownership
+                    val season = seasonRepository.getById(request.seasonId)
+                    if (season == null) {
+                        return@post call.respond(
+                            HttpStatusCode.NotFound,
+                            mapOf("error" to "Season not found")
+                        )
+                    }
+
+                    try {
+                        val result = autoSchedulingService.preview(request)
+                        call.respond(HttpStatusCode.OK, result)
+                    } catch (e: Exception) {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to "Preview failed: ${e.localizedMessage}")
+                        )
+                    }
+                }
+            }
+
             route("/auto-schedule") {
                 // Auto-schedule all unassigned groups for a matchday
                 post {

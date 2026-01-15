@@ -74,7 +74,15 @@ class AutoSchedulingService(
         }
 
         // 2. Get all unassigned day groups for this matchday across all categories
-        val unassignedGroups = fetchUnassignedGroups(request.seasonId, request.matchdayNumber)
+        val allUnassignedGroups = fetchUnassignedGroups(request.seasonId, request.matchdayNumber)
+
+        // Filter by categoryIds if specified
+        val unassignedGroups = if (request.categoryIds != null && request.categoryIds.isNotEmpty()) {
+            allUnassignedGroups.filter { it.categoryId in request.categoryIds }
+        } else {
+            allUnassignedGroups
+        }
+
         if (unassignedGroups.isEmpty()) {
             return AutoScheduleResponse(
                 totalGroups = 0,
@@ -298,6 +306,166 @@ class AutoSchedulingService(
             skippedGroups = skippedGroups,
             assignments = assignments,
             warnings = warnings
+        )
+    }
+
+    /**
+     * Preview auto-scheduling without making any changes (dry-run).
+     * Returns availability analysis for the matchday.
+     */
+    suspend fun preview(request: AutoSchedulePreviewRequest): AutoSchedulePreviewResponse {
+        // 1. Get schedule configuration (defaults + overrides)
+        val defaults = defaultsRepository.getBySeasonId(request.seasonId)
+        if (defaults == null) {
+            return AutoSchedulePreviewResponse(
+                totalGroups = 0,
+                groupsFullAvailability = 0,
+                groupsPartialAvailability = 0,
+                groupsNoAvailability = 0,
+                timeSlotAvailability = emptyList(),
+                categoryPreviews = emptyList()
+            )
+        }
+
+        val override = overridesRepository.getBySeasonAndMatchday(request.seasonId, request.matchdayNumber)
+        val timeSlots = override?.timeSlotsOverride ?: defaults.defaultTimeSlots
+
+        if (timeSlots.isEmpty()) {
+            return AutoSchedulePreviewResponse(
+                totalGroups = 0,
+                groupsFullAvailability = 0,
+                groupsPartialAvailability = 0,
+                groupsNoAvailability = 0,
+                timeSlotAvailability = emptyList(),
+                categoryPreviews = emptyList()
+            )
+        }
+
+        // 2. Get all unassigned day groups for this matchday
+        val allUnassignedGroups = fetchUnassignedGroups(request.seasonId, request.matchdayNumber)
+
+        // Filter by categoryIds if specified
+        val unassignedGroups = if (request.categoryIds != null && request.categoryIds.isNotEmpty()) {
+            allUnassignedGroups.filter { it.categoryId in request.categoryIds }
+        } else {
+            allUnassignedGroups
+        }
+
+        if (unassignedGroups.isEmpty()) {
+            return AutoSchedulePreviewResponse(
+                totalGroups = 0,
+                groupsFullAvailability = 0,
+                groupsPartialAvailability = 0,
+                groupsNoAvailability = 0,
+                timeSlotAvailability = emptyList(),
+                categoryPreviews = emptyList()
+            )
+        }
+
+        // 3. Get player availability data for this matchday
+        val playerAvailability = availabilityRepository.getBySeasonAndMatchday(request.seasonId, request.matchdayNumber)
+            .groupBy { it.playerId }
+
+        // 4. Collect all unique player IDs across all groups
+        val allPlayerIds = unassignedGroups.flatMap { it.playerIds }.toSet()
+
+        // 5. Calculate time slot availability
+        val timeSlotAvailabilityList = timeSlots.map { timeSlot ->
+            var availableCount = 0
+            for (playerId in allPlayerIds) {
+                val availability = playerAvailability[playerId]
+                if (availability == null || availability.isEmpty()) {
+                    // No availability set - assume available
+                    availableCount++
+                } else {
+                    val matchdayAvailability = availability.firstOrNull()
+                    if (matchdayAvailability != null && matchdayAvailability.availableTimeSlots.contains(timeSlot)) {
+                        availableCount++
+                    }
+                }
+            }
+            val percentage = if (allPlayerIds.isNotEmpty()) {
+                (availableCount.toDouble() / allPlayerIds.size) * 100
+            } else {
+                0.0
+            }
+            TimeSlotAvailabilityInfo(
+                timeSlot = timeSlot,
+                availablePlayers = availableCount,
+                totalPlayers = allPlayerIds.size,
+                availabilityPercentage = percentage
+            )
+        }
+
+        // 6. Calculate per-group availability and categorize
+        var groupsFullAvailability = 0
+        var groupsPartialAvailability = 0
+        var groupsNoAvailability = 0
+
+        // Group by category for category previews
+        val categoryGroupMap = unassignedGroups.groupBy { it.categoryId to it.categoryName }
+        val categoryPreviews = mutableListOf<CategoryPreviewInfo>()
+
+        for ((categoryKey, groups) in categoryGroupMap) {
+            val (categoryId, categoryName) = categoryKey
+            var catFullAvail = 0
+            var catPartialAvail = 0
+            var catNoAvail = 0
+
+            for (group in groups) {
+                // Check if this group has ANY time slot where all players are available
+                var hasFullSlot = false
+                var hasPartialSlot = false
+
+                for (timeSlot in timeSlots) {
+                    val result = calculateAvailabilityScore(group.playerIds, playerAvailability, timeSlot)
+                    if (result.score == 1.0) {
+                        hasFullSlot = true
+                        break
+                    } else if (result.score > 0.0) {
+                        hasPartialSlot = true
+                    }
+                }
+
+                if (hasFullSlot) {
+                    groupsFullAvailability++
+                    catFullAvail++
+                } else if (hasPartialSlot) {
+                    groupsPartialAvailability++
+                    catPartialAvail++
+                } else {
+                    groupsNoAvailability++
+                    catNoAvail++
+                }
+            }
+
+            val catTotalGroups = groups.size
+            val catAvailPercentage = if (catTotalGroups > 0) {
+                ((catFullAvail + catPartialAvail).toDouble() / catTotalGroups) * 100
+            } else {
+                0.0
+            }
+
+            categoryPreviews.add(
+                CategoryPreviewInfo(
+                    categoryId = categoryId,
+                    categoryName = categoryName,
+                    totalGroups = catTotalGroups,
+                    groupsFullAvailability = catFullAvail,
+                    groupsPartialAvailability = catPartialAvail,
+                    groupsNoAvailability = catNoAvail,
+                    availabilityPercentage = catAvailPercentage
+                )
+            )
+        }
+
+        return AutoSchedulePreviewResponse(
+            totalGroups = unassignedGroups.size,
+            groupsFullAvailability = groupsFullAvailability,
+            groupsPartialAvailability = groupsPartialAvailability,
+            groupsNoAvailability = groupsNoAvailability,
+            timeSlotAvailability = timeSlotAvailabilityList,
+            categoryPreviews = categoryPreviews.sortedBy { it.categoryName }
         )
     }
 

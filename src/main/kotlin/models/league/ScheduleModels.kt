@@ -110,7 +110,46 @@ data class AutoScheduleRequest(
     @SerialName("match_date") val matchDate: String,
     @SerialName("respect_availability") val respectAvailability: Boolean = true,
     @SerialName("prefer_time_slot_variety") val preferTimeSlotVariety: Boolean = true,
-    @SerialName("strict_mode") val strictMode: Boolean = false // When false (flexible), schedule all groups even with conflicts
+    @SerialName("strict_mode") val strictMode: Boolean = false, // When false (flexible), schedule all groups even with conflicts
+    @SerialName("category_ids") val categoryIds: List<String>? = null // Optional: only schedule specific categories
+)
+
+// Preview request - same as AutoScheduleRequest but for dry-run
+@Serializable
+data class AutoSchedulePreviewRequest(
+    @SerialName("season_id") val seasonId: String,
+    @SerialName("matchday_number") val matchdayNumber: Int,
+    @SerialName("category_ids") val categoryIds: List<String>? = null // Optional: only preview specific categories
+)
+
+// Preview response with availability breakdown
+@Serializable
+data class AutoSchedulePreviewResponse(
+    @SerialName("total_groups") val totalGroups: Int,
+    @SerialName("groups_full_availability") val groupsFullAvailability: Int,
+    @SerialName("groups_partial_availability") val groupsPartialAvailability: Int,
+    @SerialName("groups_no_availability") val groupsNoAvailability: Int,
+    @SerialName("time_slot_availability") val timeSlotAvailability: List<TimeSlotAvailabilityInfo>,
+    @SerialName("category_previews") val categoryPreviews: List<CategoryPreviewInfo>
+)
+
+@Serializable
+data class TimeSlotAvailabilityInfo(
+    @SerialName("time_slot") val timeSlot: String,
+    @SerialName("available_players") val availablePlayers: Int,
+    @SerialName("total_players") val totalPlayers: Int,
+    @SerialName("availability_percentage") val availabilityPercentage: Double
+)
+
+@Serializable
+data class CategoryPreviewInfo(
+    @SerialName("category_id") val categoryId: String,
+    @SerialName("category_name") val categoryName: String,
+    @SerialName("total_groups") val totalGroups: Int,
+    @SerialName("groups_full_availability") val groupsFullAvailability: Int,
+    @SerialName("groups_partial_availability") val groupsPartialAvailability: Int,
+    @SerialName("groups_no_availability") val groupsNoAvailability: Int,
+    @SerialName("availability_percentage") val availabilityPercentage: Double
 )
 
 @Serializable
