@@ -31,10 +31,14 @@ class LeaguePlayerRepositoryImpl(
     private val apiUrl = config.apiUrl
     private val apiKey = config.apiKey
 
+    // Select query with user join - fetches CourtBit user profile when user_uid is set
+    private val selectWithUser = "*, user:user_uid(uid, first_name, last_name, photo_url)"
+
     override suspend fun getAll(): List<LeaguePlayerResponse> {
         val response = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
+            parameter("select", selectWithUser)
             parameter("order", "name.asc")
         }
 
@@ -51,6 +55,7 @@ class LeaguePlayerRepositoryImpl(
         val response = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
+            parameter("select", selectWithUser)
             parameter("category_id", "eq.$categoryId")
             parameter("order", "name.asc")
         }
@@ -68,6 +73,7 @@ class LeaguePlayerRepositoryImpl(
         val response = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
+            parameter("select", selectWithUser)
             parameter("id", "eq.$id")
         }
 
@@ -166,6 +172,7 @@ class LeaguePlayerRepositoryImpl(
         val response = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
+            parameter("select", selectWithUser)
             parameter("user_uid", "eq.$userUid")
             parameter("category_id", "eq.$categoryId")
         }

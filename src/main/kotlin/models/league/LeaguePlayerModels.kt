@@ -3,6 +3,19 @@ package models.league
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+/**
+ * Embedded user profile for LeaguePlayer responses.
+ * Only populated when the player has a userUid (is a CourtBit user).
+ * This data is fetched via JOIN from the users table, so it's always in sync.
+ */
+@Serializable
+data class LeaguePlayerUser(
+    val uid: String,
+    @SerialName("first_name") val firstName: String,
+    @SerialName("last_name") val lastName: String,
+    @SerialName("photo_url") val photoUrl: String? = null
+)
+
 @Serializable
 data class LeaguePlayerResponse(
     val id: String,
@@ -17,7 +30,9 @@ data class LeaguePlayerResponse(
     @SerialName("shirt_size") val shirtSize: String? = null,
     @SerialName("shirt_name") val shirtName: String? = null,
     @SerialName("created_at") val createdAt: String,
-    @SerialName("has_paid") val hasPaid: Boolean = false
+    @SerialName("has_paid") val hasPaid: Boolean = false,
+    // Embedded CourtBit user profile (null for manually-entered players)
+    val user: LeaguePlayerUser? = null
 )
 
 @Serializable
