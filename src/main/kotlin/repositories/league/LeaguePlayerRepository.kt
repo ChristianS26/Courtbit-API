@@ -1,8 +1,11 @@
 package repositories.league
 
+import models.league.CanDeletePlayerResponse
 import models.league.CreateLeaguePlayerRequest
 import models.league.LeaguePlayerResponse
 import models.league.MyLeagueRegistrationResponse
+import models.league.ReplacePlayerRequest
+import models.league.ReplacePlayerResponse
 import models.league.SelfRegisterRequest
 import models.league.UpdateLeaguePlayerRequest
 
@@ -25,4 +28,17 @@ interface LeaguePlayerRepository {
      * Get all league registrations for a user with season and category info
      */
     suspend fun getMyRegistrations(userUid: String): List<MyLeagueRegistrationResponse>
+
+    /**
+     * Check if a player can be safely deleted
+     * A player cannot be deleted if they are assigned to any doubles matches
+     */
+    suspend fun canDelete(playerId: String): CanDeletePlayerResponse
+
+    /**
+     * Replace a player with a new player
+     * Updates all day_groups.player_ids and doubles_matches player references
+     * Deletes the old player after successful replacement
+     */
+    suspend fun replacePlayer(oldPlayerId: String, request: ReplacePlayerRequest): Result<ReplacePlayerResponse>
 }

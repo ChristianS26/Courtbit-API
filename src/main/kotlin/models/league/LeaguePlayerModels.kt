@@ -99,3 +99,42 @@ data class MyLeagueRegistrationResponse(
         @SerialName("color_hex") val colorHex: String
     )
 }
+
+// MARK: - Replace Player
+
+/**
+ * Request to replace an existing player with a new player
+ * The new player inherits all schedule assignments from the old player
+ */
+@Serializable
+data class ReplacePlayerRequest(
+    @SerialName("user_uid") val userUid: String? = null,
+    val name: String,
+    val email: String? = null,
+    @SerialName("phone_number") val phoneNumber: String? = null,
+    @SerialName("shirt_size") val shirtSize: String? = null,
+    @SerialName("shirt_name") val shirtName: String? = null
+)
+
+/**
+ * Response after replacing a player
+ * Includes the new player and counts of affected records
+ */
+@Serializable
+data class ReplacePlayerResponse(
+    @SerialName("new_player") val newPlayer: LeaguePlayerResponse,
+    @SerialName("affected_day_groups") val affectedDayGroups: Int,
+    @SerialName("affected_matches") val affectedMatches: Int
+)
+
+// MARK: - Can Delete Player
+
+/**
+ * Response for checking if a player can be safely deleted
+ */
+@Serializable
+data class CanDeletePlayerResponse(
+    @SerialName("can_delete") val canDelete: Boolean,
+    @SerialName("has_matches") val hasMatches: Boolean,
+    @SerialName("match_count") val matchCount: Int
+)

@@ -14,6 +14,7 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.league.CreateLeaguePlayerRequest
+import models.league.ReplacePlayerRequest
 import models.league.SelfRegisterRequest
 import models.league.SelfRegisterError
 import models.league.UpdateLeaguePlayerRequest
@@ -149,6 +150,54 @@ fun Route.leaguePlayerRoutes(
                         mapOf("error" to "Failed to update")
                     )
                 }
+            }
+
+            // Check if player can be deleted
+            get("{id}/can-delete") {
+                call.requireOrganizer() ?: return@get
+
+                val id = call.parameters["id"] ?: return@get call.respond(
+                    HttpStatusCode.BadRequest, mapOf("error" to "Missing player ID")
+                )
+
+                val canDeleteResponse = leaguePlayerRepository.canDelete(id)
+                call.respond(HttpStatusCode.OK, canDeleteResponse)
+            }
+
+            // Replace player with a new player
+            post("{id}/replace") {
+                call.requireOrganizer() ?: return@post
+
+                val id = call.parameters["id"] ?: return@post call.respond(
+                    HttpStatusCode.BadRequest, mapOf("error" to "Missing player ID")
+                )
+
+                val request = try {
+                    call.receive<ReplacePlayerRequest>()
+                } catch (e: Exception) {
+                    return@post call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "Invalid request: ${e.localizedMessage}")
+                    )
+                }
+
+                val result = leaguePlayerRepository.replacePlayer(id, request)
+
+                result.fold(
+                    onSuccess = { response ->
+                        call.respond(HttpStatusCode.OK, response)
+                    },
+                    onFailure = { error ->
+                        val statusCode = when (error) {
+                            is IllegalArgumentException -> HttpStatusCode.NotFound
+                            else -> HttpStatusCode.InternalServerError
+                        }
+                        call.respond(
+                            statusCode,
+                            mapOf("error" to (error.message ?: "Failed to replace player"))
+                        )
+                    }
+                )
             }
 
             // Delete player
