@@ -138,8 +138,8 @@ class AutoSchedulingService(
         )
 
         // 7. Assign groups using greedy algorithm with MRV ordering
-        // IMPORTANT: Only assign if ALL 4 players are available (score = 1.0)
-        // Groups without full availability are left unassigned for manual scheduling
+        // In STRICT mode: Only assign if ALL 4 players are available (score = 1.0)
+        // In FLEXIBLE mode: Assign all groups, warn about conflicts
         val assignments = mutableListOf<GroupAssignment>()
         val usedSlots = mutableSetOf<Slot>()
         var skippedGroups = 0
@@ -149,14 +149,17 @@ class AutoSchedulingService(
             val group = groupWithScores.group
             val recommendedCourts = group.recommendedCourts
 
-            // Find best available slot where ALL players are available (score = 1.0)
-            // Prioritize: 1) availability, 2) recommended courts, 3) time slot variety
-            val perfectSlots = groupWithScores.slotScores.filter { slotScore ->
-                !usedSlots.contains(slotScore.slot) && slotScore.score == 1.0
+            // Find available slots, prioritizing perfect availability (score = 1.0)
+            val availableSlots = groupWithScores.slotScores.filter { slotScore ->
+                !usedSlots.contains(slotScore.slot)
             }
 
+            // Separate perfect slots (100% availability) from partial slots
+            val perfectSlots = availableSlots.filter { it.score == 1.0 }
+            val partialSlots = availableSlots.filter { it.score < 1.0 }.sortedByDescending { it.score }
+
             // Calculate variety scores for perfect slots if enabled
-            val slotsWithVariety = if (request.preferTimeSlotVariety && playerTimeSlotHistory.isNotEmpty()) {
+            val perfectSlotsWithVariety = if (request.preferTimeSlotVariety && playerTimeSlotHistory.isNotEmpty()) {
                 perfectSlots.map { slotScore ->
                     val varietyScore = calculateVarietyScore(
                         group.playerIds,
@@ -169,14 +172,15 @@ class AutoSchedulingService(
                 perfectSlots.map { SlotWithVariety(it, 1.0) }
             }
 
+            // Try to find a perfect slot first
             val perfectSlot = if (recommendedCourts != null && recommendedCourts.isNotEmpty()) {
                 // First try to find a perfect slot on a recommended court with best variety
-                slotsWithVariety.firstOrNull { it.slotScore.slot.courtIndex in recommendedCourts }?.slotScore
+                perfectSlotsWithVariety.firstOrNull { it.slotScore.slot.courtIndex in recommendedCourts }?.slotScore
                     // Fall back to best variety slot regardless of court
-                    ?: slotsWithVariety.firstOrNull()?.slotScore
+                    ?: perfectSlotsWithVariety.firstOrNull()?.slotScore
             } else {
                 // Pick slot with best variety score
-                slotsWithVariety.firstOrNull()?.slotScore
+                perfectSlotsWithVariety.firstOrNull()?.slotScore
             }
 
             if (perfectSlot != null) {
@@ -206,14 +210,61 @@ class AutoSchedulingService(
                     skippedGroups++
                     skippedGroupDetails.add("Grupo ${group.groupNumber} (${group.categoryName}): Error al guardar asignación")
                 }
+            } else if (!request.strictMode && partialSlots.isNotEmpty()) {
+                // FLEXIBLE MODE: Assign even with partial availability
+                // Pick the best partial slot (highest availability score)
+                val bestPartialSlot = if (recommendedCourts != null && recommendedCourts.isNotEmpty()) {
+                    partialSlots.firstOrNull { it.slot.courtIndex in recommendedCourts }
+                        ?: partialSlots.first()
+                } else {
+                    partialSlots.first()
+                }
+
+                val updateRequest = UpdateDayGroupAssignmentRequest(
+                    matchDate = bestPartialSlot.slot.date,
+                    timeSlot = bestPartialSlot.slot.timeSlot,
+                    courtIndex = bestPartialSlot.slot.courtIndex
+                )
+
+                val updated = dayGroupRepository.updateAssignment(group.id, updateRequest)
+                if (updated) {
+                    usedSlots.add(bestPartialSlot.slot)
+
+                    // Map unavailable player IDs to names for the response
+                    val unavailableNames = bestPartialSlot.unavailablePlayers
+                        .map { playerId -> playerNameMap[playerId] ?: playerId }
+
+                    assignments.add(
+                        GroupAssignment(
+                            dayGroupId = group.id,
+                            groupNumber = group.groupNumber,
+                            categoryName = group.categoryName,
+                            matchDate = bestPartialSlot.slot.date,
+                            timeSlot = bestPartialSlot.slot.timeSlot,
+                            courtIndex = bestPartialSlot.slot.courtIndex,
+                            availabilityScore = bestPartialSlot.score,
+                            unavailablePlayers = unavailableNames
+                        )
+                    )
+
+                    // Add warning about the conflict
+                    val unavailableWarning = unavailableNames.joinToString(", ")
+                    val availabilityPercent = (bestPartialSlot.score * 100).toInt()
+                    skippedGroupDetails.add(
+                        "⚠️ Grupo ${group.groupNumber} (${group.categoryName}): " +
+                        "Asignado con ${availabilityPercent}% disponibilidad. " +
+                        "No disponibles: $unavailableWarning"
+                    )
+                } else {
+                    skippedGroups++
+                    skippedGroupDetails.add("Grupo ${group.groupNumber} (${group.categoryName}): Error al guardar asignación")
+                }
             } else {
-                // No slot with 100% availability - leave unassigned for manual scheduling
+                // STRICT MODE or no slots available: Leave unassigned for manual scheduling
                 skippedGroups++
 
                 // Find the best partial slot to explain why it couldn't be assigned
-                val bestPartialSlot = groupWithScores.slotScores
-                    .filter { !usedSlots.contains(it.slot) }
-                    .maxByOrNull { it.score }
+                val bestPartialSlot = partialSlots.firstOrNull()
 
                 if (bestPartialSlot != null && bestPartialSlot.unavailablePlayers.isNotEmpty()) {
                     val unavailableNames = bestPartialSlot.unavailablePlayers
@@ -224,7 +275,7 @@ class AutoSchedulingService(
                         "Grupo ${group.groupNumber} (${group.categoryName}): " +
                         "Sin horario común disponible. Jugadores no disponibles: $unavailableNames"
                     )
-                } else if (groupWithScores.slotScores.all { usedSlots.contains(it.slot) }) {
+                } else if (availableSlots.isEmpty()) {
                     skippedGroupDetails.add(
                         "Grupo ${group.groupNumber} (${group.categoryName}): " +
                         "Todos los horarios ya están ocupados"

@@ -65,11 +65,14 @@ fun Route.authRoutes(authService: AuthService, emailService: EmailService) {
         authenticate("auth-jwt") {
             get("/search-users") {
                 val query = call.request.queryParameters["query"].orEmpty()
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+                val offset = call.request.queryParameters["offset"]?.toIntOrNull() ?: 0
+
                 if (query.length < 2) {
                     call.respond(HttpStatusCode.BadRequest, "La búsqueda debe tener al menos 2 caracteres.")
                     return@get
                 }
-                val users = authService.searchUsers(query)
+                val users = authService.searchUsers(query, limit, offset)
                 call.respond(users)
             }
 

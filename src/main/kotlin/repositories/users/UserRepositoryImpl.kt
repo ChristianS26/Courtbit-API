@@ -42,7 +42,7 @@ class UserRepositoryImpl(
     // 🔍 Búsquedas
     // -------------------------------------------------------
 
-    override suspend fun searchUsers(query: String): List<UserDto> {
+    override suspend fun searchUsers(query: String, limit: Int, offset: Int): List<UserDto> {
         val q = query.trim()
         if (q.isEmpty()) return emptyList()
 
@@ -56,7 +56,9 @@ class UserRepositoryImpl(
                 header("Authorization", "Bearer $apiKey")
                 parameter("or", filter)
                 parameter("select", "*")
-                parameter("limit", 10)
+                parameter("order", "first_name.asc,last_name.asc")
+                parameter("limit", limit.coerceIn(1, 100))
+                parameter("offset", offset.coerceAtLeast(0))
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {

@@ -22,7 +22,8 @@ class AuthService(
     private val jwtIssuer = JwtConfig.ISSUER
     private val jwtAudience = JwtConfig.AUDIENCE
 
-    suspend fun searchUsers(query: String) = userRepository.searchUsers(query)
+    suspend fun searchUsers(query: String, limit: Int = 20, offset: Int = 0) =
+        userRepository.searchUsers(query, limit, offset)
 
     fun hashPassword(password: String): String = BCrypt.hashpw(password, BCrypt.gensalt())
     fun verifyPassword(plain: String, hash: String): Boolean = BCrypt.checkpw(plain, hash)

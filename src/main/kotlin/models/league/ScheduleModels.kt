@@ -109,7 +109,8 @@ data class AutoScheduleRequest(
     @SerialName("matchday_number") val matchdayNumber: Int,
     @SerialName("match_date") val matchDate: String,
     @SerialName("respect_availability") val respectAvailability: Boolean = true,
-    @SerialName("prefer_time_slot_variety") val preferTimeSlotVariety: Boolean = true
+    @SerialName("prefer_time_slot_variety") val preferTimeSlotVariety: Boolean = true,
+    @SerialName("strict_mode") val strictMode: Boolean = false // When false (flexible), schedule all groups even with conflicts
 )
 
 @Serializable
