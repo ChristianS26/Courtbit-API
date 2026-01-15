@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class PlayerStandingResponse(
     @SerialName("player_id") val playerId: String,
+    @SerialName("user_uid") val userUid: String? = null,
     @SerialName("player_name") val playerName: String,
     @SerialName("points_for") val pointsFor: Int,
     @SerialName("points_against") val pointsAgainst: Int,
