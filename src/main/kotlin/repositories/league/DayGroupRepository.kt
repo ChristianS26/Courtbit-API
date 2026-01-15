@@ -15,6 +15,13 @@ interface DayGroupRepository {
      * Used for detecting conflicts and enabling swaps
      */
     suspend fun findBySlot(matchDate: String, timeSlot: String, courtIndex: Int): DayGroupResponse?
+
+    /**
+     * Phase 3.1: Clear all assignments for a matchday
+     * Sets match_date, time_slot, court_index to NULL for all day_groups in the matchday
+     * Returns the count of groups that were cleared
+     */
+    suspend fun clearMatchdayAssignments(seasonId: String, matchdayNumber: Int): Int
 }
 
 sealed class RegenerateResult {

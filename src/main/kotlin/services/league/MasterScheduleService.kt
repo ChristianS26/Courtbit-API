@@ -187,6 +187,103 @@ class MasterScheduleService(
             emptyList()
         }
     }
+
+    /**
+     * Phase 3.2: Get schedule health/completion status for a season
+     * Returns per-matchday completion percentages
+     */
+    suspend fun getScheduleHealth(seasonId: String): ScheduleHealthResponse {
+        // Get all categories for this season
+        val categories = categoryRepository.getBySeasonId(seasonId)
+        val categoryIds = categories.map { it.id }
+
+        if (categoryIds.isEmpty()) {
+            return ScheduleHealthResponse(
+                seasonId = seasonId,
+                overallPercentage = 0.0,
+                matchdayHealth = emptyList(),
+                totalGroups = 0,
+                scheduledGroups = 0,
+                unscheduledGroups = 0
+            )
+        }
+
+        // Fetch all match_days with day_groups for all categories
+        val response = client.get("$apiUrl/match_days") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "id,category_id,match_number,day_groups(id,match_date)")
+            parameter("category_id", "in.(${categoryIds.joinToString(",")})")
+            parameter("order", "match_number.asc")
+        }
+
+        if (!response.status.isSuccess()) {
+            return ScheduleHealthResponse(
+                seasonId = seasonId,
+                overallPercentage = 0.0,
+                matchdayHealth = emptyList(),
+                totalGroups = 0,
+                scheduledGroups = 0,
+                unscheduledGroups = 0
+            )
+        }
+
+        @Serializable
+        data class DayGroupHealthRaw(
+            val id: String,
+            @SerialName("match_date") val matchDate: String?
+        )
+
+        @Serializable
+        data class MatchDayHealthRaw(
+            val id: String,
+            @SerialName("category_id") val categoryId: String,
+            @SerialName("match_number") val matchNumber: Int,
+            @SerialName("day_groups") val dayGroups: List<DayGroupHealthRaw>
+        )
+
+        val matchDays = json.decodeFromString<List<MatchDayHealthRaw>>(response.bodyAsText())
+
+        // Group by matchday number and calculate completion
+        val matchdayStats = matchDays.groupBy { it.matchNumber }
+            .map { (matchNumber, days) ->
+                val totalGroups = days.sumOf { it.dayGroups.size }
+                val scheduledGroups = days.sumOf { day ->
+                    day.dayGroups.count { it.matchDate != null }
+                }
+                val percentage = if (totalGroups > 0) {
+                    (scheduledGroups.toDouble() / totalGroups.toDouble()) * 100
+                } else {
+                    0.0
+                }
+                MatchdayHealthInfo(
+                    matchdayNumber = matchNumber,
+                    totalGroups = totalGroups,
+                    scheduledGroups = scheduledGroups,
+                    unscheduledGroups = totalGroups - scheduledGroups,
+                    completionPercentage = percentage
+                )
+            }
+            .sortedBy { it.matchdayNumber }
+
+        // Calculate overall stats
+        val totalGroups = matchdayStats.sumOf { it.totalGroups }
+        val scheduledGroups = matchdayStats.sumOf { it.scheduledGroups }
+        val overallPercentage = if (totalGroups > 0) {
+            (scheduledGroups.toDouble() / totalGroups.toDouble()) * 100
+        } else {
+            0.0
+        }
+
+        return ScheduleHealthResponse(
+            seasonId = seasonId,
+            overallPercentage = overallPercentage,
+            matchdayHealth = matchdayStats,
+            totalGroups = totalGroups,
+            scheduledGroups = scheduledGroups,
+            unscheduledGroups = totalGroups - scheduledGroups
+        )
+    }
 }
 
 // Raw response for deserialization

@@ -213,3 +213,23 @@ data class DayGroupEnriched(
     @SerialName("completed_rotations") val completedRotations: Int,
     @SerialName("total_rotations") val totalRotations: Int
 )
+
+// Phase 3.2: Schedule Health Dashboard
+@Serializable
+data class ScheduleHealthResponse(
+    @SerialName("season_id") val seasonId: String,
+    @SerialName("overall_percentage") val overallPercentage: Double,
+    @SerialName("matchday_health") val matchdayHealth: List<MatchdayHealthInfo>,
+    @SerialName("total_groups") val totalGroups: Int,
+    @SerialName("scheduled_groups") val scheduledGroups: Int,
+    @SerialName("unscheduled_groups") val unscheduledGroups: Int
+)
+
+@Serializable
+data class MatchdayHealthInfo(
+    @SerialName("matchday_number") val matchdayNumber: Int,
+    @SerialName("total_groups") val totalGroups: Int,
+    @SerialName("scheduled_groups") val scheduledGroups: Int,
+    @SerialName("unscheduled_groups") val unscheduledGroups: Int,
+    @SerialName("completion_percentage") val completionPercentage: Double
+)

@@ -248,6 +248,82 @@ class DayGroupRepositoryImpl(
         logger.info("✅ [DayGroupRepo] Successfully regenerated all rotations for dayGroupId=$dayGroupId")
         return RegenerateResult.Success
     }
+
+    /**
+     * Phase 3.1: Clear all assignments for a matchday
+     * Uses RPC function to efficiently clear all day_groups for a season/matchday
+     */
+    override suspend fun clearMatchdayAssignments(seasonId: String, matchdayNumber: Int): Int {
+        logger.info("🧹 [DayGroupRepo] Clearing matchday assignments for seasonId=$seasonId, matchday=$matchdayNumber")
+
+        // First, get all matchday IDs for this season and matchday number
+        val matchDaysResponse = client.get("$apiUrl/match_days") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "id")
+            parameter("matchday_number", "eq.$matchdayNumber")
+        }
+
+        if (!matchDaysResponse.status.isSuccess()) {
+            logger.error("❌ [DayGroupRepo] Failed to get match days: ${matchDaysResponse.status}")
+            return 0
+        }
+
+        @Serializable
+        data class MatchDayId(val id: String)
+
+        val matchDayIds = json.decodeFromString<List<MatchDayId>>(matchDaysResponse.bodyAsText())
+            .map { it.id }
+
+        if (matchDayIds.isEmpty()) {
+            logger.info("ℹ️ [DayGroupRepo] No match days found for matchday $matchdayNumber")
+            return 0
+        }
+
+        // Filter by season: get day_groups for these match_days that belong to categories in this season
+        var totalCleared = 0
+
+        for (matchDayId in matchDayIds) {
+            // Get day_groups with assignments for this match_day
+            val dayGroupsResponse = client.get("$apiUrl/day_groups") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                parameter("select", "id")
+                parameter("match_day_id", "eq.$matchDayId")
+                parameter("match_date", "not.is.null")
+            }
+
+            if (!dayGroupsResponse.status.isSuccess()) {
+                continue
+            }
+
+            @Serializable
+            data class DayGroupId(val id: String)
+
+            val dayGroupIds = json.decodeFromString<List<DayGroupId>>(dayGroupsResponse.bodyAsText())
+
+            // Clear each day_group's assignment
+            for (dayGroup in dayGroupIds) {
+                val clearResponse = client.patch("$apiUrl/day_groups?id=eq.${dayGroup.id}") {
+                    header("apikey", apiKey)
+                    header("Authorization", "Bearer $apiKey")
+                    contentType(ContentType.Application.Json)
+                    setBody(buildJsonObject {
+                        put("match_date", null as String?)
+                        put("time_slot", null as String?)
+                        put("court_index", null as Int?)
+                    }.toString())
+                }
+
+                if (clearResponse.status.isSuccess()) {
+                    totalCleared++
+                }
+            }
+        }
+
+        logger.info("✅ [DayGroupRepo] Cleared $totalCleared day_group assignments")
+        return totalCleared
+    }
 }
 
 @Serializable

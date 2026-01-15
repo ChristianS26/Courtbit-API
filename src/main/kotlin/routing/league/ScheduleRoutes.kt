@@ -487,6 +487,58 @@ fun Route.scheduleRoutes(
                     }
                 }
             }
+
+            // Phase 3.1: Clear matchday schedule
+            route("/clear") {
+                delete("/{seasonId}/{matchdayNumber}") {
+                    val uid = call.requireOrganizer() ?: return@delete
+                    val seasonId = call.parameters["seasonId"] ?: return@delete call.respond(
+                        HttpStatusCode.BadRequest, mapOf("error" to "Missing season ID")
+                    )
+                    val matchdayNumber = call.parameters["matchdayNumber"]?.toIntOrNull() ?: return@delete call.respond(
+                        HttpStatusCode.BadRequest, mapOf("error" to "Invalid matchday number")
+                    )
+
+                    // Verify season ownership
+                    val season = seasonRepository.getById(seasonId)
+                    if (season == null) {
+                        return@delete call.respond(
+                            HttpStatusCode.NotFound,
+                            mapOf("error" to "Season not found")
+                        )
+                    }
+
+                    try {
+                        val clearedCount = dayGroupRepository.clearMatchdayAssignments(seasonId, matchdayNumber)
+                        call.respond(HttpStatusCode.OK, mapOf(
+                            "success" to true,
+                            "cleared_groups" to clearedCount
+                        ))
+                    } catch (e: Exception) {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to "Failed to clear schedule: ${e.localizedMessage}")
+                        )
+                    }
+                }
+            }
+
+            // Phase 3.2: Schedule health dashboard
+            get("/health/{seasonId}") {
+                val seasonId = call.parameters["seasonId"] ?: return@get call.respond(
+                    HttpStatusCode.BadRequest, mapOf("error" to "Missing season ID")
+                )
+
+                try {
+                    val health = masterScheduleService.getScheduleHealth(seasonId)
+                    call.respond(HttpStatusCode.OK, health)
+                } catch (e: Exception) {
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Failed to get schedule health: ${e.localizedMessage}")
+                    )
+                }
+            }
         }
     }
 }
