@@ -83,6 +83,7 @@ class LeaguePaymentRepositoryImpl(
             status = "succeeded",
             notes = request.notes,
             registered_by_uid = registeredByUid,
+            registered_by_email = request.registeredByEmail,
             paid_at = request.paidAt
         )
 

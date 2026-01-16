@@ -17,6 +17,7 @@ data class LeaguePaymentResponse(
     @SerialName("stripe_customer_id") val stripeCustomerId: String? = null,
     val notes: String? = null,
     @SerialName("registered_by_uid") val registeredByUid: String? = null,
+    @SerialName("registered_by_email") val registeredByEmail: String? = null,
     @SerialName("paid_at") val paidAt: String,
     @SerialName("created_at") val createdAt: String
 )
@@ -30,6 +31,7 @@ data class CreateLeaguePaymentRequest(
     val currency: String = "MXN",
     val method: String = "cash",
     val notes: String? = null,
+    @SerialName("registered_by_email") val registeredByEmail: String? = null,
     @SerialName("paid_at") val paidAt: String? = null
 )
 
@@ -54,6 +56,7 @@ data class LeaguePaymentInsertDto(
     val status: String = "succeeded",
     val notes: String? = null,
     val registered_by_uid: String? = null,
+    val registered_by_email: String? = null,
     val paid_at: String? = null
 )
 
