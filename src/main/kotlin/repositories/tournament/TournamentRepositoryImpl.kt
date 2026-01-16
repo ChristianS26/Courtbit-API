@@ -153,41 +153,45 @@ class TournamentRepositoryImpl(
     }
 
     override suspend fun delete(id: String): Boolean {
-        val url = "$apiUrl/tournaments?id=eq.$id"
+        // Use RPC function for cascade delete
+        val url = "$apiUrl/rpc/delete_tournament_cascade"
 
         return try {
-            val response = client.delete(url) {
+            val response = client.post(url) {
                 header("apikey", apiKey)
                 header("Authorization", "Bearer $apiKey")
-                header("Prefer", "return=minimal")
+                contentType(ContentType.Application.Json)
+                setBody(mapOf("p_tournament_id" to id))
             }
 
             val status = response.status
             val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(sin body)" }
 
-            println("🗑️ Supabase DELETE $url -> ${status.value} ${status.description}")
-            println("🗑️ Supabase DELETE body: $bodyText")
+            println("🗑️ Supabase RPC delete_tournament_cascade -> ${status.value} ${status.description}")
+            println("🗑️ RPC response: $bodyText")
 
             if (status.isSuccess()) {
-                true
-            } else {
-                // Intentamos parsear error de Supabase para detectar caso de pagos
-                val error = runCatching { json.decodeFromString<SupabaseError>(bodyText) }.getOrNull()
-
-                if (error?.code == "23502" && error.message?.contains("tournament_id") == true) {
-                    // Caso específico: NOT NULL en tournament_id de payments
-                    throw TournamentHasPaymentsException(
-                        error.message ?: "No se puede eliminar el torneo porque tiene pagos registrados."
+                // Parse the result - it's returned as a JSON string
+                val result = bodyText.trim().removeSurrounding("\"")
+                when (result) {
+                    "deleted" -> true
+                    "has_payments" -> throw TournamentHasPaymentsException(
+                        "No se puede eliminar el torneo porque tiene pagos registrados."
                     )
+                    else -> {
+                        println("⚠️ RPC returned unexpected result: $result")
+                        false
+                    }
                 }
-
+            } else {
+                println("❌ RPC failed with status: ${status.value}")
                 false
             }
         } catch (e: TournamentHasPaymentsException) {
             // se repropaga para que el service lo maneje
             throw e
         } catch (e: Exception) {
-            println("🧨 Supabase DELETE exception para torneo $id: ${e.stackTraceToString()}")
+            println("🧨 Supabase RPC exception para torneo $id: ${e.stackTraceToString()}")
             false
         }
     }
