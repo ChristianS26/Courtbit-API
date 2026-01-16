@@ -31,7 +31,7 @@ class TournamentRepositoryImpl(
         val response = client.get("$apiUrl/tournaments") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "*,organizers!organizer_id(name)")
+            parameter("select", "*,organizers!organizer_id(name,logo_url)")
             parameter("order", "start_date.desc")
         }
 
@@ -49,7 +49,7 @@ class TournamentRepositoryImpl(
         val response = client.get("$apiUrl/tournaments") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "*,organizers!organizer_id(name)")
+            parameter("select", "*,organizers!organizer_id(name,logo_url)")
             parameter("organizer_id", "eq.$organizerId")
             parameter("order", "start_date.desc")
         }
@@ -69,7 +69,7 @@ class TournamentRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("id", "eq.$id")
-            parameter("select", "*,organizers!organizer_id(name)")
+            parameter("select", "*,organizers!organizer_id(name,logo_url)")
         }
 
         return if (response.status.isSuccess()) {
@@ -255,7 +255,8 @@ data class SupabaseError(
 
 @Serializable
 data class OrganizerInfo(
-    val name: String
+    val name: String,
+    @SerialName("logo_url") val logoUrl: String? = null
 )
 
 @Serializable
@@ -294,7 +295,8 @@ data class TournamentRawResponse(
             registrationOpen = registrationOpen,
             clubLogoUrl = clubLogoUrl,
             organizerId = organizerId,
-            organizerName = organizers?.name
+            organizerName = organizers?.name,
+            organizerLogoUrl = organizers?.logoUrl
         )
     }
 }

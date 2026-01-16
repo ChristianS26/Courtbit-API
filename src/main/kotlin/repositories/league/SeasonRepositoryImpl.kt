@@ -26,7 +26,7 @@ class SeasonRepositoryImpl(
         val response = client.get("$apiUrl/seasons") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "*,organizers!organizer_id(name)")
+            parameter("select", "*,organizers!organizer_id(name,logo_url)")
             parameter("order", "start_date.desc")
         }
 
@@ -44,7 +44,7 @@ class SeasonRepositoryImpl(
         val response = client.get("$apiUrl/seasons") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "*,organizers!organizer_id(name)")
+            parameter("select", "*,organizers!organizer_id(name,logo_url)")
             parameter("organizer_id", "eq.$organizerId")
             parameter("order", "start_date.desc")
         }
@@ -64,7 +64,7 @@ class SeasonRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("id", "eq.$id")
-            parameter("select", "*,organizers!organizer_id(name)")
+            parameter("select", "*,organizers!organizer_id(name,logo_url)")
         }
 
         return if (response.status.isSuccess()) {
@@ -86,7 +86,7 @@ class SeasonRepositoryImpl(
             contentType(ContentType.Application.Json)
             setBody(listOf(request))
             // Include organizer data in the response
-            parameter("select", "*,organizers!organizer_id(name)")
+            parameter("select", "*,organizers!organizer_id(name,logo_url)")
         }
 
         val status = response.status
@@ -138,7 +138,7 @@ class SeasonRepositoryImpl(
         val response = client.get("$apiUrl/seasons") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "*,organizers!organizer_id(name)")
+            parameter("select", "*,organizers!organizer_id(name,logo_url)")
             parameter("organizer_id", "eq.$organizerId")
             parameter("is_active", "eq.true")
             parameter("limit", "1")
@@ -187,6 +187,7 @@ data class SeasonRawResponse(
         playersInSemifinals = playersInSemifinals,
         organizerId = organizerId,
         organizerName = organizers?.name,
+        organizerLogoURL = organizers?.logoUrl,
         allowPlayerScores = allowPlayerScores,
         rankingCriteria = rankingCriteria,
         maxPointsPerGame = maxPointsPerGame,

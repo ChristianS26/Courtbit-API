@@ -15,6 +15,7 @@ data class SeasonResponse(
     @SerialName("players_in_semifinals") val playersInSemifinals: Int = 4,
     @SerialName("organizer_id") val organizerId: String?,
     @SerialName("organizer_name") val organizerName: String?,
+    @SerialName("organizer_logo_url") val organizerLogoURL: String? = null,
     @SerialName("allow_player_scores") val allowPlayerScores: Boolean = true,
     @SerialName("ranking_criteria") val rankingCriteria: List<String> = listOf("adjusted_points", "point_diff", "games_won"),
     @SerialName("max_points_per_game") val maxPointsPerGame: Int = 6,

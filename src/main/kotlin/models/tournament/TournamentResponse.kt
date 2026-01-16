@@ -20,5 +20,6 @@ data class TournamentResponse(
     @SerialName("registration_open") val registrationOpen: Boolean,
     @SerialName("club_logo_url") val clubLogoUrl: String? = null,
     @SerialName("organizer_id") val organizerId: String? = null,
-    @SerialName("organizer_name") val organizerName: String? = null
+    @SerialName("organizer_name") val organizerName: String? = null,
+    @SerialName("organizer_logo_url") val organizerLogoUrl: String? = null
 )
