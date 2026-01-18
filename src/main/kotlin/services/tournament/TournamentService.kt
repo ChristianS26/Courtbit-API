@@ -18,8 +18,14 @@ class TournamentService(
 
     suspend fun getAllTournaments(): List<TournamentResponse> = repository.getAll()
 
-    suspend fun getTournamentsByOrganizer(organizerId: String): List<TournamentResponse> =
-        repository.getByOrganizerId(organizerId)
+    suspend fun getTournamentsByOrganizer(organizerId: String): List<TournamentResponse> {
+        val tournaments = repository.getByOrganizerId(organizerId)
+        return tournaments.map { tournament ->
+            val categories = categoryService.getCategoriesForTournament(tournament.id)
+            val categoryIds = categories.map { it.id }
+            tournament.copy(categoryIds = categoryIds)
+        }
+    }
 
     suspend fun getTournamentById(id: String): TournamentResponse? {
         val tournament = repository.getById(id) ?: return null
