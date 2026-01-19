@@ -8,6 +8,7 @@ data class PlayerStandingResponse(
     @SerialName("player_id") val playerId: String,
     @SerialName("user_uid") val userUid: String? = null,
     @SerialName("player_name") val playerName: String,
+    @SerialName("photo_url") val photoUrl: String? = null,
     @SerialName("points_for") val pointsFor: Int,
     @SerialName("points_against") val pointsAgainst: Int,
     @SerialName("games_won") val gamesWon: Int,
