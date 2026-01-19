@@ -160,12 +160,83 @@ class OrganizerRepositoryImpl(
             }
 
             if (response.status.isSuccess()) {
-                json.decodeFromString<List<OrganizerResponse>>(response.bodyAsText()).firstOrNull()
+                val organizer = json.decodeFromString<List<OrganizerResponse>>(response.bodyAsText()).firstOrNull()
+
+                // Add the creator as owner in organization_members
+                if (organizer != null) {
+                    addCreatorAsOwner(organizer.id, createdByUid, request.contactEmail, request.name)
+                }
+
+                organizer
             } else {
                 null
             }
         } catch (e: Exception) {
+            println("💥 [OrganizerRepo] Error creating organizer: ${e.message}")
             null
+        }
+    }
+
+    /**
+     * Add the creator as an owner in organization_members table
+     */
+    private suspend fun addCreatorAsOwner(
+        organizerId: String,
+        userUid: String,
+        userEmail: String,
+        organizerName: String
+    ) {
+        try {
+            // Get user name from users table
+            val userResponse = client.get("$apiUrl/users") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                parameter("uid", "eq.$userUid")
+                parameter("select", "first_name,last_name")
+            }
+
+            var userName = organizerName // fallback to organizer name
+            if (userResponse.status.isSuccess()) {
+                @Serializable
+                data class UserName(val first_name: String, val last_name: String)
+                val users = json.decodeFromString<List<UserName>>(userResponse.bodyAsText())
+                users.firstOrNull()?.let {
+                    userName = "${it.first_name} ${it.last_name}".trim()
+                }
+            }
+
+            @Serializable
+            data class MemberPayload(
+                val organizer_id: String,
+                val user_uid: String,
+                val user_email: String,
+                val user_name: String,
+                val role: String
+            )
+
+            val memberPayload = MemberPayload(
+                organizer_id = organizerId,
+                user_uid = userUid,
+                user_email = userEmail,
+                user_name = userName,
+                role = "owner"
+            )
+
+            val memberResponse = client.post("$apiUrl/organization_members") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(listOf(memberPayload))
+            }
+
+            if (memberResponse.status.isSuccess()) {
+                println("✅ [OrganizerRepo] Added creator as owner in organization_members")
+            } else {
+                println("⚠️ [OrganizerRepo] Failed to add creator as owner: ${memberResponse.status}")
+            }
+        } catch (e: Exception) {
+            println("💥 [OrganizerRepo] Error adding creator as owner: ${e.message}")
+            // Don't throw - organizer was created successfully, this is a secondary operation
         }
     }
 

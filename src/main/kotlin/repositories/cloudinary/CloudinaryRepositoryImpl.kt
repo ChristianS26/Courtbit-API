@@ -11,8 +11,8 @@ class CloudinaryRepositoryImpl(
         val uploadResult = cloudinary.uploader().upload(
             bytes,
             ObjectUtils.asMap(
-                "folder", "profilePhotos",
-                "public_id", uid,
+                "folder", "courtbit/users/profile",
+                "public_id", "profile-$uid",
                 "overwrite", true,
                 "resource_type", "image"
             )
