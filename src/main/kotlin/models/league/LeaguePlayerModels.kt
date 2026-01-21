@@ -13,7 +13,9 @@ data class LeaguePlayerUser(
     val uid: String,
     @SerialName("first_name") val firstName: String,
     @SerialName("last_name") val lastName: String,
-    @SerialName("photo_url") val photoUrl: String? = null
+    @SerialName("photo_url") val photoUrl: String? = null,
+    @SerialName("country_code") val countryCode: String? = null,
+    @SerialName("phone_number") val phoneNumber: String? = null
 )
 
 @Serializable

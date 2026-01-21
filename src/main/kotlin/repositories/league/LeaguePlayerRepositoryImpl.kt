@@ -34,7 +34,8 @@ class LeaguePlayerRepositoryImpl(
     private val apiKey = config.apiKey
 
     // Select query with user join - fetches CourtBit user profile when user_uid is set
-    private val selectWithUser = "*, user:user_uid(uid, first_name, last_name, photo_url)"
+    // Includes country_code and phone_number for WhatsApp integration
+    private val selectWithUser = "*, user:user_uid(uid, first_name, last_name, photo_url, country_code, phone_number)"
 
     override suspend fun getAll(): List<LeaguePlayerResponse> {
         val response = client.get("$apiUrl/league_players") {
