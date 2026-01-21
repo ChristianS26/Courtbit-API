@@ -354,20 +354,16 @@ class AutoSchedulingService(
      */
     suspend fun preview(request: AutoSchedulePreviewRequest): AutoSchedulePreviewResponse {
         // 1. Get schedule configuration (defaults + overrides)
+        // Check BOTH sources - matchday override takes priority, but we can work with either
         val defaults = defaultsRepository.getBySeasonId(request.seasonId)
-        if (defaults == null) {
-            return AutoSchedulePreviewResponse(
-                totalGroups = 0,
-                groupsFullAvailability = 0,
-                groupsPartialAvailability = 0,
-                groupsNoAvailability = 0,
-                timeSlotAvailability = emptyList(),
-                categoryPreviews = emptyList()
-            )
-        }
-
         val override = overridesRepository.getBySeasonAndMatchday(request.seasonId, request.matchdayNumber)
-        val timeSlots = override?.timeSlotsOverride ?: defaults.defaultTimeSlots
+
+        // Determine time slots: override takes priority, then defaults
+        val timeSlots = when {
+            override?.timeSlotsOverride != null && override.timeSlotsOverride.isNotEmpty() -> override.timeSlotsOverride
+            defaults?.defaultTimeSlots != null && defaults.defaultTimeSlots.isNotEmpty() -> defaults.defaultTimeSlots
+            else -> emptyList()
+        }
 
         if (timeSlots.isEmpty()) {
             return AutoSchedulePreviewResponse(
