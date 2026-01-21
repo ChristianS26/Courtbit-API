@@ -14,7 +14,9 @@ import kotlinx.serialization.json.buildJsonObject
 import models.league.CanDeletePlayerResponse
 import models.league.CreateLeaguePlayerRequest
 import models.league.LeaguePlayerResponse
+import models.league.LinkPlayerResponse
 import models.league.MyLeagueRegistrationResponse
+import models.league.PendingPlayerLinkResponse
 import models.league.ReplacePlayerRequest
 import models.league.ReplacePlayerResponse
 import models.league.SelfRegisterRequest
@@ -469,6 +471,100 @@ class LeaguePlayerRepositoryImpl(
 
         return updatedCount
     }
+
+    // MARK: - Player Linking
+
+    override suspend fun findPendingLinks(email: String, phone: String?): List<PendingPlayerLinkResponse> {
+        // Build OR clause for email or phone matching
+        val orConditions = mutableListOf("email.ilike.$email")
+        if (!phone.isNullOrBlank()) {
+            // Normalize phone for comparison (remove spaces, dashes, etc.)
+            val normalizedPhone = phone.replace(Regex("[^0-9+]"), "")
+            if (normalizedPhone.isNotEmpty()) {
+                orConditions.add("phone_number.ilike.%$normalizedPhone%")
+            }
+        }
+
+        // Query league_players with joins to get category and season info
+        val response = client.get("$apiUrl/league_players") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "id,name,email,phone_number,category_id,league_categories!inner(id,name,color_hex,season_id,seasons!inner(id,name,is_active))")
+            parameter("user_uid", "is.null")
+            parameter("or", "(${orConditions.joinToString(",")})")
+        }
+
+        if (!response.status.isSuccess()) {
+            println("❌ Error findPendingLinks: ${response.status}")
+            return emptyList()
+        }
+
+        val bodyText = response.bodyAsText()
+
+        // Parse the nested response
+        val rawPlayers = try {
+            json.decodeFromString<List<PendingPlayerLinkRaw>>(bodyText)
+        } catch (e: Exception) {
+            println("⚠️ Error parsing pending links: ${e.message}")
+            return emptyList()
+        }
+
+        // Filter for active seasons and map to response
+        return rawPlayers
+            .filter { it.category?.season?.isActive == true }
+            .mapNotNull { raw ->
+                val category = raw.category ?: return@mapNotNull null
+                val season = category.season ?: return@mapNotNull null
+
+                PendingPlayerLinkResponse(
+                    id = raw.id,
+                    name = raw.name,
+                    email = raw.email,
+                    phoneNumber = raw.phoneNumber,
+                    categoryId = category.id,
+                    categoryName = category.name,
+                    categoryColor = category.colorHex,
+                    seasonId = season.id,
+                    seasonName = season.name
+                )
+            }
+    }
+
+    override suspend fun linkPlayerToUser(playerId: String, userUid: String): Result<LinkPlayerResponse> {
+        // 1. Get the player to verify it exists and has no user_uid
+        val player = getById(playerId)
+            ?: return Result.failure(IllegalArgumentException("Player not found"))
+
+        if (player.userUid != null) {
+            return Result.failure(IllegalStateException("Player is already linked to an account"))
+        }
+
+        // 2. Update the player's user_uid
+        val updatePayload = buildJsonObject {
+            put("user_uid", JsonPrimitive(userUid))
+        }
+
+        val updateResponse = client.patch("$apiUrl/league_players?id=eq.$playerId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            setBody(updatePayload.toString())
+        }
+
+        if (!updateResponse.status.isSuccess()) {
+            return Result.failure(IllegalStateException("Failed to link player: ${updateResponse.status}"))
+        }
+
+        // 3. Get the updated player with user info
+        val updatedPlayer = getById(playerId)
+            ?: return Result.failure(IllegalStateException("Failed to fetch updated player"))
+
+        return Result.success(LinkPlayerResponse(
+            linkedPlayer = updatedPlayer,
+            message = "Player successfully linked to your account"
+        ))
+    }
 }
 
 // Helper data classes for parsing
@@ -488,4 +584,31 @@ private data class MatchPlayerIds(
     @SerialName("team1_player2_id") val team1Player2Id: String?,
     @SerialName("team2_player1_id") val team2Player1Id: String?,
     @SerialName("team2_player2_id") val team2Player2Id: String?
+)
+
+// Helper data classes for pending player links parsing
+@Serializable
+private data class PendingPlayerLinkRaw(
+    val id: String,
+    val name: String,
+    val email: String?,
+    @SerialName("phone_number") val phoneNumber: String?,
+    @SerialName("category_id") val categoryId: String,
+    @SerialName("league_categories") val category: CategoryWithSeason?
+)
+
+@Serializable
+private data class CategoryWithSeason(
+    val id: String,
+    val name: String,
+    @SerialName("color_hex") val colorHex: String,
+    @SerialName("season_id") val seasonId: String,
+    @SerialName("seasons") val season: SeasonBasic?
+)
+
+@Serializable
+private data class SeasonBasic(
+    val id: String,
+    val name: String,
+    @SerialName("is_active") val isActive: Boolean
 )

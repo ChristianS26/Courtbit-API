@@ -3,7 +3,9 @@ package repositories.league
 import models.league.CanDeletePlayerResponse
 import models.league.CreateLeaguePlayerRequest
 import models.league.LeaguePlayerResponse
+import models.league.LinkPlayerResponse
 import models.league.MyLeagueRegistrationResponse
+import models.league.PendingPlayerLinkResponse
 import models.league.ReplacePlayerRequest
 import models.league.ReplacePlayerResponse
 import models.league.SelfRegisterRequest
@@ -41,4 +43,16 @@ interface LeaguePlayerRepository {
      * Deletes the old player after successful replacement
      */
     suspend fun replacePlayer(oldPlayerId: String, request: ReplacePlayerRequest): Result<ReplacePlayerResponse>
+
+    /**
+     * Find manual players (user_uid = null) in active seasons
+     * matching the user's email or phone number
+     */
+    suspend fun findPendingLinks(email: String, phone: String?): List<PendingPlayerLinkResponse>
+
+    /**
+     * Link a manual player to a CourtBit user
+     * Updates the player's user_uid field
+     */
+    suspend fun linkPlayerToUser(playerId: String, userUid: String): Result<LinkPlayerResponse>
 }

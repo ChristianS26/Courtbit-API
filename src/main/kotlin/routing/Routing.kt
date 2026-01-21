@@ -31,6 +31,7 @@ import routing.league.doublesMatchRoutes
 import routing.league.leagueCategoryRoutes
 import routing.league.leaguePaymentRoutes
 import routing.league.leaguePlayerRoutes
+import routing.league.playerLinkRoutes
 import routing.league.leagueRankingRoutes
 import routing.league.matchDayOptimizedRoutes
 import routing.league.matchDayRoutes
@@ -125,6 +126,7 @@ fun Application.configureRouting() {
             seasonRoutes(get<SeasonService>(), get<SeasonRepository>())
             leagueCategoryRoutes(get<LeagueCategoryService>(), get<LeagueCategoryRepository>())
             leaguePlayerRoutes(get<LeaguePlayerRepository>())
+            playerLinkRoutes(get<LeaguePlayerRepository>(), get())
             leaguePaymentRoutes(get<LeaguePaymentService>(), get<SeasonRepository>())
             matchDayRoutes(get<MatchDayRepository>())
             matchDayOptimizedRoutes(get<MatchDayService>())  // Optimized endpoint
