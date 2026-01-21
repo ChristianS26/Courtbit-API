@@ -37,7 +37,12 @@ class LeagueCategoryService(
         )
     }
 
-    suspend fun generateCalendar(categoryId: String): Result<String> {
+    /**
+     * Generate calendar for a category with optional player sorting.
+     * @param categoryId The category ID
+     * @param sortOrder How to sort players: "alphabetical" (default), "random", or "registration"
+     */
+    suspend fun generateCalendar(categoryId: String, sortOrder: String = "alphabetical"): Result<String> {
         // Validate player count - only count active players (not on waiting list)
         val allPlayers = playerRepository.getByCategoryId(categoryId)
         val activePlayers = allPlayers.filter { !it.isWaitingList }
@@ -47,9 +52,14 @@ class LeagueCategoryService(
             )
         }
 
-        // Call RPC
+        // Validate sort order
+        val validSortOrders = listOf("alphabetical", "random", "registration")
+        val normalizedSortOrder = if (sortOrder in validSortOrders) sortOrder else "alphabetical"
+
+        // Call RPC with sort order
         val payload = buildJsonObject {
             put("p_category_id", categoryId)
+            put("p_sort_order", normalizedSortOrder)
         }
 
         val response = client.post("${config.apiUrl}/rpc/generate_league_calendar") {

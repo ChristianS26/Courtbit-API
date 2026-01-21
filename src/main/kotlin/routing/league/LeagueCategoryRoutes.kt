@@ -13,6 +13,7 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.league.CreateLeagueCategoryRequest
+import models.league.GenerateCalendarRequest
 import models.league.UpdateCategoryMaxPlayersRequest
 import models.league.UpdateCategoryPlayoffConfigRequest
 import models.league.UpdateCategoryRecommendedCourtsRequest
@@ -79,7 +80,7 @@ fun Route.leagueCategoryRoutes(
                 }
             }
 
-            // Generate calendar for category
+            // Generate calendar for category with optional player sorting
             post("{id}/generate-calendar") {
                 call.requireOrganizer() ?: return@post
 
@@ -87,7 +88,15 @@ fun Route.leagueCategoryRoutes(
                     HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
                 )
 
-                val result = leagueCategoryService.generateCalendar(categoryId)
+                // Parse optional request body for sort order (default to alphabetical if not provided)
+                val request = try {
+                    call.receive<GenerateCalendarRequest>()
+                } catch (e: Exception) {
+                    // If no body or invalid body, use default sort order
+                    GenerateCalendarRequest()
+                }
+
+                val result = leagueCategoryService.generateCalendar(categoryId, request.sortOrder)
 
                 if (result.isSuccess) {
                     call.respond(HttpStatusCode.OK, mapOf("message" to result.getOrNull()))

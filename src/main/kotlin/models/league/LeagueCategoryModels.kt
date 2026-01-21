@@ -80,3 +80,10 @@ data class CategoryPlayoffConfigResponse(
 data class UpdateCategoryRecommendedCourtsRequest(
     @SerialName("recommended_courts") val recommendedCourts: List<Int>?
 )
+
+// Request to generate calendar with player sorting option
+@Serializable
+data class GenerateCalendarRequest(
+    @SerialName("sort_order") val sortOrder: String = "alphabetical"
+    // Valid values: "alphabetical" (default), "random", "registration"
+)
