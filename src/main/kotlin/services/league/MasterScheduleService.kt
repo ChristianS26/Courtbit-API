@@ -12,6 +12,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import models.league.*
 import repositories.league.LeagueCategoryRepository
+import repositories.league.MatchDayRepository
 import repositories.league.MatchdayScheduleOverridesRepository
 import repositories.league.SeasonScheduleDefaultsRepository
 
@@ -24,7 +25,8 @@ class MasterScheduleService(
     private val config: SupabaseConfig,
     private val defaultsRepository: SeasonScheduleDefaultsRepository,
     private val overridesRepository: MatchdayScheduleOverridesRepository,
-    private val categoryRepository: LeagueCategoryRepository
+    private val categoryRepository: LeagueCategoryRepository,
+    private val matchDayRepository: MatchDayRepository
 ) {
     private val apiUrl = config.apiUrl
     private val apiKey = config.apiKey
@@ -79,10 +81,16 @@ class MasterScheduleService(
             )
         }
 
+        // Compute hasCalendar for each category by checking if match days exist
+        val categoriesWithCalendarStatus = categories.map { category ->
+            val hasCalendar = matchDayRepository.getByCategoryId(category.id).isNotEmpty()
+            category.copy(hasCalendar = hasCalendar)
+        }
+
         return BulkScheduleResponse(
             seasonId = seasonId,
             matchdayNumber = matchdayNumber,
-            categories = categories,
+            categories = categoriesWithCalendarStatus,
             defaults = defaults,
             matchdayOverrides = overrides,
             categorySchedules = categorySchedules
