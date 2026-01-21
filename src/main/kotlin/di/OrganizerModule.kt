@@ -1,6 +1,7 @@
 package di
 
 import org.koin.dsl.module
+import repositories.organization.OrganizationTeamRepository
 import repositories.organizer.OrganizerRepository
 import repositories.organizer.OrganizerRepositoryImpl
 import services.organizer.OrganizerService
@@ -18,7 +19,8 @@ val OrganizerModule = module {
     // Service binding
     single {
         OrganizerService(
-            repository = get()  // OrganizerRepository
+            repository = get(),  // OrganizerRepository
+            organizationTeamRepository = get<OrganizationTeamRepository>()
         )
     }
 }

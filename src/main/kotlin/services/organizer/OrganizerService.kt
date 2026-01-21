@@ -4,10 +4,12 @@ import models.organizer.CreateOrganizerRequest
 import models.organizer.OrganizerResponse
 import models.organizer.OrganizerStatisticsResponse
 import models.organizer.UpdateOrganizerRequest
+import repositories.organization.OrganizationTeamRepository
 import repositories.organizer.OrganizerRepository
 
 class OrganizerService(
-    private val repository: OrganizerRepository
+    private val repository: OrganizerRepository,
+    private val organizationTeamRepository: OrganizationTeamRepository? = null
 ) {
 
     /**
@@ -85,22 +87,26 @@ class OrganizerService(
 
     /**
      * Update an existing organizer
-     * Business rule: Only the creator can update their organizer
+     * Business rule: Creator or team members can update the organizer
      */
     suspend fun updateOrganizer(
         id: String,
         request: UpdateOrganizerRequest,
         userUid: String
     ): Result<Boolean> {
-        // Verify ownership
+        // Verify organizer exists
         val organizer = repository.getById(id)
         if (organizer == null) {
             return Result.failure(IllegalArgumentException("Organizer not found"))
         }
 
-        if (organizer.createdByUid != userUid) {
+        // Check if user is the creator OR a team member
+        val isCreator = organizer.createdByUid == userUid
+        val isTeamMember = organizationTeamRepository?.userHasAccess(userUid, id) ?: false
+
+        if (!isCreator && !isTeamMember) {
             return Result.failure(
-                IllegalAccessException("Only the creator can update this organizer")
+                IllegalAccessException("Only the creator or team members can update this organizer")
             )
         }
 
