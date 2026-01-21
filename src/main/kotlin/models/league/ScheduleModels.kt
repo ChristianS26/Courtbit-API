@@ -107,11 +107,12 @@ data class DayGroupScheduleInfo(
 data class AutoScheduleRequest(
     @SerialName("season_id") val seasonId: String,
     @SerialName("matchday_number") val matchdayNumber: Int,
-    @SerialName("match_date") val matchDate: String,
+    @SerialName("match_date") val matchDate: String? = null, // Legacy: single date for all categories (optional for backward compat)
     @SerialName("respect_availability") val respectAvailability: Boolean = true,
     @SerialName("prefer_time_slot_variety") val preferTimeSlotVariety: Boolean = true,
     @SerialName("strict_mode") val strictMode: Boolean = false, // When false (flexible), schedule all groups even with conflicts
-    @SerialName("category_ids") val categoryIds: List<String>? = null // Optional: only schedule specific categories
+    @SerialName("category_ids") val categoryIds: List<String>? = null, // Optional: only schedule specific categories (legacy)
+    @SerialName("category_dates") val categoryDates: Map<String, String>? = null // NEW: per-category dates (categoryId -> date)
 )
 
 // Preview request - same as AutoScheduleRequest but for dry-run
