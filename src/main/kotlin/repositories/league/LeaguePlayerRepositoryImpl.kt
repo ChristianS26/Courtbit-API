@@ -38,6 +38,7 @@ class LeaguePlayerRepositoryImpl(
     private val selectWithUser = "*, user:user_uid(uid, first_name, last_name, photo_url, country_code, phone_number)"
 
     override suspend fun getAll(): List<LeaguePlayerResponse> {
+        // First try with user join
         val response = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -45,16 +46,31 @@ class LeaguePlayerRepositoryImpl(
             parameter("order", "name.asc")
         }
 
-        return if (response.status.isSuccess()) {
+        if (response.status.isSuccess()) {
             val bodyText = response.bodyAsText()
+            return json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
+        }
+
+        // Fallback: try without user join (in case foreign key relation fails)
+        println("⚠️ getAll with user join failed (${response.status}), trying without join...")
+        val fallbackResponse = client.get("$apiUrl/league_players") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "*")
+            parameter("order", "name.asc")
+        }
+
+        return if (fallbackResponse.status.isSuccess()) {
+            val bodyText = fallbackResponse.bodyAsText()
             json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
         } else {
-            println("❌ Error getAll league players: ${response.status}")
+            println("❌ Error getAll league players (fallback): ${fallbackResponse.status}")
             emptyList()
         }
     }
 
     override suspend fun getByCategoryId(categoryId: String): List<LeaguePlayerResponse> {
+        // First try with user join
         val response = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -63,16 +79,32 @@ class LeaguePlayerRepositoryImpl(
             parameter("order", "name.asc")
         }
 
-        return if (response.status.isSuccess()) {
+        if (response.status.isSuccess()) {
             val bodyText = response.bodyAsText()
+            return json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
+        }
+
+        // Fallback: try without user join (in case foreign key relation fails)
+        println("⚠️ getByCategoryId with user join failed (${response.status}), trying without join...")
+        val fallbackResponse = client.get("$apiUrl/league_players") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "*")
+            parameter("category_id", "eq.$categoryId")
+            parameter("order", "name.asc")
+        }
+
+        return if (fallbackResponse.status.isSuccess()) {
+            val bodyText = fallbackResponse.bodyAsText()
             json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
         } else {
-            println("❌ Error getByCategoryId: ${response.status}")
+            println("❌ Error getByCategoryId (fallback): ${fallbackResponse.status}")
             emptyList()
         }
     }
 
     override suspend fun getById(id: String): LeaguePlayerResponse? {
+        // First try with user join
         val response = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -80,12 +112,27 @@ class LeaguePlayerRepositoryImpl(
             parameter("id", "eq.$id")
         }
 
-        return if (response.status.isSuccess()) {
+        if (response.status.isSuccess()) {
             val bodyText = response.bodyAsText()
+            val list = json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
+            return list.firstOrNull()
+        }
+
+        // Fallback: try without user join
+        println("⚠️ getById with user join failed (${response.status}), trying without join...")
+        val fallbackResponse = client.get("$apiUrl/league_players") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "*")
+            parameter("id", "eq.$id")
+        }
+
+        return if (fallbackResponse.status.isSuccess()) {
+            val bodyText = fallbackResponse.bodyAsText()
             val list = json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
             list.firstOrNull()
         } else {
-            println("❌ Error getById: ${response.status}")
+            println("❌ Error getById (fallback): ${fallbackResponse.status}")
             null
         }
     }
@@ -172,6 +219,7 @@ class LeaguePlayerRepositoryImpl(
     }
 
     override suspend fun getByUserUidAndCategoryId(userUid: String, categoryId: String): LeaguePlayerResponse? {
+        // First try with user join
         val response = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -180,12 +228,28 @@ class LeaguePlayerRepositoryImpl(
             parameter("category_id", "eq.$categoryId")
         }
 
-        return if (response.status.isSuccess()) {
+        if (response.status.isSuccess()) {
             val bodyText = response.bodyAsText()
+            val list = json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
+            return list.firstOrNull()
+        }
+
+        // Fallback: try without user join
+        println("⚠️ getByUserUidAndCategoryId with user join failed (${response.status}), trying without join...")
+        val fallbackResponse = client.get("$apiUrl/league_players") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "*")
+            parameter("user_uid", "eq.$userUid")
+            parameter("category_id", "eq.$categoryId")
+        }
+
+        return if (fallbackResponse.status.isSuccess()) {
+            val bodyText = fallbackResponse.bodyAsText()
             val list = json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
             list.firstOrNull()
         } else {
-            println("❌ Error getByUserUidAndCategoryId: ${response.status}")
+            println("❌ Error getByUserUidAndCategoryId (fallback): ${fallbackResponse.status}")
             null
         }
     }
