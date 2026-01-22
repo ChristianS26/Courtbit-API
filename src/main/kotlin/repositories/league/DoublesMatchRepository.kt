@@ -12,4 +12,11 @@ interface DoublesMatchRepository {
         recordedByUid: String
     ): Boolean
     suspend fun reverseForfeit(matchId: String, clearScores: Boolean): Boolean
+
+    /**
+     * Get the season's max_points_per_game setting for a given match.
+     * Traverses: match → rotation → day_group → category → season
+     * Returns 6 as default if not found.
+     */
+    suspend fun getSeasonMaxPointsForMatch(matchId: String): Int
 }

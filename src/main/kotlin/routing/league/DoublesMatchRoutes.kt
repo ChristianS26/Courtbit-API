@@ -60,14 +60,17 @@ fun Route.doublesMatchRoutes(
                     )
                 }
 
-                // Validate scores (one team must have 6, the other 0-5) OR 0-0 for reset
-                val isValidScore = (request.scoreTeam1 == 6 && request.scoreTeam2 in 0..5) ||
-                                   (request.scoreTeam2 == 6 && request.scoreTeam1 in 0..5) ||
+                // Get the season's max points per game setting for this match
+                val maxPoints = doublesMatchRepository.getSeasonMaxPointsForMatch(id)
+
+                // Validate scores (one team must have maxPoints, the other less) OR 0-0 for reset
+                val isValidScore = (request.scoreTeam1 == maxPoints && request.scoreTeam2 in 0 until maxPoints) ||
+                                   (request.scoreTeam2 == maxPoints && request.scoreTeam1 in 0 until maxPoints) ||
                                    (request.scoreTeam1 == 0 && request.scoreTeam2 == 0) // Allow reset
                 if (!isValidScore) {
                     return@patch call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to "Invalid score: one team must have 6 (other 0-5), or 0-0 to reset")
+                        mapOf("error" to "Invalid score: one team must have $maxPoints, the other 0-${maxPoints - 1}")
                     )
                 }
 
@@ -112,12 +115,15 @@ fun Route.doublesMatchRoutes(
                     )
                 }
 
-                // Validate scores
-                if (!((request.scoreTeam1 == 6 && request.scoreTeam2 in 0..5) ||
-                      (request.scoreTeam2 == 6 && request.scoreTeam1 in 0..5))) {
+                // Get the season's max points per game setting for this match
+                val maxPoints = doublesMatchRepository.getSeasonMaxPointsForMatch(matchId)
+
+                // Validate scores (one team must have maxPoints, the other less)
+                if (!((request.scoreTeam1 == maxPoints && request.scoreTeam2 in 0 until maxPoints) ||
+                      (request.scoreTeam2 == maxPoints && request.scoreTeam1 in 0 until maxPoints))) {
                     return@post call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to "Invalid score: one team must have 6, the other 0-5")
+                        mapOf("error" to "Invalid score: one team must have $maxPoints, the other 0-${maxPoints - 1}")
                     )
                 }
 

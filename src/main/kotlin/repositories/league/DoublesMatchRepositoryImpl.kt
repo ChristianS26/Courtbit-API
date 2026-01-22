@@ -170,6 +170,41 @@ class DoublesMatchRepositoryImpl(
         return response.status.isSuccess()
     }
 
+    override suspend fun getSeasonMaxPointsForMatch(matchId: String): Int {
+        logger.info("🔍 [DoublesMatchRepo] getSeasonMaxPointsForMatch($matchId)")
+
+        // Query doubles_matches with nested joins to get season's max_points_per_game
+        // Path: doubles_matches → rotations → day_groups → categories → seasons
+        val response = client.get("$apiUrl/doubles_matches") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "rotation:rotations(day_group:day_groups(category:categories(season:seasons(max_points_per_game))))")
+            parameter("id", "eq.$matchId")
+            parameter("limit", "1")
+        }
+
+        return if (response.status.isSuccess()) {
+            val bodyText = response.bodyAsText()
+            logger.info("🔍 [DoublesMatchRepo] Season config response: $bodyText")
+
+            try {
+                val result = json.decodeFromString<List<MatchWithSeasonConfig>>(bodyText)
+                val maxPoints = result.firstOrNull()
+                    ?.rotation?.dayGroup?.category?.season?.maxPointsPerGame
+                    ?: 6
+
+                logger.info("🔍 [DoublesMatchRepo] maxPointsPerGame for match $matchId: $maxPoints")
+                maxPoints
+            } catch (e: Exception) {
+                logger.warn("⚠️ [DoublesMatchRepo] Failed to parse season config, using default 6: ${e.message}")
+                6
+            }
+        } else {
+            logger.warn("⚠️ [DoublesMatchRepo] Failed to fetch season config, using default 6")
+            6
+        }
+    }
+
     private suspend fun fetchPlayerById(playerId: String): LeaguePlayerResponse? {
         val response = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
@@ -236,3 +271,29 @@ private data class DoublesMatchRaw(
         forfeitRecordedAt = forfeitRecordedAt
     )
 }
+
+// Response models for nested season config query (prefixed to avoid conflicts)
+@Serializable
+private data class MatchWithSeasonConfig(
+    val rotation: MatchRotationNested?
+)
+
+@Serializable
+private data class MatchRotationNested(
+    @SerialName("day_group") val dayGroup: MatchDayGroupNested?
+)
+
+@Serializable
+private data class MatchDayGroupNested(
+    val category: MatchCategoryNested?
+)
+
+@Serializable
+private data class MatchCategoryNested(
+    val season: MatchSeasonNested?
+)
+
+@Serializable
+private data class MatchSeasonNested(
+    @SerialName("max_points_per_game") val maxPointsPerGame: Int = 6
+)
