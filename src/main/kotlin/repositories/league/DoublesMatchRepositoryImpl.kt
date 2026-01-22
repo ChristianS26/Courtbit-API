@@ -6,6 +6,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.request.patch
+import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -173,142 +174,28 @@ class DoublesMatchRepositoryImpl(
     override suspend fun getSeasonMaxPointsForMatch(matchId: String): Int {
         logger.info("🔍 [DoublesMatchRepo] getSeasonMaxPointsForMatch($matchId)")
 
-        // Step 1: Get the match to find its rotation_id
-        val matchResponse = client.get("$apiUrl/doubles_matches") {
+        // Use RPC function for efficient single-query lookup
+        val response = client.post("$apiUrl/rpc/get_season_max_points_for_match") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "rotation_id")
-            parameter("id", "eq.$matchId")
-            parameter("limit", "1")
+            contentType(ContentType.Application.Json)
+            setBody("""{"match_id": "$matchId"}""")
         }
 
-        if (!matchResponse.status.isSuccess()) {
-            logger.warn("⚠️ [DoublesMatchRepo] Failed to fetch match, using default 6")
-            return 6
-        }
+        return if (response.status.isSuccess()) {
+            val bodyText = response.bodyAsText()
+            logger.info("🔍 [DoublesMatchRepo] RPC response: $bodyText")
 
-        val matchBody = matchResponse.bodyAsText()
-        val rotationId = try {
-            val matches = json.decodeFromString<List<MatchRotationId>>(matchBody)
-            matches.firstOrNull()?.rotationId
-        } catch (e: Exception) {
-            logger.warn("⚠️ [DoublesMatchRepo] Failed to parse match: ${e.message}")
-            null
-        }
-
-        if (rotationId == null) {
-            logger.warn("⚠️ [DoublesMatchRepo] No rotation_id found, using default 6")
-            return 6
-        }
-
-        // Step 2: Get the rotation to find day_group_id
-        val rotationResponse = client.get("$apiUrl/rotations") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("select", "day_group_id")
-            parameter("id", "eq.$rotationId")
-            parameter("limit", "1")
-        }
-
-        if (!rotationResponse.status.isSuccess()) {
-            logger.warn("⚠️ [DoublesMatchRepo] Failed to fetch rotation, using default 6")
-            return 6
-        }
-
-        val rotationBody = rotationResponse.bodyAsText()
-        val dayGroupId = try {
-            val rotations = json.decodeFromString<List<RotationDayGroupId>>(rotationBody)
-            rotations.firstOrNull()?.dayGroupId
-        } catch (e: Exception) {
-            logger.warn("⚠️ [DoublesMatchRepo] Failed to parse rotation: ${e.message}")
-            null
-        }
-
-        if (dayGroupId == null) {
-            logger.warn("⚠️ [DoublesMatchRepo] No day_group_id found, using default 6")
-            return 6
-        }
-
-        // Step 3: Get day_group to find category_id
-        val dayGroupResponse = client.get("$apiUrl/day_groups") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("select", "category_id")
-            parameter("id", "eq.$dayGroupId")
-            parameter("limit", "1")
-        }
-
-        if (!dayGroupResponse.status.isSuccess()) {
-            logger.warn("⚠️ [DoublesMatchRepo] Failed to fetch day_group, using default 6")
-            return 6
-        }
-
-        val dayGroupBody = dayGroupResponse.bodyAsText()
-        val categoryId = try {
-            val dayGroups = json.decodeFromString<List<DayGroupCategoryId>>(dayGroupBody)
-            dayGroups.firstOrNull()?.categoryId
-        } catch (e: Exception) {
-            logger.warn("⚠️ [DoublesMatchRepo] Failed to parse day_group: ${e.message}")
-            null
-        }
-
-        if (categoryId == null) {
-            logger.warn("⚠️ [DoublesMatchRepo] No category_id found, using default 6")
-            return 6
-        }
-
-        // Step 4: Get category to find season_id
-        val categoryResponse = client.get("$apiUrl/league_categories") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("select", "season_id")
-            parameter("id", "eq.$categoryId")
-            parameter("limit", "1")
-        }
-
-        if (!categoryResponse.status.isSuccess()) {
-            logger.warn("⚠️ [DoublesMatchRepo] Failed to fetch category, using default 6")
-            return 6
-        }
-
-        val categoryBody = categoryResponse.bodyAsText()
-        val seasonId = try {
-            val categories = json.decodeFromString<List<CategorySeasonId>>(categoryBody)
-            categories.firstOrNull()?.seasonId
-        } catch (e: Exception) {
-            logger.warn("⚠️ [DoublesMatchRepo] Failed to parse category: ${e.message}")
-            null
-        }
-
-        if (seasonId == null) {
-            logger.warn("⚠️ [DoublesMatchRepo] No season_id found, using default 6")
-            return 6
-        }
-
-        // Step 5: Get season's max_points_per_game
-        val seasonResponse = client.get("$apiUrl/seasons") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("select", "max_points_per_game")
-            parameter("id", "eq.$seasonId")
-            parameter("limit", "1")
-        }
-
-        if (!seasonResponse.status.isSuccess()) {
-            logger.warn("⚠️ [DoublesMatchRepo] Failed to fetch season, using default 6")
-            return 6
-        }
-
-        val seasonBody = seasonResponse.bodyAsText()
-        logger.info("🔍 [DoublesMatchRepo] Season response: $seasonBody")
-
-        return try {
-            val seasons = json.decodeFromString<List<SeasonMaxPointsOnly>>(seasonBody)
-            val maxPoints = seasons.firstOrNull()?.maxPointsPerGame ?: 6
-            logger.info("🔍 [DoublesMatchRepo] maxPointsPerGame for match $matchId: $maxPoints")
-            maxPoints
-        } catch (e: Exception) {
-            logger.warn("⚠️ [DoublesMatchRepo] Failed to parse season: ${e.message}")
+            try {
+                val maxPoints = bodyText.trim().toIntOrNull() ?: 6
+                logger.info("🔍 [DoublesMatchRepo] maxPointsPerGame for match $matchId: $maxPoints")
+                maxPoints
+            } catch (e: Exception) {
+                logger.warn("⚠️ [DoublesMatchRepo] Failed to parse RPC response, using default 6: ${e.message}")
+                6
+            }
+        } else {
+            logger.warn("⚠️ [DoublesMatchRepo] RPC call failed (${response.status}), using default 6")
             6
         }
     }
@@ -380,28 +267,3 @@ private data class DoublesMatchRaw(
     )
 }
 
-// Simple response models for step-by-step season config lookup
-@Serializable
-private data class MatchRotationId(
-    @SerialName("rotation_id") val rotationId: String
-)
-
-@Serializable
-private data class RotationDayGroupId(
-    @SerialName("day_group_id") val dayGroupId: String
-)
-
-@Serializable
-private data class DayGroupCategoryId(
-    @SerialName("category_id") val categoryId: String
-)
-
-@Serializable
-private data class CategorySeasonId(
-    @SerialName("season_id") val seasonId: String
-)
-
-@Serializable
-private data class SeasonMaxPointsOnly(
-    @SerialName("max_points_per_game") val maxPointsPerGame: Int = 6
-)
