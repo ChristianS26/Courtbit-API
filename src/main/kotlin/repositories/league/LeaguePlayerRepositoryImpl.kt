@@ -543,10 +543,20 @@ class LeaguePlayerRepositoryImpl(
         // Build OR clause for email or phone matching
         val orConditions = mutableListOf("email.ilike.$email")
         if (!phone.isNullOrBlank()) {
-            // Normalize phone for comparison (remove spaces, dashes, etc.)
-            val normalizedPhone = phone.replace(Regex("[^0-9+]"), "")
-            if (normalizedPhone.isNotEmpty()) {
-                orConditions.add("phone_number.ilike.%$normalizedPhone%")
+            // Normalize phone: remove all non-digits
+            val digitsOnly = phone.replace(Regex("[^0-9]"), "")
+            if (digitsOnly.isNotEmpty()) {
+                // Strategy: Use the last 10 digits for matching (handles country code variations)
+                // This covers cases like:
+                // - User: +528112345678 → search for 8112345678
+                // - Player stored as: 8112345678 ✓ matches
+                // - Player stored as: +528112345678 → last 10 digits also match
+                val phoneForSearch = if (digitsOnly.length > 10) {
+                    digitsOnly.takeLast(10)
+                } else {
+                    digitsOnly
+                }
+                orConditions.add("phone_number.ilike.%$phoneForSearch%")
             }
         }
 
