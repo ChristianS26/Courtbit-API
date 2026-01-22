@@ -9,6 +9,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import models.league.AutoSchedulePreviewRequest
 import models.league.AutoScheduleRequest
+import models.league.ClearMatchdayScheduleResponse
 import models.league.CreateMatchdayScheduleOverrideRequest
 import models.league.CreateSeasonScheduleDefaultsRequest
 import models.league.UpdateAssignmentResponse
@@ -510,9 +511,9 @@ fun Route.scheduleRoutes(
 
                     try {
                         val clearedCount = dayGroupRepository.clearMatchdayAssignments(seasonId, matchdayNumber)
-                        call.respond(HttpStatusCode.OK, mapOf(
-                            "success" to true,
-                            "cleared_groups" to clearedCount
+                        call.respond(HttpStatusCode.OK, ClearMatchdayScheduleResponse(
+                            success = true,
+                            clearedGroups = clearedCount
                         ))
                     } catch (e: Exception) {
                         call.respond(

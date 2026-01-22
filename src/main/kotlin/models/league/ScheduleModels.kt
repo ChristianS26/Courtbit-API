@@ -234,3 +234,10 @@ data class MatchdayHealthInfo(
     @SerialName("unscheduled_groups") val unscheduledGroups: Int,
     @SerialName("completion_percentage") val completionPercentage: Double
 )
+
+// Phase 3.1: Clear Matchday Schedule Response
+@Serializable
+data class ClearMatchdayScheduleResponse(
+    val success: Boolean,
+    @SerialName("cleared_groups") val clearedGroups: Int
+)
