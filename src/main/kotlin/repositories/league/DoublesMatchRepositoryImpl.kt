@@ -174,11 +174,11 @@ class DoublesMatchRepositoryImpl(
         logger.info("🔍 [DoublesMatchRepo] getSeasonMaxPointsForMatch($matchId)")
 
         // Query doubles_matches with nested joins to get season's max_points_per_game
-        // Path: doubles_matches → rotations → day_groups → categories → seasons
+        // Path: doubles_matches → rotations → day_groups → league_categories → seasons
         val response = client.get("$apiUrl/doubles_matches") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "rotation:rotations(day_group:day_groups(category:categories(season:seasons(max_points_per_game))))")
+            parameter("select", "rotations(day_groups(league_categories(seasons(max_points_per_game))))")
             parameter("id", "eq.$matchId")
             parameter("limit", "1")
         }
@@ -190,7 +190,7 @@ class DoublesMatchRepositoryImpl(
             try {
                 val result = json.decodeFromString<List<MatchWithSeasonConfig>>(bodyText)
                 val maxPoints = result.firstOrNull()
-                    ?.rotation?.dayGroup?.category?.season?.maxPointsPerGame
+                    ?.rotations?.dayGroups?.leagueCategories?.seasons?.maxPointsPerGame
                     ?: 6
 
                 logger.info("🔍 [DoublesMatchRepo] maxPointsPerGame for match $matchId: $maxPoints")
@@ -275,22 +275,22 @@ private data class DoublesMatchRaw(
 // Response models for nested season config query (prefixed to avoid conflicts)
 @Serializable
 private data class MatchWithSeasonConfig(
-    val rotation: MatchRotationNested?
+    val rotations: MatchRotationNested? = null
 )
 
 @Serializable
 private data class MatchRotationNested(
-    @SerialName("day_group") val dayGroup: MatchDayGroupNested?
+    @SerialName("day_groups") val dayGroups: MatchDayGroupNested? = null
 )
 
 @Serializable
 private data class MatchDayGroupNested(
-    val category: MatchCategoryNested?
+    @SerialName("league_categories") val leagueCategories: MatchCategoryNested? = null
 )
 
 @Serializable
 private data class MatchCategoryNested(
-    val season: MatchSeasonNested?
+    val seasons: MatchSeasonNested? = null
 )
 
 @Serializable
