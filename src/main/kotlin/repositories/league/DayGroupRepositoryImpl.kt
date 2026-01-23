@@ -45,12 +45,13 @@ class DayGroupRepositoryImpl(
             val bodyText = response.bodyAsText()
             val rawList = json.decodeFromString<List<DayGroupRaw>>(bodyText)
 
-            // Enrich with players
+            // Enrich with players and court info
             rawList.map { raw ->
                 val players = raw.playerIds.mapNotNull { playerId ->
                     fetchPlayerById(playerId)
                 }
-                raw.toDayGroupResponse(players)
+                val courtInfo = raw.courtId?.let { fetchCourtById(it) }
+                raw.toDayGroupResponse(players, courtInfo)
             }
         } else {
             emptyList()
@@ -71,11 +72,12 @@ class DayGroupRepositoryImpl(
             val rawList = json.decodeFromString<List<DayGroupRaw>>(bodyText)
             val raw = rawList.firstOrNull() ?: return null
 
-            // Enrich with players
+            // Enrich with players and court info
             val players = raw.playerIds.mapNotNull { playerId ->
                 fetchPlayerById(playerId)
             }
-            raw.toDayGroupResponse(players)
+            val courtInfo = raw.courtId?.let { fetchCourtById(it) }
+            raw.toDayGroupResponse(players, courtInfo)
         } else {
             null
         }
@@ -99,6 +101,24 @@ class DayGroupRepositoryImpl(
         }
     }
 
+    private suspend fun fetchCourtById(courtId: String): CourtInfo? {
+        val response = client.get("$apiUrl/season_courts") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "id,name,court_number")
+            parameter("id", "eq.$courtId")
+            parameter("limit", "1")
+        }
+
+        return if (response.status.isSuccess()) {
+            val bodyText = response.bodyAsText()
+            val list = json.decodeFromString<List<CourtInfo>>(bodyText)
+            list.firstOrNull()
+        } else {
+            null
+        }
+    }
+
     override suspend fun updateAssignment(id: String, request: UpdateDayGroupAssignmentRequest): Boolean {
         // Build JSON manually to include explicit nulls (needed for clearing assignments)
         // The global Json config has explicitNulls=false which would skip null values
@@ -106,6 +126,7 @@ class DayGroupRepositoryImpl(
             put("match_date", request.matchDate?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
             put("time_slot", request.timeSlot?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
             put("court_index", request.courtIndex?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+            put("court_id", request.courtId?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
         }
 
         val response = client.patch("$apiUrl/day_groups") {
@@ -135,11 +156,12 @@ class DayGroupRepositoryImpl(
             val rawList = json.decodeFromString<List<DayGroupRaw>>(bodyText)
             val raw = rawList.firstOrNull() ?: return null
 
-            // Enrich with players
+            // Enrich with players and court info
             val players = raw.playerIds.mapNotNull { playerId ->
                 fetchPlayerById(playerId)
             }
-            raw.toDayGroupResponse(players)
+            val courtInfo = raw.courtId?.let { fetchCourtById(it) }
+            raw.toDayGroupResponse(players, courtInfo)
         } else {
             null
         }
@@ -370,9 +392,10 @@ private data class DayGroupRaw(
     @SerialName("match_date") val matchDate: String? = null,
     @SerialName("time_slot") val timeSlot: String? = null,
     @SerialName("court_index") val courtIndex: Int? = null,
+    @SerialName("court_id") val courtId: String? = null,
     @SerialName("created_at") val createdAt: String
 ) {
-    fun toDayGroupResponse(players: List<LeaguePlayerResponse>) = DayGroupResponse(
+    fun toDayGroupResponse(players: List<LeaguePlayerResponse>, courtInfo: CourtInfo? = null) = DayGroupResponse(
         id = id,
         matchDayId = matchDayId,
         groupNumber = groupNumber,
@@ -380,7 +403,17 @@ private data class DayGroupRaw(
         matchDate = matchDate,
         timeSlot = timeSlot,
         courtIndex = courtIndex,
+        courtId = courtId,
+        courtName = courtInfo?.name,
+        courtNumber = courtInfo?.courtNumber,
         createdAt = createdAt,
         players = players
     )
 }
+
+@Serializable
+private data class CourtInfo(
+    val id: String,
+    val name: String,
+    @SerialName("court_number") val courtNumber: Int
+)

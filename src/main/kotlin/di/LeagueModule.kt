@@ -26,15 +26,16 @@ val LeagueModule = module {
     single<PlayerAvailabilityRepository> { PlayerAvailabilityRepositoryImpl(get(), get(), get(), get()) }
     single<AdjustmentRepository> { AdjustmentRepositoryImpl(get(), get(), get()) }
     single<LeaguePaymentRepository> { LeaguePaymentRepositoryImpl(get(), get(), get()) }
+    single<SeasonCourtRepository> { SeasonCourtRepositoryImpl(get(), get(), get()) }
 
     // Services
-    single { SeasonService(get(), get(), get()) }
+    single { SeasonService(get(), get(), get(), get()) }
     single { LeagueCategoryService(get(), get(), get(), get(), get()) }
     single { RankingService(get(), get(), get()) }
     single { MatchDayService(get(), get(), get()) }
     single { MasterScheduleService(get(), get(), get(), get(), get(), get(), get()) }
     single { PlayoffService(get(), get(), get()) }
-    single { AutoSchedulingService(get(), get(), get(), get(), get(), get(), get(), get()) }
+    single { AutoSchedulingService(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
     single { PlayerScoreService(get(), get(), get()) }
     single { LeaguePaymentService(get(), get(), get()) }
 }

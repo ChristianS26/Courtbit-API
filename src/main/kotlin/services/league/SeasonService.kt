@@ -2,15 +2,20 @@ package services.league
 
 import models.league.CreateSeasonRequest
 import models.league.SeasonResponse
+import org.slf4j.LoggerFactory
 import repositories.league.LeagueCategoryRepository
 import repositories.league.MatchDayRepository
+import repositories.league.SeasonCourtRepository
 import repositories.league.SeasonRepository
 
 class SeasonService(
     private val repository: SeasonRepository,
     private val categoryRepository: LeagueCategoryRepository,
-    private val matchDayRepository: MatchDayRepository
+    private val matchDayRepository: MatchDayRepository,
+    private val courtRepository: SeasonCourtRepository
 ) {
+    private val logger = LoggerFactory.getLogger(SeasonService::class.java)
+
     suspend fun createSeason(
         request: CreateSeasonRequest,
         organizerId: String
@@ -19,8 +24,20 @@ class SeasonService(
         val seasonWithOrganizer = request.copy(organizerId = organizerId)
 
         val created = repository.create(seasonWithOrganizer)
-        return if (created != null) Result.success(created)
-        else Result.failure(IllegalStateException("Failed to create season"))
+        if (created == null) {
+            return Result.failure(IllegalStateException("Failed to create season"))
+        }
+
+        // Create court records for the season
+        val courtCount = request.numberOfCourts.coerceIn(1, 20)
+        val courts = courtRepository.bulkCreate(created.id, courtCount)
+        if (courts.isEmpty()) {
+            logger.warn("Failed to create courts for season ${created.id}, but season was created")
+        } else {
+            logger.info("Created ${courts.size} courts for season ${created.id}")
+        }
+
+        return Result.success(created)
     }
 
     /**

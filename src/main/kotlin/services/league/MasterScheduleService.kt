@@ -154,8 +154,8 @@ class MasterScheduleService(
         matchNumber: Int,
         playerMap: Map<String, LeaguePlayerResponse>
     ): MatchDayWithGroupsEnriched? {
-        // Fetch matchday with embedded day_groups and rotations
-        val selectQuery = "*,day_groups(*,rotations(id,doubles_matches(score_team1,score_team2)))"
+        // Fetch matchday with embedded day_groups, rotations, and court info
+        val selectQuery = "*,day_groups(*,season_courts(id,name,court_number),rotations(id,doubles_matches(score_team1,score_team2)))"
 
         val response = client.get("$apiUrl/match_days") {
             header("apikey", apiKey)
@@ -176,8 +176,8 @@ class MasterScheduleService(
     }
 
     private suspend fun fetchMatchDaysWithGroups(categoryId: String): List<MatchDayWithGroupsResponse> {
-        // Use embedded resources to fetch match days with day groups
-        val selectQuery = "*,day_groups(*)"
+        // Use embedded resources to fetch match days with day groups and court info
+        val selectQuery = "*,day_groups(*,season_courts(id,name,court_number))"
 
         val response = client.get("$apiUrl/match_days") {
             header("apikey", apiKey)
@@ -321,6 +321,8 @@ private data class DayGroupScheduleInfoRaw(
     @SerialName("match_date") val matchDate: String?,
     @SerialName("time_slot") val timeSlot: String?,
     @SerialName("court_index") val courtIndex: Int?,
+    @SerialName("court_id") val courtId: String? = null,
+    @SerialName("season_courts") val seasonCourt: SeasonCourtRaw? = null,
     @SerialName("created_at") val createdAt: String
 ) {
     fun toResponse() = DayGroupScheduleInfo(
@@ -331,6 +333,9 @@ private data class DayGroupScheduleInfoRaw(
         matchDate = matchDate,
         timeSlot = timeSlot,
         courtIndex = courtIndex,
+        courtId = courtId,
+        courtName = seasonCourt?.name,
+        courtNumber = seasonCourt?.courtNumber,
         createdAt = createdAt
     )
 }
@@ -362,6 +367,8 @@ private data class DayGroupEnrichedRaw(
     @SerialName("match_date") val matchDate: String?,
     @SerialName("time_slot") val timeSlot: String?,
     @SerialName("court_index") val courtIndex: Int?,
+    @SerialName("court_id") val courtId: String? = null,
+    @SerialName("season_courts") val seasonCourt: SeasonCourtRaw? = null,
     @SerialName("created_at") val createdAt: String,
     val rotations: List<RotationWithMatchRaw> = emptyList()
 ) {
@@ -386,6 +393,9 @@ private data class DayGroupEnrichedRaw(
             matchDate = matchDate,
             timeSlot = timeSlot,
             courtIndex = courtIndex,
+            courtId = courtId,
+            courtName = seasonCourt?.name,
+            courtNumber = seasonCourt?.courtNumber,
             createdAt = createdAt,
             players = players,
             completedRotations = completedRotations,
@@ -393,6 +403,13 @@ private data class DayGroupEnrichedRaw(
         )
     }
 }
+
+@Serializable
+private data class SeasonCourtRaw(
+    val id: String,
+    val name: String,
+    @SerialName("court_number") val courtNumber: Int
+)
 
 @Serializable
 private data class RotationWithMatchRaw(

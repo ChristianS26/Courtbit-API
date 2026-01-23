@@ -19,7 +19,10 @@ data class DayGroupResponse(
     @SerialName("player_ids") val playerIds: List<String>,
     @SerialName("match_date") val matchDate: String?,
     @SerialName("time_slot") val timeSlot: String?,
-    @SerialName("court_index") val courtIndex: Int?,
+    @SerialName("court_index") val courtIndex: Int?,  // Kept for backwards compatibility
+    @SerialName("court_id") val courtId: String? = null,  // NEW: UUID reference to season_courts
+    @SerialName("court_name") val courtName: String? = null,  // NEW: Display name from season_courts
+    @SerialName("court_number") val courtNumber: Int? = null,  // NEW: Same as court_index but from court record
     @SerialName("created_at") val createdAt: String,
     val players: List<LeaguePlayerResponse>? = null
 )

@@ -45,7 +45,8 @@ data class CreateSeasonRequest(
     @SerialName("forfeit_winner_points") val forfeitWinnerPoints: Int = 15,
     @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int = 12,
     @SerialName("requires_shirt_size") val requiresShirtSize: Boolean = false,
-    @SerialName("requires_shirt_name") val requiresShirtName: Boolean = false
+    @SerialName("requires_shirt_name") val requiresShirtName: Boolean = false,
+    @SerialName("number_of_courts") val numberOfCourts: Int = 4  // Used to create court records, not persisted to seasons table
 )
 
 @Serializable

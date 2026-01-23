@@ -61,7 +61,8 @@ data class UpdateMatchdayScheduleOverrideRequest(
 data class UpdateDayGroupAssignmentRequest(
     @SerialName("match_date") val matchDate: String?,
     @SerialName("time_slot") val timeSlot: String?,
-    @SerialName("court_index") val courtIndex: Int?
+    @SerialName("court_index") val courtIndex: Int?,
+    @SerialName("court_id") val courtId: String? = null
 )
 
 @Serializable
@@ -99,6 +100,9 @@ data class DayGroupScheduleInfo(
     @SerialName("match_date") val matchDate: String?,
     @SerialName("time_slot") val timeSlot: String?,
     @SerialName("court_index") val courtIndex: Int?,
+    @SerialName("court_id") val courtId: String? = null,
+    @SerialName("court_name") val courtName: String? = null,
+    @SerialName("court_number") val courtNumber: Int? = null,
     @SerialName("created_at") val createdAt: String
 )
 
@@ -170,6 +174,7 @@ data class GroupAssignment(
     @SerialName("match_date") val matchDate: String,
     @SerialName("time_slot") val timeSlot: String,
     @SerialName("court_index") val courtIndex: Int,
+    @SerialName("court_name") val courtName: String? = null,
     @SerialName("availability_score") val availabilityScore: Double,
     @SerialName("unavailable_players") val unavailablePlayers: List<String>
 )
@@ -209,6 +214,9 @@ data class DayGroupEnriched(
     @SerialName("match_date") val matchDate: String?,
     @SerialName("time_slot") val timeSlot: String?,
     @SerialName("court_index") val courtIndex: Int?,
+    @SerialName("court_id") val courtId: String? = null,
+    @SerialName("court_name") val courtName: String? = null,
+    @SerialName("court_number") val courtNumber: Int? = null,
     @SerialName("created_at") val createdAt: String,
     val players: List<LeaguePlayerResponse>,
     @SerialName("completed_rotations") val completedRotations: Int,

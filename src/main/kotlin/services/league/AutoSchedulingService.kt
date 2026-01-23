@@ -36,7 +36,8 @@ class AutoSchedulingService(
     private val overridesRepository: MatchdayScheduleOverridesRepository,
     private val dayGroupRepository: DayGroupRepository,
     private val availabilityRepository: PlayerAvailabilityRepository,
-    private val categoryRepository: LeagueCategoryRepository
+    private val categoryRepository: LeagueCategoryRepository,
+    private val courtRepository: SeasonCourtRepository
 ) {
     private val apiUrl = config.apiUrl
     private val apiKey = config.apiKey
@@ -149,13 +150,28 @@ class AutoSchedulingService(
         val allSkippedDetails = mutableListOf<String>()
         var totalSkipped = 0
 
-        // 4.5. Process each date separately
+        // 4.5. Fetch courts for the season (active only)
+        val seasonCourts = courtRepository.getBySeasonId(request.seasonId)
+            .filter { it.isActive }
+            .sortedBy { it.courtNumber }
+
+        if (seasonCourts.isEmpty()) {
+            return AutoScheduleResponse(
+                totalGroups = unassignedGroups.size,
+                assignedGroups = 0,
+                skippedGroups = unassignedGroups.size,
+                assignments = emptyList(),
+                warnings = listOf("No active courts configured for this season")
+            )
+        }
+
+        // 4.6. Process each date separately
         for ((matchDate, categoryIdsForDate) in categoriesByDate) {
-            // Build available slots for this date
+            // Build available slots for this date using actual court records
             val availableSlots = mutableSetOf<Slot>()
-            for (courtIndex in 1..numberOfCourts) {
+            for (court in seasonCourts) {
                 for (timeSlot in timeSlots) {
-                    availableSlots.add(Slot(matchDate, timeSlot, courtIndex))
+                    availableSlots.add(Slot(matchDate, timeSlot, court.courtNumber, court.id, court.name))
                 }
             }
 
@@ -240,7 +256,8 @@ class AutoSchedulingService(
                     val updateRequest = UpdateDayGroupAssignmentRequest(
                         matchDate = perfectSlot.slot.date,
                         timeSlot = perfectSlot.slot.timeSlot,
-                        courtIndex = perfectSlot.slot.courtIndex
+                        courtIndex = perfectSlot.slot.courtIndex,
+                        courtId = perfectSlot.slot.courtId
                     )
 
                     val updated = dayGroupRepository.updateAssignment(group.id, updateRequest)
@@ -254,6 +271,7 @@ class AutoSchedulingService(
                                 matchDate = perfectSlot.slot.date,
                                 timeSlot = perfectSlot.slot.timeSlot,
                                 courtIndex = perfectSlot.slot.courtIndex,
+                                courtName = perfectSlot.slot.courtName,
                                 availabilityScore = perfectSlot.score,
                                 unavailablePlayers = emptyList()
                             )
@@ -275,7 +293,8 @@ class AutoSchedulingService(
                     val updateRequest = UpdateDayGroupAssignmentRequest(
                         matchDate = bestPartialSlot.slot.date,
                         timeSlot = bestPartialSlot.slot.timeSlot,
-                        courtIndex = bestPartialSlot.slot.courtIndex
+                        courtIndex = bestPartialSlot.slot.courtIndex,
+                        courtId = bestPartialSlot.slot.courtId
                     )
 
                     val updated = dayGroupRepository.updateAssignment(group.id, updateRequest)
@@ -294,6 +313,7 @@ class AutoSchedulingService(
                                 matchDate = bestPartialSlot.slot.date,
                                 timeSlot = bestPartialSlot.slot.timeSlot,
                                 courtIndex = bestPartialSlot.slot.courtIndex,
+                                courtName = bestPartialSlot.slot.courtName,
                                 availabilityScore = bestPartialSlot.score,
                                 unavailablePlayers = unavailableNames
                             )
@@ -571,11 +591,11 @@ class AutoSchedulingService(
         val usedSlots = mutableMapOf<String, MutableSet<Slot>>() // date -> slots
 
         for (category in categories) {
-            // Fetch match day for this category and matchday number
+            // Fetch match day for this category and matchday number (including court info)
             val response = client.get("$apiUrl/match_days") {
                 header("apikey", apiKey)
                 header("Authorization", "Bearer $apiKey")
-                parameter("select", "*,day_groups(*)")
+                parameter("select", "*,day_groups(*,season_courts(id,name,court_number))")
                 parameter("category_id", "eq.${category.id}")
                 parameter("match_number", "eq.$matchdayNumber")
             }
@@ -604,7 +624,10 @@ class AutoSchedulingService(
                             )
                         } else {
                             // Already assigned - mark slot as used to avoid overlap
-                            val slot = Slot(dayGroup.matchDate, dayGroup.timeSlot, dayGroup.courtIndex)
+                            // Use court info from season_courts if available, fallback to court_id or defaults
+                            val courtId = dayGroup.courtId ?: dayGroup.seasonCourt?.id ?: ""
+                            val courtName = dayGroup.seasonCourt?.name ?: "Cancha ${dayGroup.courtIndex}"
+                            val slot = Slot(dayGroup.matchDate, dayGroup.timeSlot, dayGroup.courtIndex, courtId, courtName)
                             usedSlots.getOrPut(dayGroup.matchDate) { mutableSetOf() }.add(slot)
                         }
                     }
@@ -767,11 +790,27 @@ class AutoSchedulingService(
     )
 
     // Helper data classes
+    // Slot represents a physical court slot; equality is based on date/timeSlot/courtIndex only
     private data class Slot(
         val date: String,
         val timeSlot: String,
-        val courtIndex: Int
-    )
+        val courtIndex: Int,
+        val courtId: String,
+        val courtName: String
+    ) {
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is Slot) return false
+            return date == other.date && timeSlot == other.timeSlot && courtIndex == other.courtIndex
+        }
+
+        override fun hashCode(): Int {
+            var result = date.hashCode()
+            result = 31 * result + timeSlot.hashCode()
+            result = 31 * result + courtIndex
+            return result
+        }
+    }
 
     private data class SlotScore(
         val slot: Slot,
@@ -824,7 +863,16 @@ private data class AutoScheduleDayGroupRaw(
     @SerialName("match_date") val matchDate: String?,
     @SerialName("time_slot") val timeSlot: String?,
     @SerialName("court_index") val courtIndex: Int?,
+    @SerialName("court_id") val courtId: String? = null,
+    @SerialName("season_courts") val seasonCourt: AutoScheduleCourtRaw? = null,
     @SerialName("created_at") val createdAt: String
+)
+
+@Serializable
+private data class AutoScheduleCourtRaw(
+    val id: String,
+    val name: String,
+    @SerialName("court_number") val courtNumber: Int
 )
 
 @Serializable

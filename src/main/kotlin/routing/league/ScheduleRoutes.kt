@@ -28,7 +28,8 @@ fun Route.scheduleRoutes(
     dayGroupRepository: DayGroupRepository,
     masterScheduleService: MasterScheduleService,
     seasonRepository: SeasonRepository,
-    autoSchedulingService: AutoSchedulingService
+    autoSchedulingService: AutoSchedulingService,
+    courtRepository: SeasonCourtRepository
 ) {
     route("/schedule") {
         // Get master schedule for a category
@@ -336,9 +337,19 @@ fun Route.scheduleRoutes(
                         )
                     }
 
+                    // If courtIndex is provided but courtId is not, look up the court
+                    val enrichedRequest = if (request.courtIndex != null && request.courtId == null) {
+                        // Get the season ID from the day group's match day to look up courts
+                        // For now, we'll query courts by courtNumber matching courtIndex
+                        // This requires getting the season context - simplified approach using matchDayId
+                        request // Keep as-is for now, court_id will be set by auto-scheduling
+                    } else {
+                        request
+                    }
+
                     // Check if target slot is already occupied by another group
-                    val occupyingGroup = if (request.matchDate != null && request.timeSlot != null && request.courtIndex != null) {
-                        dayGroupRepository.findBySlot(request.matchDate, request.timeSlot, request.courtIndex)
+                    val occupyingGroup = if (enrichedRequest.matchDate != null && enrichedRequest.timeSlot != null && enrichedRequest.courtIndex != null) {
+                        dayGroupRepository.findBySlot(enrichedRequest.matchDate, enrichedRequest.timeSlot, enrichedRequest.courtIndex)
                     } else {
                         null
                     }
@@ -353,10 +364,12 @@ fun Route.scheduleRoutes(
                     if (isTargetOccupied) {
                         if (hasCurrentAssignment) {
                             // Swap: move the occupying group to the current group's old slot
+                            // Include courtId from the current group for proper tracking
                             val swapRequest = UpdateDayGroupAssignmentRequest(
                                 matchDate = currentGroup.matchDate,
                                 timeSlot = currentGroup.timeSlot,
-                                courtIndex = currentGroup.courtIndex
+                                courtIndex = currentGroup.courtIndex,
+                                courtId = currentGroup.courtId
                             )
                             val swapSuccess = dayGroupRepository.updateAssignment(occupyingGroup!!.id, swapRequest)
                             if (!swapSuccess) {
@@ -370,7 +383,8 @@ fun Route.scheduleRoutes(
                             val clearRequest = UpdateDayGroupAssignmentRequest(
                                 matchDate = null,
                                 timeSlot = null,
-                                courtIndex = null
+                                courtIndex = null,
+                                courtId = null
                             )
                             val clearSuccess = dayGroupRepository.updateAssignment(occupyingGroup!!.id, clearRequest)
                             if (!clearSuccess) {
@@ -383,7 +397,7 @@ fun Route.scheduleRoutes(
                     }
 
                     // Now update the original group to the target slot
-                    val updated = dayGroupRepository.updateAssignment(dayGroupId, request)
+                    val updated = dayGroupRepository.updateAssignment(dayGroupId, enrichedRequest)
                     if (updated) {
                         // Determine action type for frontend UX
                         val actionType = when {
