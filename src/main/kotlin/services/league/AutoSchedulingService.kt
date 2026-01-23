@@ -74,8 +74,10 @@ class AutoSchedulingService(
             )
         }
 
-        // 2. Get all unassigned day groups for this matchday across all categories
-        val allUnassignedGroups = fetchUnassignedGroups(request.seasonId, request.matchdayNumber)
+        // 2. Get all day groups for this matchday (unassigned + already-used slots)
+        val groupsAndSlots = fetchGroupsAndUsedSlots(request.seasonId, request.matchdayNumber)
+        val allUnassignedGroups = groupsAndSlots.unassignedGroups
+        val preExistingUsedSlots = groupsAndSlots.usedSlotsByDate
 
         // 2.5. Build category-to-date mapping
         // Priority: categoryDates > categoryIds with matchDate > matchDate for all
@@ -138,7 +140,11 @@ class AutoSchedulingService(
         val categoriesByDate = categoryDateMap.entries.groupBy({ it.value }, { it.key })
 
         // Track used slots per date (different dates don't share slots)
+        // Pre-populate with already-assigned slots to avoid overlaps
         val usedSlotsByDate = mutableMapOf<String, MutableSet<Slot>>()
+        for ((date, slots) in preExistingUsedSlots) {
+            usedSlotsByDate[date] = slots.toMutableSet()
+        }
         val allAssignments = mutableListOf<GroupAssignment>()
         val allSkippedDetails = mutableListOf<String>()
         var totalSkipped = 0
@@ -377,7 +383,8 @@ class AutoSchedulingService(
         }
 
         // 2. Get all unassigned day groups for this matchday
-        val allUnassignedGroups = fetchUnassignedGroups(request.seasonId, request.matchdayNumber)
+        val groupsAndSlots = fetchGroupsAndUsedSlots(request.seasonId, request.matchdayNumber)
+        val allUnassignedGroups = groupsAndSlots.unassignedGroups
 
         // Filter by categoryIds if specified
         val unassignedGroups = if (request.categoryIds != null && request.categoryIds.isNotEmpty()) {
@@ -553,13 +560,15 @@ class AutoSchedulingService(
     }
 
     /**
-     * Fetch all unassigned day groups for a matchday across all categories in the season
+     * Fetch all day groups for a matchday, returning both unassigned groups and already-used slots.
+     * This ensures we don't create overlapping assignments with existing ones.
      */
-    private suspend fun fetchUnassignedGroups(seasonId: String, matchdayNumber: Int): List<UnassignedGroup> {
+    private suspend fun fetchGroupsAndUsedSlots(seasonId: String, matchdayNumber: Int): GroupsAndSlots {
         // First get all categories for this season
         val categories = categoryRepository.getBySeasonId(seasonId)
 
         val unassignedGroups = mutableListOf<UnassignedGroup>()
+        val usedSlots = mutableMapOf<String, MutableSet<Slot>>() // date -> slots
 
         for (category in categories) {
             // Fetch match day for this category and matchday number
@@ -580,8 +589,8 @@ class AutoSchedulingService(
 
                 for (matchDay in matchDays) {
                     for (dayGroup in matchDay.dayGroups) {
-                        // Check if unassigned (no match_date, time_slot, or court_index)
                         if (dayGroup.matchDate == null || dayGroup.timeSlot == null || dayGroup.courtIndex == null) {
+                            // Unassigned group - add to list for scheduling
                             unassignedGroups.add(
                                 UnassignedGroup(
                                     id = dayGroup.id,
@@ -593,14 +602,26 @@ class AutoSchedulingService(
                                     recommendedCourts = category.recommendedCourts
                                 )
                             )
+                        } else {
+                            // Already assigned - mark slot as used to avoid overlap
+                            val slot = Slot(dayGroup.matchDate, dayGroup.timeSlot, dayGroup.courtIndex)
+                            usedSlots.getOrPut(dayGroup.matchDate) { mutableSetOf() }.add(slot)
                         }
                     }
                 }
             }
         }
 
-        return unassignedGroups
+        return GroupsAndSlots(unassignedGroups, usedSlots)
     }
+
+    /**
+     * Data class to return both unassigned groups and already-used slots
+     */
+    private data class GroupsAndSlots(
+        val unassignedGroups: List<UnassignedGroup>,
+        val usedSlotsByDate: Map<String, Set<Slot>>
+    )
 
     /**
      * Build a map of player ID to player name for all players in the season
