@@ -251,16 +251,47 @@ class DayGroupRepositoryImpl(
 
     /**
      * Phase 3.1: Clear all assignments for a matchday
-     * Uses RPC function to efficiently clear all day_groups for a season/matchday
+     * Clears all day_groups for a specific season and matchday number
      */
     override suspend fun clearMatchdayAssignments(seasonId: String, matchdayNumber: Int): Int {
         logger.info("🧹 [DayGroupRepo] Clearing matchday assignments for seasonId=$seasonId, matchday=$matchdayNumber")
 
-        // First, get all matchday IDs for this season and matchday number
+        // Step 1: Get all category IDs for this season
+        @Serializable
+        data class CategoryId(val id: String)
+
+        val categoriesResponse = client.get("$apiUrl/league_categories") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "id")
+            parameter("season_id", "eq.$seasonId")
+        }
+
+        if (!categoriesResponse.status.isSuccess()) {
+            logger.error("❌ [DayGroupRepo] Failed to get categories for season: ${categoriesResponse.status}")
+            return 0
+        }
+
+        val categoryIds = json.decodeFromString<List<CategoryId>>(categoriesResponse.bodyAsText())
+            .map { it.id }
+
+        if (categoryIds.isEmpty()) {
+            logger.info("ℹ️ [DayGroupRepo] No categories found for season $seasonId")
+            return 0
+        }
+
+        logger.info("📋 [DayGroupRepo] Found ${categoryIds.size} categories for season")
+
+        // Step 2: Get match_days for these categories with the specified matchday_number
+        @Serializable
+        data class MatchDayId(val id: String)
+
+        val categoryIdsFilter = categoryIds.joinToString(",") { "\"$it\"" }
         val matchDaysResponse = client.get("$apiUrl/match_days") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("select", "id")
+            parameter("category_id", "in.($categoryIdsFilter)")
             parameter("matchday_number", "eq.$matchdayNumber")
         }
 
@@ -269,18 +300,17 @@ class DayGroupRepositoryImpl(
             return 0
         }
 
-        @Serializable
-        data class MatchDayId(val id: String)
-
         val matchDayIds = json.decodeFromString<List<MatchDayId>>(matchDaysResponse.bodyAsText())
             .map { it.id }
 
         if (matchDayIds.isEmpty()) {
-            logger.info("ℹ️ [DayGroupRepo] No match days found for matchday $matchdayNumber")
+            logger.info("ℹ️ [DayGroupRepo] No match days found for matchday $matchdayNumber in this season")
             return 0
         }
 
-        // Filter by season: get day_groups for these match_days that belong to categories in this season
+        logger.info("📅 [DayGroupRepo] Found ${matchDayIds.size} match days to clear")
+
+        // Step 3: Get and clear day_groups for these match_days
         var totalCleared = 0
 
         for (matchDayId in matchDayIds) {
