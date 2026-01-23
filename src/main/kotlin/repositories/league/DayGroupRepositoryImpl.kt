@@ -339,9 +339,9 @@ class DayGroupRepositoryImpl(
                     header("Authorization", "Bearer $apiKey")
                     contentType(ContentType.Application.Json)
                     setBody(buildJsonObject {
-                        put("match_date", null as String?)
-                        put("time_slot", null as String?)
-                        put("court_index", null as Int?)
+                        put("match_date", kotlinx.serialization.json.JsonNull)
+                        put("time_slot", kotlinx.serialization.json.JsonNull)
+                        put("court_index", kotlinx.serialization.json.JsonNull)
                     }.toString())
                 }
 
