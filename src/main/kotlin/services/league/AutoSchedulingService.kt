@@ -131,7 +131,7 @@ class AutoSchedulingService(
         val playerTimeSlotHistory = if (request.preferTimeSlotVariety && request.matchdayNumber > 1) {
             fetchPlayerTimeSlotHistory(request.seasonId, request.matchdayNumber)
         } else {
-            emptyMap()
+            null
         }
 
         // 4. Group categories by date (categories on same date share court slots)
@@ -205,7 +205,7 @@ class AutoSchedulingService(
                 val partialSlots = remainingSlots.filter { it.score < 1.0 }.sortedByDescending { it.score }
 
                 // Calculate variety scores for perfect slots if enabled
-                val perfectSlotsWithVariety = if (request.preferTimeSlotVariety && playerTimeSlotHistory.isNotEmpty()) {
+                val perfectSlotsWithVariety = if (request.preferTimeSlotVariety && playerTimeSlotHistory != null) {
                     perfectSlots.map { slotScore ->
                         val varietyScore = calculateVarietyScore(
                             group.playerIds,
@@ -633,15 +633,18 @@ class AutoSchedulingService(
     }
 
     /**
-     * Fetch historical time slot FREQUENCY for all players in the season from previous matchdays.
-     * Returns a map of playerId to map of timeSlot to count (how many times they've played at each slot).
-     * This allows us to prefer time slots where players have played fewer times, not just "never".
+     * Fetch historical time slot data for all players in the season from previous matchdays.
+     * Returns both:
+     * - Overall frequency: map of playerId to map of timeSlot to count
+     * - Previous matchday slots: map of playerId to the time slot they played in the immediately previous matchday
      */
     private suspend fun fetchPlayerTimeSlotHistory(
         seasonId: String,
         currentMatchdayNumber: Int
-    ): Map<String, Map<String, Int>> {
-        val playerHistory = mutableMapOf<String, MutableMap<String, Int>>()
+    ): PlayerTimeSlotHistoryData {
+        val overallFrequency = mutableMapOf<String, MutableMap<String, Int>>()
+        val previousMatchdaySlots = mutableMapOf<String, String>()
+        val previousMatchdayNumber = currentMatchdayNumber - 1
 
         // Get all categories for the season
         val categories = categoryRepository.getBySeasonId(seasonId)
@@ -666,10 +669,15 @@ class AutoSchedulingService(
                             // Only consider assigned groups (with time_slot)
                             val timeSlot = dayGroup.timeSlot
                             if (timeSlot != null) {
-                                // Increment the count for this time slot for each player
                                 for (playerId in dayGroup.playerIds) {
-                                    val playerSlots = playerHistory.getOrPut(playerId) { mutableMapOf() }
+                                    // Track overall frequency
+                                    val playerSlots = overallFrequency.getOrPut(playerId) { mutableMapOf() }
                                     playerSlots[timeSlot] = (playerSlots[timeSlot] ?: 0) + 1
+
+                                    // Track previous matchday slot specifically
+                                    if (matchdayNum == previousMatchdayNumber) {
+                                        previousMatchdaySlots[playerId] = timeSlot
+                                    }
                                 }
                             }
                         }
@@ -678,44 +686,64 @@ class AutoSchedulingService(
             }
         }
 
-        return playerHistory
+        return PlayerTimeSlotHistoryData(overallFrequency, previousMatchdaySlots)
     }
 
     /**
      * Calculate variety score for a group at a specific time slot.
-     * Uses FREQUENCY-based scoring: prefers time slots where players have played fewer times.
+     * Uses FREQUENCY-based scoring with RECENCY penalty.
      *
-     * Score calculation:
-     * - For each player, calculate how many times they've played at this time slot
-     * - Sum up the total plays across all players
-     * - Invert so that FEWER plays = HIGHER score
+     * Scoring factors:
+     * 1. Overall frequency: prefer slots where players have played fewer times overall
+     * 2. Previous matchday penalty: heavily penalize if players played at this same slot last matchday
      *
-     * Returns a score where higher = better variety (players have played here less often).
+     * Returns a score where higher = better variety.
      */
     private fun calculateVarietyScore(
         playerIds: List<String>,
         timeSlot: String,
-        playerTimeSlotHistory: Map<String, Map<String, Int>>
+        historyData: PlayerTimeSlotHistoryData
     ): Double {
         if (playerIds.isEmpty()) return 1.0
 
-        // Sum up how many times all players in this group have played at this time slot
+        // Factor 1: Sum up how many times all players have played at this time slot overall
         var totalPlaysAtSlot = 0
         for (playerId in playerIds) {
-            val playerSlotCounts = playerTimeSlotHistory[playerId]
+            val playerSlotCounts = historyData.overallFrequency[playerId]
             if (playerSlotCounts != null) {
                 totalPlaysAtSlot += playerSlotCounts[timeSlot] ?: 0
             }
         }
 
-        // Invert: fewer plays = higher score
-        // Use 1 / (1 + totalPlays) so that:
-        // - 0 plays = score of 1.0 (best)
-        // - 1 play total = score of 0.5
-        // - 2 plays total = score of 0.33
-        // - etc.
-        return 1.0 / (1.0 + totalPlaysAtSlot)
+        // Factor 2: Count how many players played at this SAME time slot in the previous matchday
+        var playersAtSameSlotLastMatchday = 0
+        for (playerId in playerIds) {
+            val lastSlot = historyData.previousMatchdaySlots[playerId]
+            if (lastSlot == timeSlot) {
+                playersAtSameSlotLastMatchday++
+            }
+        }
+
+        // Calculate base frequency score: fewer plays = higher score
+        // Score of 1.0 for 0 plays, decreasing as plays increase
+        val frequencyScore = 1.0 / (1.0 + totalPlaysAtSlot)
+
+        // Apply recency penalty: heavily penalize if players played same slot last matchday
+        // Penalty multiplier: 1.0 if no one played here last time, down to 0.1 if all 4 did
+        val recencyPenalty = 1.0 - (playersAtSameSlotLastMatchday.toDouble() / playerIds.size * 0.9)
+
+        // Combine: frequency score × recency penalty
+        // This ensures we strongly prefer slots that are DIFFERENT from last matchday
+        return frequencyScore * recencyPenalty
     }
+
+    /**
+     * Data class holding player time slot history
+     */
+    private data class PlayerTimeSlotHistoryData(
+        val overallFrequency: Map<String, Map<String, Int>>,  // playerId -> (timeSlot -> count)
+        val previousMatchdaySlots: Map<String, String>         // playerId -> timeSlot from previous matchday
+    )
 
     // Helper data classes
     private data class Slot(
