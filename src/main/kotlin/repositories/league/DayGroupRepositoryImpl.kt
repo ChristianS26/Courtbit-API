@@ -292,7 +292,7 @@ class DayGroupRepositoryImpl(
             header("Authorization", "Bearer $apiKey")
             parameter("select", "id")
             parameter("category_id", "in.($categoryIdsFilter)")
-            parameter("matchday_number", "eq.$matchdayNumber")
+            parameter("match_number", "eq.$matchdayNumber")
         }
 
         if (!matchDaysResponse.status.isSuccess()) {
