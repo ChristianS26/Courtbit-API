@@ -4,6 +4,7 @@ import models.bracket.BracketResponse
 import models.bracket.BracketWithMatchesResponse
 import models.bracket.GeneratedMatch
 import models.bracket.MatchResponse
+import models.bracket.SetScore
 
 /**
  * Repository interface for bracket operations
@@ -49,4 +50,28 @@ interface BracketRepository {
      * Delete a bracket and all its matches (cascade)
      */
     suspend fun deleteBracket(bracketId: String): Boolean
+
+    // ============ Match Scoring ============
+
+    /**
+     * Get a single match by ID
+     */
+    suspend fun getMatch(matchId: String): MatchResponse?
+
+    /**
+     * Update match score, set scores, winner, and status
+     */
+    suspend fun updateMatchScore(
+        matchId: String,
+        scoreTeam1: Int,
+        scoreTeam2: Int,
+        setScores: List<SetScore>,
+        winnerTeam: Int
+    ): Result<MatchResponse>
+
+    /**
+     * Advance winner to next match.
+     * Updates the next match's team1_id or team2_id based on next_match_position.
+     */
+    suspend fun advanceWinner(matchId: String, winnerTeamId: String): Result<Unit>
 }

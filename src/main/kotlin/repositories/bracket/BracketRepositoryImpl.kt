@@ -5,8 +5,7 @@ import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import models.bracket.*
 
@@ -179,5 +178,91 @@ class BracketRepositoryImpl(
         val status = bracketResponse.status
         println("BracketRepository.deleteBracket -> ${status.value}")
         return status.isSuccess()
+    }
+
+    // ============ Match Scoring ============
+
+    override suspend fun getMatch(matchId: String): MatchResponse? {
+        val response = client.get("$apiUrl/tournament_matches") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("id", "eq.$matchId")
+            parameter("select", "*")
+        }
+
+        return if (response.status.isSuccess()) {
+            val bodyText = response.bodyAsText()
+            json.decodeFromString<List<MatchResponse>>(bodyText).firstOrNull()
+        } else {
+            println("BracketRepository.getMatch failed: ${response.status}")
+            null
+        }
+    }
+
+    override suspend fun updateMatchScore(
+        matchId: String,
+        scoreTeam1: Int,
+        scoreTeam2: Int,
+        setScores: List<SetScore>,
+        winnerTeam: Int
+    ): Result<MatchResponse> {
+        val setScoresJson = json.encodeToString(setScores)
+
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            setBody(mapOf(
+                "score_team1" to scoreTeam1,
+                "score_team2" to scoreTeam2,
+                "set_scores" to setScoresJson,
+                "winner_team" to winnerTeam,
+                "status" to "completed"
+            ))
+        }
+
+        val status = response.status
+        val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
+        println("BracketRepository.updateMatchScore -> ${status.value}\nBody: $bodyText")
+
+        return if (status.isSuccess()) {
+            val matches = json.decodeFromString<List<MatchResponse>>(bodyText)
+            matches.firstOrNull()?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException("Match not found after update"))
+        } else {
+            Result.failure(IllegalStateException("Failed to update score: ${status.value}"))
+        }
+    }
+
+    override suspend fun advanceWinner(matchId: String, winnerTeamId: String): Result<Unit> {
+        // Get current match to find next_match_id and next_match_position
+        val currentMatch = getMatch(matchId)
+            ?: return Result.failure(IllegalStateException("Match not found"))
+
+        val nextMatchId = currentMatch.nextMatchId
+            ?: return Result.success(Unit)  // Finals have no next match
+
+        val position = currentMatch.nextMatchPosition
+            ?: return Result.failure(IllegalStateException("Missing next_match_position"))
+
+        // Update next match with advancing team
+        val fieldToUpdate = if (position == 1) "team1_id" else "team2_id"
+
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$nextMatchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(mapOf(fieldToUpdate to winnerTeamId))
+        }
+
+        val status = response.status
+        println("BracketRepository.advanceWinner -> ${status.value} (field: $fieldToUpdate)")
+
+        return if (status.isSuccess()) {
+            Result.success(Unit)
+        } else {
+            Result.failure(IllegalStateException("Failed to advance winner to next match: ${status.value}"))
+        }
     }
 }
