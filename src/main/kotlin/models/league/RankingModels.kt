@@ -29,7 +29,12 @@ data class LeagueAdjustmentResponse(
     val value: Int,
     val reason: String,
     @SerialName("created_by_uid") val createdByUid: String?,
-    @SerialName("created_at") val createdAt: String
+    @SerialName("created_at") val createdAt: String,
+    // Per-stat adjustments
+    @SerialName("points_for_adj") val pointsForAdj: Int? = null,
+    @SerialName("points_against_adj") val pointsAgainstAdj: Int? = null,
+    @SerialName("games_won_adj") val gamesWonAdj: Int? = null,
+    @SerialName("games_lost_adj") val gamesLostAdj: Int? = null
 )
 
 @Serializable
@@ -38,11 +43,20 @@ data class CreateAdjustmentRequest(
     @SerialName("category_id") val categoryId: String,
     @SerialName("season_id") val seasonId: String,
     val value: Int,
-    val reason: String
+    val reason: String,
+    // Per-stat adjustments (optional)
+    @SerialName("points_for_adj") val pointsForAdj: Int? = null,
+    @SerialName("points_against_adj") val pointsAgainstAdj: Int? = null,
+    @SerialName("games_won_adj") val gamesWonAdj: Int? = null,
+    @SerialName("games_lost_adj") val gamesLostAdj: Int? = null
 )
 
 @Serializable
 data class UpdateAdjustmentRequest(
     val value: Int? = null,
-    val reason: String? = null
+    val reason: String? = null,
+    @SerialName("points_for_adj") val pointsForAdj: Int? = null,
+    @SerialName("points_against_adj") val pointsAgainstAdj: Int? = null,
+    @SerialName("games_won_adj") val gamesWonAdj: Int? = null,
+    @SerialName("games_lost_adj") val gamesLostAdj: Int? = null
 )
