@@ -45,6 +45,29 @@ fun Route.bracketRoutes(bracketService: BracketService) {
             }
         }
 
+        // GET /api/brackets/{categoryId}/standings?tournament_id=xxx
+        // Public - anyone can view standings for non-draft brackets
+        get("/{categoryId}/standings") {
+            val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+            if (categoryId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                return@get
+            }
+
+            val tournamentId = call.request.queryParameters["tournament_id"]
+            if (tournamentId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                return@get
+            }
+
+            val result = bracketService.getStandings(tournamentId, categoryId)
+
+            result.fold(
+                onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                onFailure = { call.respond(HttpStatusCode.NotFound, mapOf("error" to (it.message ?: "Standings not found"))) }
+            )
+        }
+
         authenticate("auth-jwt") {
 
             // POST /api/brackets/{categoryId}/generate?tournament_id=xxx
@@ -150,6 +173,42 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 } else {
                     call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Failed to delete bracket"))
                 }
+            }
+
+            // POST /api/brackets/{categoryId}/standings/calculate?tournament_id=xxx
+            // Requires authentication - recalculate standings from completed matches
+            post("/{categoryId}/standings/calculate") {
+                val organizerId = call.getOrganizerId() ?: return@post
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@post
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@post
+                }
+
+                val result = bracketService.calculateStandings(tournamentId, categoryId)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (e.message ?: "Cannot calculate standings"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Calculation failed"))
+                            )
+                        }
+                    }
+                )
             }
         }
     }
