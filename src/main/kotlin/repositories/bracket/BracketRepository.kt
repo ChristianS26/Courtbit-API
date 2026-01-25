@@ -93,4 +93,26 @@ interface BracketRepository {
      * Delete all standings for a bracket
      */
     suspend fun deleteStandings(bracketId: String): Boolean
+
+    // ============ Status and Withdrawal ============
+
+    /**
+     * Update match status without changing score
+     */
+    suspend fun updateMatchStatus(matchId: String, status: String): MatchResponse
+
+    /**
+     * Get all matches for a specific team in a bracket
+     */
+    suspend fun getMatchesForTeam(bracketId: String, teamId: String): List<MatchResponse>
+
+    /**
+     * Mark a match as forfeit with the specified winner
+     */
+    suspend fun updateMatchForfeit(matchId: String, winnerTeam: Int): Boolean
+
+    /**
+     * Advance winner to next match by updating team1_id or team2_id
+     */
+    suspend fun advanceToNextMatch(matchId: String, winnerId: String, nextMatchId: String, position: Int): Boolean
 }

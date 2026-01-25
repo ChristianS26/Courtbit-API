@@ -332,4 +332,79 @@ class BracketRepositoryImpl(
         println("BracketRepository.deleteStandings -> ${status.value}")
         return status.isSuccess()
     }
+
+    // ============ Status and Withdrawal ============
+
+    override suspend fun updateMatchStatus(matchId: String, status: String): MatchResponse {
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("status" to status))
+        }
+
+        val responseStatus = response.status
+        val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
+        println("BracketRepository.updateMatchStatus -> ${responseStatus.value}\nBody: $bodyText")
+
+        if (!responseStatus.isSuccess()) {
+            throw IllegalStateException("Failed to update match status: ${responseStatus.value}")
+        }
+
+        val matches = json.decodeFromString<List<MatchResponse>>(bodyText)
+        return matches.firstOrNull()
+            ?: throw IllegalStateException("Match not found after update")
+    }
+
+    override suspend fun getMatchesForTeam(bracketId: String, teamId: String): List<MatchResponse> {
+        // Query matches where team1_id or team2_id equals teamId
+        val response = client.get("$apiUrl/tournament_matches") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("bracket_id", "eq.$bracketId")
+            parameter("or", "(team1_id.eq.$teamId,team2_id.eq.$teamId)")
+            parameter("select", "*")
+            parameter("order", "round_number.asc,match_number.asc")
+        }
+
+        return if (response.status.isSuccess()) {
+            val bodyText = response.bodyAsText()
+            json.decodeFromString<List<MatchResponse>>(bodyText)
+        } else {
+            println("BracketRepository.getMatchesForTeam failed: ${response.status}")
+            emptyList()
+        }
+    }
+
+    override suspend fun updateMatchForfeit(matchId: String, winnerTeam: Int): Boolean {
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(mapOf(
+                "status" to "forfeit",
+                "winner_team" to winnerTeam
+            ))
+        }
+
+        val status = response.status
+        println("BracketRepository.updateMatchForfeit -> ${status.value}")
+        return status.isSuccess()
+    }
+
+    override suspend fun advanceToNextMatch(matchId: String, winnerId: String, nextMatchId: String, position: Int): Boolean {
+        val fieldToUpdate = if (position == 1) "team1_id" else "team2_id"
+
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$nextMatchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(mapOf(fieldToUpdate to winnerId))
+        }
+
+        val status = response.status
+        println("BracketRepository.advanceToNextMatch -> ${status.value} (field: $fieldToUpdate, next: $nextMatchId)")
+        return status.isSuccess()
+    }
 }

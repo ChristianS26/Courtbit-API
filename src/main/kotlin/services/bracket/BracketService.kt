@@ -1,7 +1,17 @@
 package services.bracket
 
 import kotlinx.serialization.json.Json
-import models.bracket.*
+import models.bracket.BracketResponse
+import models.bracket.BracketWithMatchesResponse
+import models.bracket.GeneratedMatch
+import models.bracket.MatchResponse
+import models.bracket.ScoreValidationResult
+import models.bracket.SetScore
+import models.bracket.StandingEntry
+import models.bracket.StandingInput
+import models.bracket.StandingsResponse
+import models.bracket.TeamSeed
+import models.bracket.WithdrawTeamResponse
 import repositories.bracket.BracketRepository
 
 /**
@@ -598,6 +608,75 @@ class BracketService(
             2 -> "Semifinals"
             3 -> "Quarterfinals"
             else -> "Round $round"
+        }
+    }
+
+    // ============ Status and Withdrawal ============
+
+    /**
+     * Update match status without changing score.
+     * Useful for starting/pausing matches or marking as in_progress.
+     */
+    suspend fun updateMatchStatus(matchId: String, status: String): Result<MatchResponse> {
+        return try {
+            val updated = repository.updateMatchStatus(matchId, status)
+            Result.success(updated)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Withdraw a team from the tournament.
+     * Marks all their pending/scheduled matches as forfeit and advances opponents.
+     */
+    suspend fun withdrawTeam(
+        tournamentId: String,
+        categoryId: Int,
+        teamId: String,
+        reason: String?
+    ): Result<WithdrawTeamResponse> {
+        return try {
+            // Get bracket for this category
+            val bracketWithMatches = repository.getBracketWithMatches(tournamentId, categoryId)
+                ?: return Result.failure(IllegalArgumentException("Bracket not found"))
+
+            val bracket = bracketWithMatches.bracket
+
+            // Get all matches for this team
+            val matches = repository.getMatchesForTeam(bracket.id, teamId)
+            val pendingMatches = matches.filter { it.status in listOf("pending", "scheduled") }
+
+            val forfeitedIds = mutableListOf<String>()
+
+            for (match in pendingMatches) {
+                // Determine winner (opponent gets the win)
+                val winnerTeam = if (match.team1Id == teamId) 2 else 1
+
+                // Mark as forfeit with winner
+                repository.updateMatchForfeit(match.id, winnerTeam)
+                forfeitedIds.add(match.id)
+
+                // Advance winner to next match if exists
+                if (match.nextMatchId != null) {
+                    val winnerId = if (winnerTeam == 1) match.team1Id else match.team2Id
+                    if (winnerId != null) {
+                        repository.advanceToNextMatch(
+                            match.id,
+                            winnerId,
+                            match.nextMatchId,
+                            match.nextMatchPosition ?: 1
+                        )
+                    }
+                }
+            }
+
+            Result.success(WithdrawTeamResponse(
+                forfeitedMatches = forfeitedIds,
+                message = "Team withdrawn. ${forfeitedIds.size} match(es) forfeited."
+            ))
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 }

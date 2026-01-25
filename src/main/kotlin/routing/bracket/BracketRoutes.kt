@@ -14,6 +14,8 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.bracket.GenerateBracketRequest
 import models.bracket.UpdateScoreRequest
+import models.bracket.UpdateStatusRequest
+import models.bracket.WithdrawTeamRequest
 import services.bracket.BracketService
 
 /**
@@ -210,6 +212,49 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     }
                 )
             }
+
+            // POST /api/brackets/{categoryId}/withdraw?tournament_id=xxx
+            // Requires authentication - withdraw team and auto-forfeit remaining matches
+            post("/{categoryId}/withdraw") {
+                val organizerId = call.getOrganizerId() ?: return@post
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@post
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@post
+                }
+
+                val request = try {
+                    call.receive<WithdrawTeamRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid request: ${e.localizedMessage}"))
+                    return@post
+                }
+
+                val result = bracketService.withdrawTeam(tournamentId, categoryId, request.teamId, request.reason)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (e.message ?: "Cannot withdraw team"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Withdrawal failed"))
+                            )
+                        }
+                    }
+                )
+            }
         }
     }
 
@@ -285,6 +330,38 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                             )
                         }
                     }
+                )
+            }
+
+            // PATCH /api/matches/{id}/status
+            // Update match status without changing score
+            patch("/{id}/status") {
+                val organizerId = call.getOrganizerId() ?: return@patch
+
+                val matchId = call.parameters["id"]
+                if (matchId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Match ID required"))
+                    return@patch
+                }
+
+                val request = try {
+                    call.receive<UpdateStatusRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid request"))
+                    return@patch
+                }
+
+                val validStatuses = listOf("pending", "scheduled", "in_progress", "completed", "forfeit")
+                if (request.status !in validStatuses) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid status. Valid: $validStatuses"))
+                    return@patch
+                }
+
+                val result = bracketService.updateMatchStatus(matchId, request.status)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { call.respond(HttpStatusCode.BadRequest, mapOf("error" to it.message)) }
                 )
             }
         }

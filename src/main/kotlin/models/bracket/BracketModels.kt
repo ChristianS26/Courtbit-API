@@ -223,3 +223,33 @@ data class StandingInput(
     val pointDifference: Int,
     val roundReached: String?
 )
+
+// ============ Status Update DTOs ============
+
+/**
+ * Request to update match status without changing score
+ */
+@Serializable
+data class UpdateStatusRequest(
+    val status: String
+)
+
+// ============ Withdrawal DTOs ============
+
+/**
+ * Request to withdraw a team from the tournament
+ */
+@Serializable
+data class WithdrawTeamRequest(
+    @SerialName("team_id") val teamId: String,
+    val reason: String? = null
+)
+
+/**
+ * Response after withdrawing a team
+ */
+@Serializable
+data class WithdrawTeamResponse(
+    @SerialName("forfeited_matches") val forfeitedMatches: List<String>,
+    val message: String
+)
