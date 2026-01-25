@@ -49,6 +49,7 @@ import routing.payments.PaymentRoutes
 import routing.ranking.RankingRoutes
 import routing.remoteconfig.remoteConfigRoutes
 import routing.shirtSizeRoutes
+import routing.bracket.bracketRoutes
 import services.auth.AuthService
 import services.email.EmailService
 import services.league.AutoSchedulingService
@@ -99,6 +100,9 @@ fun Application.configureRouting() {
 
             // Torneos
             tournamentRoutes(get(), get())
+
+            // Brackets (tournament brackets system)
+            bracketRoutes(get())
 
             // Draws
             drawRoutes(get())
