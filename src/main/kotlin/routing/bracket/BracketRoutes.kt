@@ -9,9 +9,11 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
+import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.bracket.GenerateBracketRequest
+import models.bracket.UpdateScoreRequest
 import services.bracket.BracketService
 
 /**
@@ -148,6 +150,83 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 } else {
                     call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Failed to delete bracket"))
                 }
+            }
+        }
+    }
+
+    // ============ Match Routes ============
+
+    route("/matches") {
+        authenticate("auth-jwt") {
+
+            // PATCH /api/matches/{id}/score
+            // Update match score with padel validation
+            patch("/{id}/score") {
+                val organizerId = call.getOrganizerId() ?: return@patch
+
+                val matchId = call.parameters["id"]
+                if (matchId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Match ID required"))
+                    return@patch
+                }
+
+                val request = try {
+                    call.receive<UpdateScoreRequest>()
+                } catch (e: Exception) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "Invalid request format: ${e.localizedMessage}")
+                    )
+                    return@patch
+                }
+
+                val result = bracketService.updateMatchScore(matchId, request.sets)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (e.message ?: "Validation failed"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Update failed"))
+                            )
+                        }
+                    }
+                )
+            }
+
+            // POST /api/matches/{id}/advance
+            // Advance winner to next match
+            post("/{id}/advance") {
+                val organizerId = call.getOrganizerId() ?: return@post
+
+                val matchId = call.parameters["id"]
+                if (matchId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Match ID required"))
+                    return@post
+                }
+
+                val result = bracketService.advanceWinner(matchId)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (e.message ?: "Cannot advance"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Advancement failed"))
+                            )
+                        }
+                    }
+                )
             }
         }
     }
