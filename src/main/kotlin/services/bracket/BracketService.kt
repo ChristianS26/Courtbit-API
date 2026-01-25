@@ -1,5 +1,6 @@
 package services.bracket
 
+import kotlinx.serialization.json.Json
 import models.bracket.*
 import repositories.bracket.BracketRepository
 
@@ -101,7 +102,8 @@ object PadelScoreValidator {
  * Service for bracket operations including generation algorithm
  */
 class BracketService(
-    private val repository: BracketRepository
+    private val repository: BracketRepository,
+    private val json: Json
 ) {
 
     /**
@@ -268,6 +270,178 @@ class BracketService(
         return repository.getMatch(matchId)?.let { Result.success(it) }
             ?: Result.failure(IllegalStateException("Match not found after advancement"))
     }
+
+    // ============ Standings ============
+
+    /**
+     * Get existing standings for a bracket
+     */
+    suspend fun getStandings(
+        tournamentId: String,
+        categoryId: Int
+    ): Result<StandingsResponse> {
+        val bracketWithMatches = repository.getBracketWithMatches(tournamentId, categoryId)
+            ?: return Result.failure(IllegalStateException("Bracket not found"))
+
+        val bracket = bracketWithMatches.bracket
+        val existingStandings = repository.getStandings(bracket.id)
+
+        return Result.success(StandingsResponse(
+            bracketId = bracket.id,
+            tournamentId = tournamentId,
+            categoryId = categoryId,
+            standings = existingStandings
+        ))
+    }
+
+    /**
+     * Calculate standings from completed matches.
+     * For knockout brackets, standings are based on how far each team progressed:
+     * - Winner: Position 1 (100 points)
+     * - Finalist: Position 2 (70 points)
+     * - Semi-finalists: Position 3-4 (50 points)
+     * - Quarter-finalists: Position 5-8 (30 points)
+     * - etc.
+     */
+    suspend fun calculateStandings(
+        tournamentId: String,
+        categoryId: Int
+    ): Result<StandingsResponse> {
+        val bracketWithMatches = repository.getBracketWithMatches(tournamentId, categoryId)
+            ?: return Result.failure(IllegalStateException("Bracket not found"))
+
+        val bracket = bracketWithMatches.bracket
+        val matches = bracketWithMatches.matches
+
+        // Only calculate from completed matches
+        val completedMatches = matches.filter { it.status == "completed" }
+
+        if (completedMatches.isEmpty()) {
+            return Result.failure(IllegalArgumentException("No completed matches to calculate standings"))
+        }
+
+        // Build standings from match results
+        val standingsMap = mutableMapOf<String, StandingBuilder>()
+
+        // Process each completed match
+        for (match in completedMatches) {
+            val team1Id = match.team1Id ?: continue
+            val team2Id = match.team2Id ?: continue
+
+            // Initialize entries if not exists
+            if (team1Id !in standingsMap) {
+                standingsMap[team1Id] = StandingBuilder(teamId = team1Id)
+            }
+            if (team2Id !in standingsMap) {
+                standingsMap[team2Id] = StandingBuilder(teamId = team2Id)
+            }
+
+            // Get set scores for game counts
+            val setScores = match.setScores?.let {
+                try { json.decodeFromString<List<SetScore>>(it) }
+                catch (e: Exception) { null }
+            } ?: emptyList()
+
+            val team1Games = setScores.sumOf { it.team1 }
+            val team2Games = setScores.sumOf { it.team2 }
+
+            // Update stats
+            standingsMap[team1Id]!!.apply {
+                matchesPlayed++
+                gamesWon += team1Games
+                gamesLost += team2Games
+                if (match.winnerTeam == 1) {
+                    matchesWon++
+                } else {
+                    matchesLost++
+                    lastRoundLost = match.roundNumber
+                    roundNameLost = match.roundName
+                }
+            }
+
+            standingsMap[team2Id]!!.apply {
+                matchesPlayed++
+                gamesWon += team2Games
+                gamesLost += team1Games
+                if (match.winnerTeam == 2) {
+                    matchesWon++
+                } else {
+                    matchesLost++
+                    lastRoundLost = match.roundNumber
+                    roundNameLost = match.roundName
+                }
+            }
+        }
+
+        // Find the winner (team that won all matches)
+        val totalRounds = matches.maxOfOrNull { it.roundNumber } ?: 1
+        val finalMatch = matches.find { it.roundNumber == totalRounds && it.status == "completed" }
+
+        // Determine positions based on round reached
+        // Teams that lost later rank higher, winner ranks first
+        val standings = standingsMap.values.sortedWith(
+            compareByDescending<StandingBuilder> { it.matchesLost == 0 && finalMatch != null }  // Winner first
+                .thenByDescending { it.lastRoundLost ?: Int.MAX_VALUE }  // Lost later = better
+                .thenByDescending { it.gamesWon - it.gamesLost }  // Tiebreaker: game difference
+        ).mapIndexed { index, builder ->
+            val roundReached = when {
+                builder.matchesLost == 0 && finalMatch != null -> "Winner"
+                builder.roundNameLost == "Final" -> "Finalist"
+                builder.roundNameLost == "Semifinals" -> "Semi-finalist"
+                builder.roundNameLost == "Quarterfinals" -> "Quarter-finalist"
+                else -> "Round ${builder.lastRoundLost ?: 1}"
+            }
+
+            val points = when (roundReached) {
+                "Winner" -> 100
+                "Finalist" -> 70
+                "Semi-finalist" -> 50
+                "Quarter-finalist" -> 30
+                else -> 10 + ((builder.lastRoundLost ?: 1) * 5)
+            }
+
+            StandingInput(
+                bracketId = bracket.id,
+                teamId = builder.teamId,
+                playerId = null,
+                position = index + 1,
+                totalPoints = points,
+                matchesPlayed = builder.matchesPlayed,
+                matchesWon = builder.matchesWon,
+                matchesLost = builder.matchesLost,
+                gamesWon = builder.gamesWon,
+                gamesLost = builder.gamesLost,
+                pointDifference = builder.gamesWon - builder.gamesLost,
+                roundReached = roundReached
+            )
+        }
+
+        // Persist standings
+        repository.upsertStandings(standings)
+
+        // Return calculated standings
+        val savedStandings = repository.getStandings(bracket.id)
+        return Result.success(StandingsResponse(
+            bracketId = bracket.id,
+            tournamentId = tournamentId,
+            categoryId = categoryId,
+            standings = savedStandings
+        ))
+    }
+
+    /**
+     * Helper class for building standings during calculation
+     */
+    private data class StandingBuilder(
+        val teamId: String,
+        var matchesPlayed: Int = 0,
+        var matchesWon: Int = 0,
+        var matchesLost: Int = 0,
+        var gamesWon: Int = 0,
+        var gamesLost: Int = 0,
+        var lastRoundLost: Int? = null,
+        var roundNameLost: String? = null
+    )
 
     // ============ Bracket Generation Algorithm ============
 
