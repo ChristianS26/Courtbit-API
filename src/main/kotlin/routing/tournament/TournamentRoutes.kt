@@ -14,8 +14,10 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import com.incodap.services.club.ClubService
 import models.tournament.CreateTournamentWithCategoriesRequest
 import models.tournament.DeleteTournamentResult
+import models.tournament.InheritCourtsRequest
 import models.tournament.UpdateFlyerRequest
 import models.tournament.UpdateTournamentWithCategoriesRequest
 import services.category.CategoryService
@@ -23,7 +25,8 @@ import services.tournament.TournamentService
 
 fun Route.tournamentRoutes(
     tournamentService: TournamentService,
-    categoryService: CategoryService
+    categoryService: CategoryService,
+    clubService: ClubService
 ) {
     route("/tournaments") {
 
@@ -242,6 +245,29 @@ fun Route.tournamentRoutes(
                 } else {
                     call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo actualizar el logo del club"))
                 }
+            }
+
+            // POST /tournaments/{id}/inherit-courts - Copy courts from associated club
+            post("{id}/inherit-courts") {
+                val id = call.validateOrganizerAndId() ?: return@post
+
+                val request = try {
+                    call.receive<InheritCourtsRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato invalido: ${e.localizedMessage}"))
+                    return@post
+                }
+
+                // Get club courts
+                val clubCourts = clubService.getClubCourts(request.clubId)
+                if (clubCourts.isEmpty()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "El club no tiene canchas configuradas"))
+                    return@post
+                }
+
+                // Return the courts for the frontend to use in scheduling
+                // (actual court assignment happens during schedule creation)
+                call.respond(HttpStatusCode.OK, clubCourts)
             }
         }
     }
