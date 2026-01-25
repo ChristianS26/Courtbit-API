@@ -43,6 +43,7 @@ fun Application.module() {
             LeagueModule,
             ShirtSizeModule,
             BracketModule,
+            ClubModule,
         )
     }
 

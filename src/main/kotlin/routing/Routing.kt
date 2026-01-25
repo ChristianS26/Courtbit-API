@@ -50,6 +50,8 @@ import routing.ranking.RankingRoutes
 import routing.remoteconfig.remoteConfigRoutes
 import routing.shirtSizeRoutes
 import routing.bracket.bracketRoutes
+import com.incodap.routing.club.clubRoutes
+import com.incodap.services.club.ClubService
 import services.auth.AuthService
 import services.email.EmailService
 import services.league.AutoSchedulingService
@@ -103,6 +105,9 @@ fun Application.configureRouting() {
 
             // Brackets (tournament brackets system)
             bracketRoutes(get())
+
+            // Clubs (venue management)
+            clubRoutes(get<ClubService>())
 
             // Draws
             drawRoutes(get())
