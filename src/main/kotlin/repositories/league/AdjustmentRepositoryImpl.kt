@@ -75,7 +75,11 @@ class AdjustmentRepositoryImpl(
                 val season_id: String,
                 val value: Int,
                 val reason: String,
-                val created_by_uid: String
+                val created_by_uid: String,
+                val points_for_adj: Int? = null,
+                val points_against_adj: Int? = null,
+                val games_won_adj: Int? = null,
+                val games_lost_adj: Int? = null
             )
 
             val payload = CreatePayload(
@@ -84,7 +88,11 @@ class AdjustmentRepositoryImpl(
                 season_id = request.seasonId,
                 value = request.value,
                 reason = request.reason,
-                created_by_uid = createdByUid
+                created_by_uid = createdByUid,
+                points_for_adj = request.pointsForAdj,
+                points_against_adj = request.pointsAgainstAdj,
+                games_won_adj = request.gamesWonAdj,
+                games_lost_adj = request.gamesLostAdj
             )
 
             val response = client.post("$apiUrl/league_adjustments") {
@@ -110,12 +118,20 @@ class AdjustmentRepositoryImpl(
             @Serializable
             data class UpdatePayload(
                 val value: Int? = null,
-                val reason: String? = null
+                val reason: String? = null,
+                val points_for_adj: Int? = null,
+                val points_against_adj: Int? = null,
+                val games_won_adj: Int? = null,
+                val games_lost_adj: Int? = null
             )
 
             val payload = UpdatePayload(
                 value = request.value,
-                reason = request.reason
+                reason = request.reason,
+                points_for_adj = request.pointsForAdj,
+                points_against_adj = request.pointsAgainstAdj,
+                games_won_adj = request.gamesWonAdj,
+                games_lost_adj = request.gamesLostAdj
             )
 
             val response = client.patch("$apiUrl/league_adjustments") {

@@ -23,7 +23,9 @@ data class LeagueCategoryResponse(
     // Recommended courts for auto-scheduling (null = no preference)
     @SerialName("recommended_courts") val recommendedCourts: List<Int>? = null,
     // Registration fee override (null = use season default)
-    @SerialName("registration_fee") val registrationFee: Long? = null
+    @SerialName("registration_fee") val registrationFee: Long? = null,
+    // Ranking criteria order (null = use season default)
+    @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null
 )
 
 @Serializable
@@ -36,7 +38,9 @@ data class CreateLeagueCategoryRequest(
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
     // Registration fee override (optional, null = use season default)
-    @SerialName("registration_fee") val registrationFee: Long? = null
+    @SerialName("registration_fee") val registrationFee: Long? = null,
+    // Ranking criteria order (optional, null = use season default)
+    @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null
 )
 
 @Serializable
@@ -50,7 +54,9 @@ data class UpdateLeagueCategoryRequest(
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
     // Registration fee override (optional, null = keep current value)
-    @SerialName("registration_fee") val registrationFee: Long? = null
+    @SerialName("registration_fee") val registrationFee: Long? = null,
+    // Ranking criteria order (optional, null = keep current value)
+    @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null
 )
 
 // Request to update max players and recalculate waiting list
