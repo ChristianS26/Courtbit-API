@@ -122,3 +122,50 @@ data class MatchInsertRequest(
     @SerialName("next_match_id") val nextMatchId: String? = null,
     @SerialName("next_match_position") val nextMatchPosition: Int? = null
 )
+
+// ============ Score DTOs ============
+
+/**
+ * Request to update match score
+ */
+@Serializable
+data class UpdateScoreRequest(
+    val sets: List<SetScore>
+)
+
+/**
+ * Score for a single set
+ */
+@Serializable
+data class SetScore(
+    val team1: Int,
+    val team2: Int,
+    val tiebreak: TiebreakScore? = null  // Only for 7-6 sets
+)
+
+/**
+ * Tiebreak score within a set
+ */
+@Serializable
+data class TiebreakScore(
+    val team1: Int,
+    val team2: Int
+)
+
+/**
+ * Request to manually advance a winner (optional, score-based advancement is automatic)
+ */
+@Serializable
+data class AdvanceWinnerRequest(
+    val winnerTeam: Int  // 1 or 2
+)
+
+// ============ Score Validation ============
+
+/**
+ * Result of validating a padel match score
+ */
+sealed class ScoreValidationResult {
+    data class Valid(val winner: Int, val setsWon: Pair<Int, Int>) : ScoreValidationResult()
+    data class Invalid(val message: String) : ScoreValidationResult()
+}

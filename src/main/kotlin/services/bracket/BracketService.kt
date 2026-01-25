@@ -4,6 +4,100 @@ import models.bracket.*
 import repositories.bracket.BracketRepository
 
 /**
+ * Padel score validation following FIP official rules.
+ *
+ * Valid set scores:
+ * - 6-0, 6-1, 6-2, 6-3, 6-4 (standard win)
+ * - 7-5 (win from 5-5)
+ * - 7-6 (tiebreak win at 6-6)
+ *
+ * Invalid:
+ * - 6-5 (impossible - must reach 7-5 or tiebreak)
+ * - 8-6 (no advantage sets in padel)
+ * - 4-4 or any incomplete score
+ */
+object PadelScoreValidator {
+    private val VALID_WINNING_SCORES = listOf(
+        6 to 0, 6 to 1, 6 to 2, 6 to 3, 6 to 4,  // Standard win
+        7 to 5,                                    // Win from 5-5
+        7 to 6                                     // Tiebreak win
+    )
+
+    private val VALID_SET_SCORES: Set<Pair<Int, Int>> = buildSet {
+        VALID_WINNING_SCORES.forEach { (a, b) ->
+            add(a to b)  // Team 1 wins
+            add(b to a)  // Team 2 wins
+        }
+    }
+
+    fun isValidSetScore(team1Games: Int, team2Games: Int): Boolean {
+        return (team1Games to team2Games) in VALID_SET_SCORES
+    }
+
+    fun validateMatchScore(setScores: List<SetScore>): ScoreValidationResult {
+        if (setScores.isEmpty()) {
+            return ScoreValidationResult.Invalid("At least one set required")
+        }
+        if (setScores.size > 3) {
+            return ScoreValidationResult.Invalid("Maximum 3 sets allowed")
+        }
+
+        var team1SetsWon = 0
+        var team2SetsWon = 0
+
+        for ((index, set) in setScores.withIndex()) {
+            if (!isValidSetScore(set.team1, set.team2)) {
+                return ScoreValidationResult.Invalid(
+                    "Invalid set ${index + 1} score: ${set.team1}-${set.team2}. " +
+                    "Valid scores: 6-0, 6-1, 6-2, 6-3, 6-4, 7-5, or 7-6"
+                )
+            }
+
+            // Validate tiebreak if 7-6
+            if ((set.team1 == 7 && set.team2 == 6) || (set.team1 == 6 && set.team2 == 7)) {
+                if (set.tiebreak == null) {
+                    return ScoreValidationResult.Invalid(
+                        "Set ${index + 1} is a tiebreak (7-6), tiebreak score required"
+                    )
+                }
+                // Tiebreak validation: first to 7 with 2-point lead
+                val tb = set.tiebreak
+                val winner = maxOf(tb.team1, tb.team2)
+                val loser = minOf(tb.team1, tb.team2)
+                if (winner < 7 || (winner - loser) < 2) {
+                    return ScoreValidationResult.Invalid(
+                        "Invalid tiebreak score: ${tb.team1}-${tb.team2}. " +
+                        "Must be first to 7 with 2-point lead"
+                    )
+                }
+            }
+
+            // Determine set winner
+            when {
+                set.team1 > set.team2 -> team1SetsWon++
+                set.team2 > set.team1 -> team2SetsWon++
+            }
+
+            // Check if match is already decided
+            if (team1SetsWon == 2 || team2SetsWon == 2) {
+                if (index < setScores.size - 1) {
+                    return ScoreValidationResult.Invalid(
+                        "Match already decided after set ${index + 1}, but ${setScores.size} sets provided"
+                    )
+                }
+            }
+        }
+
+        // Verify match is complete
+        return when {
+            team1SetsWon == 2 -> ScoreValidationResult.Valid(winner = 1, setsWon = team1SetsWon to team2SetsWon)
+            team2SetsWon == 2 -> ScoreValidationResult.Valid(winner = 2, setsWon = team1SetsWon to team2SetsWon)
+            else -> ScoreValidationResult.Invalid("Match incomplete: neither team has won 2 sets yet (current: $team1SetsWon-$team2SetsWon)")
+        }
+    }
+}
+
+/**
  * Service for bracket operations including generation algorithm
  */
 class BracketService(
@@ -109,6 +203,70 @@ class BracketService(
      */
     suspend fun deleteBracket(bracketId: String): Boolean {
         return repository.deleteBracket(bracketId)
+    }
+
+    // ============ Match Scoring ============
+
+    /**
+     * Update match score with padel validation.
+     * Validates the score according to FIP rules before persisting.
+     */
+    suspend fun updateMatchScore(
+        matchId: String,
+        setScores: List<SetScore>
+    ): Result<MatchResponse> {
+        // Validate padel score
+        val validation = PadelScoreValidator.validateMatchScore(setScores)
+        if (validation is ScoreValidationResult.Invalid) {
+            return Result.failure(IllegalArgumentException(validation.message))
+        }
+
+        val validResult = validation as ScoreValidationResult.Valid
+
+        // Calculate total games for scoreTeam1/scoreTeam2
+        val totalTeam1 = setScores.sumOf { it.team1 }
+        val totalTeam2 = setScores.sumOf { it.team2 }
+
+        return repository.updateMatchScore(
+            matchId = matchId,
+            scoreTeam1 = totalTeam1,
+            scoreTeam2 = totalTeam2,
+            setScores = setScores,
+            winnerTeam = validResult.winner
+        )
+    }
+
+    /**
+     * Advance the winner of a completed match to the next match.
+     * The match must be completed with a winner determined.
+     */
+    suspend fun advanceWinner(matchId: String): Result<MatchResponse> {
+        // Get the match to check it's completed
+        val match = repository.getMatch(matchId)
+            ?: return Result.failure(IllegalStateException("Match not found"))
+
+        if (match.status != "completed") {
+            return Result.failure(IllegalArgumentException("Cannot advance - match is not completed"))
+        }
+
+        val winnerTeam = match.winnerTeam
+            ?: return Result.failure(IllegalArgumentException("Cannot advance - no winner determined"))
+
+        // Get the winning team's ID
+        val winnerTeamId = when (winnerTeam) {
+            1 -> match.team1Id ?: return Result.failure(IllegalArgumentException("Team 1 ID missing"))
+            2 -> match.team2Id ?: return Result.failure(IllegalArgumentException("Team 2 ID missing"))
+            else -> return Result.failure(IllegalArgumentException("Invalid winner_team value: $winnerTeam"))
+        }
+
+        // Advance to next match
+        repository.advanceWinner(matchId, winnerTeamId).getOrElse {
+            return Result.failure(it)
+        }
+
+        // Return updated match
+        return repository.getMatch(matchId)?.let { Result.success(it) }
+            ?: Result.failure(IllegalStateException("Match not found after advancement"))
     }
 
     // ============ Bracket Generation Algorithm ============
