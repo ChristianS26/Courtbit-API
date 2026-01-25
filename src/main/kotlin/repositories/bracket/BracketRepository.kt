@@ -5,6 +5,8 @@ import models.bracket.BracketWithMatchesResponse
 import models.bracket.GeneratedMatch
 import models.bracket.MatchResponse
 import models.bracket.SetScore
+import models.bracket.StandingEntry
+import models.bracket.StandingInput
 
 /**
  * Repository interface for bracket operations
@@ -74,4 +76,21 @@ interface BracketRepository {
      * Updates the next match's team1_id or team2_id based on next_match_position.
      */
     suspend fun advanceWinner(matchId: String, winnerTeamId: String): Result<Unit>
+
+    // ============ Standings ============
+
+    /**
+     * Get standings for a bracket
+     */
+    suspend fun getStandings(bracketId: String): List<StandingEntry>
+
+    /**
+     * Upsert standings (insert or update)
+     */
+    suspend fun upsertStandings(standings: List<StandingInput>): Boolean
+
+    /**
+     * Delete all standings for a bracket
+     */
+    suspend fun deleteStandings(bracketId: String): Boolean
 }

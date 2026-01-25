@@ -169,3 +169,57 @@ sealed class ScoreValidationResult {
     data class Valid(val winner: Int, val setsWon: Pair<Int, Int>) : ScoreValidationResult()
     data class Invalid(val message: String) : ScoreValidationResult()
 }
+
+// ============ Standings DTOs ============
+
+/**
+ * Response DTO matching tournament_standings table
+ */
+@Serializable
+data class StandingEntry(
+    val id: String,
+    @SerialName("bracket_id") val bracketId: String,
+    @SerialName("player_id") val playerId: String? = null,  // For individual tournaments
+    @SerialName("team_id") val teamId: String? = null,      // For team tournaments
+    val position: Int,
+    @SerialName("total_points") val totalPoints: Int = 0,
+    @SerialName("matches_played") val matchesPlayed: Int = 0,
+    @SerialName("matches_won") val matchesWon: Int = 0,
+    @SerialName("matches_lost") val matchesLost: Int = 0,
+    @SerialName("games_won") val gamesWon: Int = 0,
+    @SerialName("games_lost") val gamesLost: Int = 0,
+    @SerialName("point_difference") val pointDifference: Int = 0,
+    @SerialName("group_number") val groupNumber: Int? = null,  // For group stage
+    @SerialName("round_reached") val roundReached: String? = null,  // "Winner", "Finalist", "Semi-finalist", etc.
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("updated_at") val updatedAt: String? = null
+)
+
+/**
+ * Combined response for standings endpoint
+ */
+@Serializable
+data class StandingsResponse(
+    @SerialName("bracket_id") val bracketId: String,
+    @SerialName("tournament_id") val tournamentId: String,
+    @SerialName("category_id") val categoryId: Int,
+    val standings: List<StandingEntry>
+)
+
+/**
+ * Internal DTO for creating/updating standings
+ */
+data class StandingInput(
+    val bracketId: String,
+    val teamId: String?,
+    val playerId: String?,
+    val position: Int,
+    val totalPoints: Int,
+    val matchesPlayed: Int,
+    val matchesWon: Int,
+    val matchesLost: Int,
+    val gamesWon: Int,
+    val gamesLost: Int,
+    val pointDifference: Int,
+    val roundReached: String?
+)

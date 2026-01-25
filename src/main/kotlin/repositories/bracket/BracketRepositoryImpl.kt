@@ -265,4 +265,71 @@ class BracketRepositoryImpl(
             Result.failure(IllegalStateException("Failed to advance winner to next match: ${status.value}"))
         }
     }
+
+    // ============ Standings ============
+
+    override suspend fun getStandings(bracketId: String): List<StandingEntry> {
+        val response = client.get("$apiUrl/tournament_standings") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("bracket_id", "eq.$bracketId")
+            parameter("order", "position.asc")
+            parameter("select", "*")
+        }
+
+        return if (response.status.isSuccess()) {
+            json.decodeFromString<List<StandingEntry>>(response.bodyAsText())
+        } else {
+            println("BracketRepository.getStandings failed: ${response.status}")
+            emptyList()
+        }
+    }
+
+    override suspend fun upsertStandings(standings: List<StandingInput>): Boolean {
+        if (standings.isEmpty()) return true
+
+        // Delete existing standings for this bracket first (simple approach for upsert)
+        val bracketId = standings.first().bracketId
+        deleteStandings(bracketId)
+
+        // Convert to Supabase-friendly format
+        val records = standings.map { s ->
+            buildMap {
+                put("bracket_id", s.bracketId)
+                s.teamId?.let { put("team_id", it) }
+                s.playerId?.let { put("player_id", it) }
+                put("position", s.position)
+                put("total_points", s.totalPoints)
+                put("matches_played", s.matchesPlayed)
+                put("matches_won", s.matchesWon)
+                put("matches_lost", s.matchesLost)
+                put("games_won", s.gamesWon)
+                put("games_lost", s.gamesLost)
+                put("point_difference", s.pointDifference)
+                s.roundReached?.let { put("round_reached", it) }
+            }
+        }
+
+        val response = client.post("$apiUrl/tournament_standings") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=minimal")
+            contentType(ContentType.Application.Json)
+            setBody(records)
+        }
+
+        val status = response.status
+        println("BracketRepository.upsertStandings -> ${status.value}")
+        return status.isSuccess()
+    }
+
+    override suspend fun deleteStandings(bracketId: String): Boolean {
+        val response = client.delete("$apiUrl/tournament_standings?bracket_id=eq.$bracketId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+        }
+        val status = response.status
+        println("BracketRepository.deleteStandings -> ${status.value}")
+        return status.isSuccess()
+    }
 }
