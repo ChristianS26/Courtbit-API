@@ -12,7 +12,10 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import models.bracket.AssignGroupsRequest
+import models.bracket.CreateBracketRequest
 import models.bracket.GenerateBracketRequest
+import models.bracket.SwapTeamsRequest
 import models.bracket.UpdateScoreRequest
 import models.bracket.UpdateStatusRequest
 import models.bracket.WithdrawTeamRequest
@@ -23,6 +26,19 @@ import services.bracket.BracketService
  */
 fun Route.bracketRoutes(bracketService: BracketService) {
     route("/brackets") {
+
+        // GET /api/brackets?tournament_id=xxx
+        // Public - list all brackets for a tournament
+        get {
+            val tournamentId = call.request.queryParameters["tournament_id"]
+            if (tournamentId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                return@get
+            }
+
+            val brackets = bracketService.getBracketsByTournament(tournamentId)
+            call.respond(HttpStatusCode.OK, brackets)
+        }
 
         // GET /api/brackets/{categoryId}?tournament_id=xxx
         // Public - anyone can view brackets
@@ -42,6 +58,29 @@ fun Route.bracketRoutes(bracketService: BracketService) {
             val bracket = bracketService.getBracket(tournamentId, categoryId)
             if (bracket != null) {
                 call.respond(HttpStatusCode.OK, bracket)
+            } else {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "Bracket not found"))
+            }
+        }
+
+        // GET /api/brackets/{categoryId}/players?tournament_id=xxx
+        // Public - get players involved in bracket matches
+        get("/{categoryId}/players") {
+            val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+            if (categoryId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                return@get
+            }
+
+            val tournamentId = call.request.queryParameters["tournament_id"]
+            if (tournamentId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                return@get
+            }
+
+            val bracket = bracketService.getBracket(tournamentId, categoryId)
+            if (bracket != null) {
+                call.respond(HttpStatusCode.OK, bracket.players)
             } else {
                 call.respond(HttpStatusCode.NotFound, mapOf("error" to "Bracket not found"))
             }
@@ -71,6 +110,56 @@ fun Route.bracketRoutes(bracketService: BracketService) {
         }
 
         authenticate("auth-jwt") {
+
+            // POST /api/brackets/{categoryId}?tournament_id=xxx
+            // Requires authentication - creates bracket without generating matches
+            post("/{categoryId}") {
+                val organizerId = call.getOrganizerId() ?: return@post
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@post
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@post
+                }
+
+                val request = try {
+                    call.receive<CreateBracketRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid request body: ${e.localizedMessage}"))
+                    return@post
+                }
+
+                // Validate seeding method
+                if (request.seedingMethod !in listOf("random", "manual", "ranking")) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "seeding_method must be 'random', 'manual', or 'ranking'"))
+                    return@post
+                }
+
+                // Validate format - must match database constraint
+                val validFormats = listOf("americano", "mexicano", "knockout", "round_robin", "groups_knockout")
+                if (request.format !in validFormats) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "format must be one of: $validFormats"))
+                    return@post
+                }
+
+                val result = bracketService.createBracket(
+                    tournamentId = tournamentId,
+                    categoryId = categoryId,
+                    format = request.format,
+                    seedingMethod = request.seedingMethod
+                )
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.Created, it) },
+                    onFailure = { call.respond(HttpStatusCode.BadRequest, mapOf("error" to (it.message ?: "Bracket creation failed"))) }
+                )
+            }
 
             // POST /api/brackets/{categoryId}/generate?tournament_id=xxx
             // Requires authentication - generates bracket structure
@@ -250,6 +339,214 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                             else -> call.respond(
                                 HttpStatusCode.InternalServerError,
                                 mapOf("error" to (e.message ?: "Withdrawal failed"))
+                            )
+                        }
+                    }
+                )
+            }
+
+            // ============ Groups + Knockout Endpoints ============
+
+            // POST /api/brackets/{categoryId}/groups/assign?tournament_id=xxx
+            // Assign teams to groups and generate group stage matches
+            post("/{categoryId}/groups/assign") {
+                val organizerId = call.getOrganizerId() ?: return@post
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@post
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@post
+                }
+
+                val request = try {
+                    call.receive<AssignGroupsRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid request: ${e.localizedMessage}"))
+                    return@post
+                }
+
+                println("📦 [BracketRoutes] AssignGroupsRequest received:")
+                println("   - Config: groupCount=${request.config.groupCount}, teamsPerGroup=${request.config.teamsPerGroup}, advancingPerGroup=${request.config.advancingPerGroup}")
+                println("   - Groups: ${request.groups.size} groups")
+                request.groups.forEach { group ->
+                    println("     - Group ${group.groupNumber}: ${group.teamIds.size} teams")
+                }
+
+                val result = bracketService.generateGroupStage(tournamentId, categoryId, request)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.Created, it) },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (e.message ?: "Invalid group assignment"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Group generation failed"))
+                            )
+                        }
+                    }
+                )
+            }
+
+            // GET /api/brackets/{categoryId}/groups?tournament_id=xxx
+            // Get current state of all groups
+            get("/{categoryId}/groups") {
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@get
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@get
+                }
+
+                val result = bracketService.getGroupsState(tournamentId, categoryId)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.NotFound,
+                                mapOf("error" to (e.message ?: "Groups not found"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Failed to get groups"))
+                            )
+                        }
+                    }
+                )
+            }
+
+            // POST /api/brackets/{categoryId}/groups/swap?tournament_id=xxx
+            // Swap two teams between groups
+            post("/{categoryId}/groups/swap") {
+                val organizerId = call.getOrganizerId() ?: return@post
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@post
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@post
+                }
+
+                val request = try {
+                    call.receive<SwapTeamsRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid request: ${e.localizedMessage}"))
+                    return@post
+                }
+
+                val result = bracketService.swapTeamsInGroups(
+                    tournamentId,
+                    categoryId,
+                    request.team1Id,
+                    request.team2Id
+                )
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (e.message ?: "Cannot swap teams"))
+                            )
+                            is IllegalStateException -> call.respond(
+                                HttpStatusCode.Conflict,
+                                mapOf("error" to (e.message ?: "Swap not allowed"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Swap failed"))
+                            )
+                        }
+                    }
+                )
+            }
+
+            // POST /api/brackets/{categoryId}/groups/standings?tournament_id=xxx
+            // Calculate group standings from completed matches
+            post("/{categoryId}/groups/standings") {
+                val organizerId = call.getOrganizerId() ?: return@post
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@post
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@post
+                }
+
+                val result = bracketService.calculateGroupStandings(tournamentId, categoryId)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to (e.message ?: "Calculation failed"))
+                        )
+                    }
+                )
+            }
+
+            // POST /api/brackets/{categoryId}/groups/generate-knockout?tournament_id=xxx
+            // Generate knockout phase from group results
+            post("/{categoryId}/groups/generate-knockout") {
+                val organizerId = call.getOrganizerId() ?: return@post
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@post
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@post
+                }
+
+                val result = bracketService.generateKnockoutFromGroups(tournamentId, categoryId)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.Created, it) },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (e.message ?: "Cannot generate knockout"))
+                            )
+                            is IllegalStateException -> call.respond(
+                                HttpStatusCode.Conflict,
+                                mapOf("error" to (e.message ?: "Knockout generation not allowed"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Generation failed"))
                             )
                         }
                     }

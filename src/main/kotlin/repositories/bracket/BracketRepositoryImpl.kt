@@ -7,7 +7,16 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import models.bracket.*
+
+@Serializable
+private data class TeamDto(
+    val id: String,
+    @SerialName("player_a_uid") val playerAUid: String?,
+    @SerialName("player_b_uid") val playerBUid: String?
+)
 
 class BracketRepositoryImpl(
     private val client: HttpClient,
@@ -17,6 +26,15 @@ class BracketRepositoryImpl(
 
     private val apiUrl = config.apiUrl
     private val apiKey = config.apiKey
+
+    // Json with explicitNulls=true for Supabase bulk inserts (all objects must have same keys)
+    private val jsonForBulkInsert = Json {
+        prettyPrint = false
+        isLenient = true
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        explicitNulls = true  // Include nulls so all objects have the same keys
+    }
 
     override suspend fun getBracket(tournamentId: String, categoryId: Int): BracketResponse? {
         val response = client.get("$apiUrl/tournament_brackets") {
@@ -50,7 +68,7 @@ class BracketRepositoryImpl(
             parameter("order", "round_number.asc,match_number.asc")
         }
 
-        val matches = if (matchesResponse.status.isSuccess()) {
+        var matches = if (matchesResponse.status.isSuccess()) {
             val bodyText = matchesResponse.bodyAsText()
             json.decodeFromString<List<MatchResponse>>(bodyText)
         } else {
@@ -58,7 +76,132 @@ class BracketRepositoryImpl(
             emptyList()
         }
 
-        return BracketWithMatchesResponse(bracket = bracket, matches = matches)
+        // Get teams to populate player IDs in matches
+        val teamsMap = getTeamsMap(matches)
+
+        // Enrich matches with player IDs from teams
+        matches = matches.map { match ->
+            val team1 = match.team1Id?.let { teamsMap[it] }
+            val team2 = match.team2Id?.let { teamsMap[it] }
+            match.copy(
+                team1Player1Id = team1?.playerAUid,
+                team1Player2Id = team1?.playerBUid,
+                team2Player1Id = team2?.playerAUid,
+                team2Player2Id = team2?.playerBUid
+            )
+        }
+
+        // Get standings for this bracket
+        val standings = getStandings(bracket.id)
+
+        // Get players involved in the matches
+        val players = getPlayersForBracket(bracket.id, matches)
+
+        return BracketWithMatchesResponse(
+            bracket = bracket,
+            matches = matches,
+            standings = standings,
+            players = players
+        )
+    }
+
+    /**
+     * Get teams as a map for quick lookup
+     */
+    private suspend fun getTeamsMap(matches: List<MatchResponse>): Map<String, TeamDto> {
+        val teamIds = matches.flatMap { match ->
+            listOfNotNull(match.team1Id, match.team2Id)
+        }.distinct()
+
+        if (teamIds.isEmpty()) return emptyMap()
+
+        val teamIdsFilter = teamIds.joinToString(",") { "\"$it\"" }
+        val teamsResponse = client.get("$apiUrl/teams") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("id", "in.($teamIdsFilter)")
+            parameter("select", "id,player_a_uid,player_b_uid")
+        }
+
+        return if (teamsResponse.status.isSuccess()) {
+            val teamsBody = teamsResponse.bodyAsText()
+            val teams = json.decodeFromString<List<TeamDto>>(teamsBody)
+            teams.associateBy { it.id }
+        } else {
+            println("BracketRepository.getTeamsMap failed: ${teamsResponse.status}")
+            emptyMap()
+        }
+    }
+
+    /**
+     * Get players involved in the bracket matches by looking up teams
+     */
+    private suspend fun getPlayersForBracket(bracketId: String, matches: List<MatchResponse>): List<BracketPlayerInfo> {
+        // Collect all team IDs from matches
+        val teamIds = matches.flatMap { match ->
+            listOfNotNull(match.team1Id, match.team2Id)
+        }.distinct()
+
+        if (teamIds.isEmpty()) return emptyList()
+
+        // Query teams table to get player UIDs (teams have player_a_uid and player_b_uid)
+        val teamIdsFilter = teamIds.joinToString(",") { "\"$it\"" }
+        val teamsResponse = client.get("$apiUrl/teams") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("id", "in.($teamIdsFilter)")
+            parameter("select", "id,player_a_uid,player_b_uid")
+        }
+
+        if (!teamsResponse.status.isSuccess()) {
+            println("BracketRepository.getPlayersForBracket teams failed: ${teamsResponse.status}")
+            return emptyList()
+        }
+
+        val teamsBody = teamsResponse.bodyAsText()
+        val teams = json.decodeFromString<List<TeamDto>>(teamsBody)
+
+        // Collect all player UIDs
+        val playerUids = teams.flatMap { team ->
+            listOfNotNull(team.playerAUid, team.playerBUid)
+        }.distinct()
+
+        if (playerUids.isEmpty()) return emptyList()
+
+        // Get player profiles from users table
+        val playerUidsFilter = playerUids.joinToString(",") { "\"$it\"" }
+        val playersResponse = client.get("$apiUrl/users") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("uid", "in.($playerUidsFilter)")
+            parameter("select", "uid,first_name,last_name,email,photo_url")
+        }
+
+        return if (playersResponse.status.isSuccess()) {
+            val playersBody = playersResponse.bodyAsText()
+            json.decodeFromString<List<BracketPlayerInfo>>(playersBody)
+        } else {
+            println("BracketRepository.getPlayersForBracket profiles failed: ${playersResponse.status}")
+            emptyList()
+        }
+    }
+
+    override suspend fun getBracketsByTournament(tournamentId: String): List<BracketResponse> {
+        val response = client.get("$apiUrl/tournament_brackets") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("tournament_id", "eq.$tournamentId")
+            parameter("select", "*")
+            parameter("order", "category_id.asc")
+        }
+
+        return if (response.status.isSuccess()) {
+            val bodyText = response.bodyAsText()
+            json.decodeFromString<List<BracketResponse>>(bodyText)
+        } else {
+            println("BracketRepository.getBracketsByTournament failed: ${response.status}")
+            emptyList()
+        }
     }
 
     override suspend fun createBracket(
@@ -106,17 +249,21 @@ class BracketRepositoryImpl(
                 team1Id = match.team1Id,
                 team2Id = match.team2Id,
                 status = match.status,
-                isBye = match.isBye
+                isBye = match.isBye,
+                groupNumber = match.groupNumber
                 // next_match_id will be set in a second pass after we have UUIDs
             )
         }
+
+        // Use jsonForBulkInsert to ensure all objects have the same keys (including nulls)
+        val jsonBody = jsonForBulkInsert.encodeToString(insertRequests)
 
         val response = client.post("$apiUrl/tournament_matches") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
             contentType(ContentType.Application.Json)
-            setBody(insertRequests)
+            setBody(jsonBody)
         }
 
         val status = response.status
@@ -131,14 +278,13 @@ class BracketRepositoryImpl(
     }
 
     override suspend fun updateMatchNextMatchId(matchId: String, nextMatchId: String, position: Int): Boolean {
+        val jsonBody = """{"next_match_id":"$nextMatchId","next_match_position":$position}"""
+
         val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             contentType(ContentType.Application.Json)
-            setBody(mapOf(
-                "next_match_id" to nextMatchId,
-                "next_match_position" to position
-            ))
+            setBody(jsonBody)
         }
 
         return response.status.isSuccess()
@@ -180,6 +326,17 @@ class BracketRepositoryImpl(
         return status.isSuccess()
     }
 
+    override suspend fun deleteMatchesByBracketId(bracketId: String): Boolean {
+        val response = client.delete("$apiUrl/tournament_matches?bracket_id=eq.$bracketId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+        }
+
+        val status = response.status
+        println("BracketRepository.deleteMatchesByBracketId -> ${status.value}")
+        return status.isSuccess()
+    }
+
     // ============ Match Scoring ============
 
     override suspend fun getMatch(matchId: String): MatchResponse? {
@@ -208,18 +365,14 @@ class BracketRepositoryImpl(
     ): Result<MatchResponse> {
         val setScoresJson = json.encodeToString(setScores)
 
+        val jsonBody = """{"score_team1":$scoreTeam1,"score_team2":$scoreTeam2,"set_scores":$setScoresJson,"winner_team":$winnerTeam,"status":"completed"}"""
+
         val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
             contentType(ContentType.Application.Json)
-            setBody(mapOf(
-                "score_team1" to scoreTeam1,
-                "score_team2" to scoreTeam2,
-                "set_scores" to setScoresJson,
-                "winner_team" to winnerTeam,
-                "status" to "completed"
-            ))
+            setBody(jsonBody)
         }
 
         val status = response.status
@@ -292,30 +445,34 @@ class BracketRepositoryImpl(
         val bracketId = standings.first().bracketId
         deleteStandings(bracketId)
 
-        // Convert to Supabase-friendly format
-        val records = standings.map { s ->
-            buildMap {
-                put("bracket_id", s.bracketId)
-                s.teamId?.let { put("team_id", it) }
-                s.playerId?.let { put("player_id", it) }
-                put("position", s.position)
-                put("total_points", s.totalPoints)
-                put("matches_played", s.matchesPlayed)
-                put("matches_won", s.matchesWon)
-                put("matches_lost", s.matchesLost)
-                put("games_won", s.gamesWon)
-                put("games_lost", s.gamesLost)
-                put("point_difference", s.pointDifference)
-                s.roundReached?.let { put("round_reached", it) }
-            }
+        // Convert to serializable insert requests
+        val insertRequests = standings.map { s ->
+            StandingInsertRequest(
+                bracketId = s.bracketId,
+                teamId = s.teamId,
+                playerId = s.playerId,
+                position = s.position,
+                totalPoints = s.totalPoints,
+                matchesPlayed = s.matchesPlayed,
+                matchesWon = s.matchesWon,
+                matchesLost = s.matchesLost,
+                gamesWon = s.gamesWon,
+                gamesLost = s.gamesLost,
+                pointDifference = s.pointDifference,
+                roundReached = s.roundReached,
+                groupNumber = s.groupNumber
+            )
         }
+
+        // Use jsonForBulkInsert to ensure all objects have the same keys
+        val jsonBody = jsonForBulkInsert.encodeToString(insertRequests)
 
         val response = client.post("$apiUrl/tournament_standings") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=minimal")
             contentType(ContentType.Application.Json)
-            setBody(records)
+            setBody(jsonBody)
         }
 
         val status = response.status
@@ -378,14 +535,13 @@ class BracketRepositoryImpl(
     }
 
     override suspend fun updateMatchForfeit(matchId: String, winnerTeam: Int): Boolean {
+        val jsonBody = """{"status":"forfeit","winner_team":$winnerTeam}"""
+
         val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             contentType(ContentType.Application.Json)
-            setBody(mapOf(
-                "status" to "forfeit",
-                "winner_team" to winnerTeam
-            ))
+            setBody(jsonBody)
         }
 
         val status = response.status
@@ -405,6 +561,54 @@ class BracketRepositoryImpl(
 
         val status = response.status
         println("BracketRepository.advanceToNextMatch -> ${status.value} (field: $fieldToUpdate, next: $nextMatchId)")
+        return status.isSuccess()
+    }
+
+    // ============ Groups + Knockout ============
+
+    override suspend fun updateBracketConfig(bracketId: String, configJson: String): Boolean {
+        val response = client.patch("$apiUrl/tournament_brackets?id=eq.$bracketId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody("""{"config":$configJson}""")
+        }
+
+        val status = response.status
+        println("BracketRepository.updateBracketConfig -> ${status.value}")
+        return status.isSuccess()
+    }
+
+    override suspend fun updateMatchTeams(matchId: String, team1Id: String?, team2Id: String?, groupNumber: Int?): Boolean {
+        val updateMap = mutableMapOf<String, Any?>()
+        updateMap["team1_id"] = team1Id
+        updateMap["team2_id"] = team2Id
+        if (groupNumber != null) {
+            updateMap["group_number"] = groupNumber
+        }
+
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(updateMap)
+        }
+
+        val status = response.status
+        println("BracketRepository.updateMatchTeams -> ${status.value}")
+        return status.isSuccess()
+    }
+
+    override suspend fun updateStandingGroupNumber(bracketId: String, teamId: String, groupNumber: Int): Boolean {
+        val response = client.patch("$apiUrl/tournament_standings?bracket_id=eq.$bracketId&team_id=eq.$teamId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(mapOf("group_number" to groupNumber))
+        }
+
+        val status = response.status
+        println("BracketRepository.updateStandingGroupNumber -> ${status.value}")
         return status.isSuccess()
     }
 }

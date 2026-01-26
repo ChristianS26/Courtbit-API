@@ -23,6 +23,11 @@ interface BracketRepository {
     suspend fun getBracketWithMatches(tournamentId: String, categoryId: Int): BracketWithMatchesResponse?
 
     /**
+     * Get all brackets for a tournament
+     */
+    suspend fun getBracketsByTournament(tournamentId: String): List<BracketResponse>
+
+    /**
      * Create a new bracket
      */
     suspend fun createBracket(
@@ -52,6 +57,11 @@ interface BracketRepository {
      * Delete a bracket and all its matches (cascade)
      */
     suspend fun deleteBracket(bracketId: String): Boolean
+
+    /**
+     * Delete all matches for a bracket (used when regenerating)
+     */
+    suspend fun deleteMatchesByBracketId(bracketId: String): Boolean
 
     // ============ Match Scoring ============
 
@@ -115,4 +125,21 @@ interface BracketRepository {
      * Advance winner to next match by updating team1_id or team2_id
      */
     suspend fun advanceToNextMatch(matchId: String, winnerId: String, nextMatchId: String, position: Int): Boolean
+
+    // ============ Groups + Knockout ============
+
+    /**
+     * Update bracket config JSON
+     */
+    suspend fun updateBracketConfig(bracketId: String, configJson: String): Boolean
+
+    /**
+     * Update match teams and group number (for swapping teams between groups)
+     */
+    suspend fun updateMatchTeams(matchId: String, team1Id: String?, team2Id: String?, groupNumber: Int?): Boolean
+
+    /**
+     * Update standing's group number (for swapping teams between groups)
+     */
+    suspend fun updateStandingGroupNumber(bracketId: String, teamId: String, groupNumber: Int): Boolean
 }
