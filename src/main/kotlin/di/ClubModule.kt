@@ -6,6 +6,11 @@ import com.incodap.services.club.ClubService
 import org.koin.dsl.module
 
 val ClubModule = module {
-    single<ClubRepository> { ClubRepositoryImpl(get(), get(), get()) }
+    single<ClubRepository> {
+        ClubRepositoryImpl(
+            client = get(),  // HttpClient from CoreModule
+            config = get()   // SupabaseConfig from SupabaseModule
+        )
+    }
     single { ClubService(get()) }
 }
