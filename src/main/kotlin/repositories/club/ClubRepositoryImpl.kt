@@ -1,5 +1,6 @@
 package com.incodap.repositories.club
 
+import com.incodap.config.SupabaseConfig
 import com.incodap.models.club.*
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -9,12 +10,13 @@ import kotlinx.serialization.json.*
 
 class ClubRepositoryImpl(
     private val client: HttpClient,
-    private val supabaseUrl: String,
-    private val supabaseKey: String
+    private val config: SupabaseConfig
 ) : ClubRepository {
 
-    private val clubsTable = "$supabaseUrl/rest/v1/clubs"
-    private val courtsTable = "$supabaseUrl/rest/v1/club_courts"
+    private val supabaseUrl = config.apiUrl  // Should include /rest/v1
+    private val supabaseKey = config.apiKey
+    private val clubsTable = "$supabaseUrl/clubs"
+    private val courtsTable = "$supabaseUrl/club_courts"
 
     override suspend fun getClubs(organizerId: String): List<Club> {
         return client.get(clubsTable) {
