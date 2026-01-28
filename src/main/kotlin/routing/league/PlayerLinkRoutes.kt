@@ -84,11 +84,31 @@ fun Route.playerLinkRoutes(
 
                 // Security: Verify email or phone matches
                 val emailMatch = player.email?.equals(user.email, ignoreCase = true) == true
-                val phoneMatch = !player.phoneNumber.isNullOrBlank() &&
-                        !user.phone.isNullOrBlank() &&
-                        normalizePhone(player.phoneNumber).contains(normalizePhone(user.phone))
+
+                // Phone matching: Check if the last 10 digits match (handles country code variations)
+                val phoneMatch = if (!player.phoneNumber.isNullOrBlank() && !user.phone.isNullOrBlank()) {
+                    val playerDigits = normalizePhone(player.phoneNumber)
+                    val userDigits = normalizePhone(user.phone)
+
+                    // Compare last 10 digits (standard phone number length)
+                    val playerLast10 = if (playerDigits.length > 10) playerDigits.takeLast(10) else playerDigits
+                    val userLast10 = if (userDigits.length > 10) userDigits.takeLast(10) else userDigits
+
+                    playerLast10 == userLast10
+                } else {
+                    false
+                }
 
                 if (!emailMatch && !phoneMatch) {
+                    // Log detailed info for debugging (sanitized for privacy)
+                    println("❌ Player link validation failed:")
+                    println("  Player email: ${player.email?.take(3)}***")
+                    println("  User email: ${user.email.take(3)}***")
+                    println("  Email match: $emailMatch")
+                    println("  Player phone: ${player.phoneNumber?.take(3)}***")
+                    println("  User phone: ${user.phone?.take(3)}***")
+                    println("  Phone match: $phoneMatch")
+
                     return@post call.respond(
                         HttpStatusCode.Forbidden,
                         mapOf("error" to "Player does not match your account credentials")
