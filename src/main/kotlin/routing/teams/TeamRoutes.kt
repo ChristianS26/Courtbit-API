@@ -81,7 +81,29 @@ fun Route.teamRoutes(
                     return@post
                 }
 
-                if (request.playerUid == request.partnerUid) {
+                // Validate player A has either uid OR name
+                val playerAHasIdentity = request.playerUid != null || !request.playerName.isNullOrBlank()
+                if (!playerAHasIdentity) {
+                    call.respond(
+                        status = HttpStatusCode.BadRequest,
+                        message = mapOf("error" to "Player A must have either playerUid or playerName")
+                    )
+                    return@post
+                }
+
+                // Validate player B has either uid OR name
+                val playerBHasIdentity = request.partnerUid != null || !request.partnerName.isNullOrBlank()
+                if (!playerBHasIdentity) {
+                    call.respond(
+                        status = HttpStatusCode.BadRequest,
+                        message = mapOf("error" to "Player B must have either partnerUid or partnerName")
+                    )
+                    return@post
+                }
+
+                // If both are linked users, check they're not the same
+                if (request.playerUid != null && request.partnerUid != null &&
+                    request.playerUid == request.partnerUid) {
                     call.respond(
                         status = HttpStatusCode.BadRequest,
                         message = mapOf("error" to "Los jugadores no pueden ser iguales.")
@@ -138,11 +160,11 @@ fun Route.teamRoutes(
                     return@patch
                 }
 
-                if (req.tournamentId.isBlank()) {
+                if (req.tournamentId.isNullOrBlank()) {
                     call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournamentId requerido"))
                     return@patch
                 }
-                if (req.playerUid.isBlank()) {
+                if (req.playerUid.isNullOrBlank()) {
                     call.respond(HttpStatusCode.BadRequest, mapOf("error" to "playerUid requerido"))
                     return@patch
                 }

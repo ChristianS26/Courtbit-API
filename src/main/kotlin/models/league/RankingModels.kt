@@ -17,7 +17,10 @@ data class PlayerStandingResponse(
     @SerialName("adjusted_points_for") val adjustedPointsFor: Int,
     @SerialName("point_diff") val pointDiff: Int,
     @SerialName("adjusted_diff") val adjustedDiff: Int,
-    val rank: Int
+    val rank: Int,
+    // Primary criterion info - populated by API based on season configuration
+    @SerialName("primary_criterion") val primaryCriterion: String? = null,
+    @SerialName("primary_value") val primaryValue: Int? = null
 )
 
 @Serializable
