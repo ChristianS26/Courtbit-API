@@ -9,5 +9,5 @@ data class MarkPaymentRequest(
     val paidBy: String,
     val paid: Boolean,
     val method: String? = null,
-    val playerUid: String
+    val playerUid: String? = null  // Nullable for manual players
 )
