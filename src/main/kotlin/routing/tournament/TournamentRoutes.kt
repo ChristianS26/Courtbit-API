@@ -13,11 +13,13 @@ import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
+import io.ktor.server.routing.put
 import io.ktor.server.routing.route
 import com.incodap.services.club.ClubService
 import models.tournament.CreateTournamentWithCategoriesRequest
 import models.tournament.DeleteTournamentResult
 import models.tournament.InheritCourtsRequest
+import models.tournament.SchedulingConfigRequest
 import models.tournament.UpdateFlyerRequest
 import models.tournament.UpdateTournamentWithCategoriesRequest
 import services.category.CategoryService
@@ -75,7 +77,9 @@ fun Route.tournamentRoutes(
 
                 val created = tournamentService.createTournament(
                     tournament = tournamentWithOrganizer,
-                    categoryIds = request.categoryIds
+                    categoryIds = request.categoryIds,
+                    categoryPrices = request.categoryPrices,
+                    categoryColors = request.categoryColors
                 )
 
                 if (created != null) {
@@ -244,6 +248,78 @@ fun Route.tournamentRoutes(
                     call.respond(HttpStatusCode.OK, mapOf("success" to true))
                 } else {
                     call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo actualizar el logo del club"))
+                }
+            }
+
+            // GET /tournaments/{id}/scheduling-config - Get scheduling configuration
+            get("{id}/scheduling-config") {
+                val id = call.parameters["id"]
+                if (id.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Parámetro 'id' requerido"))
+                    return@get
+                }
+
+                val config = tournamentService.getSchedulingConfig(id)
+                if (config != null) {
+                    call.respond(HttpStatusCode.OK, config)
+                } else {
+                    // Return default config if none exists
+                    call.respond(HttpStatusCode.OK, mapOf(
+                        "tournament_id" to id,
+                        "courts" to emptyList<Any>(),
+                        "match_duration_minutes" to 45,
+                        "tournament_days" to emptyList<String>()
+                    ))
+                }
+            }
+
+            // PUT /tournaments/{id}/scheduling-config - Save scheduling configuration
+            put("{id}/scheduling-config") {
+                val id = call.validateOrganizerAndId() ?: return@put
+
+                val request = try {
+                    call.receive<SchedulingConfigRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato inválido: ${e.localizedMessage}"))
+                    return@put
+                }
+
+                val saved = tournamentService.saveSchedulingConfig(id, request)
+                if (saved) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo guardar la configuración"))
+                }
+            }
+
+            // PATCH /tournaments/{id}/categories/{categoryId}/color - Update category color for tournament
+            patch("{id}/categories/{categoryId}/color") {
+                val id = call.validateOrganizerAndId() ?: return@patch
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "categoryId inválido"))
+                    return@patch
+                }
+
+                val payload = try {
+                    call.receive<Map<String, String>>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato inválido"))
+                    return@patch
+                }
+
+                val color = payload["color"]
+                if (color.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "El campo 'color' es requerido"))
+                    return@patch
+                }
+
+                val updated = tournamentService.updateCategoryColor(id, categoryId, color)
+                if (updated) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo actualizar el color"))
                 }
             }
 

@@ -14,10 +14,13 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.bracket.AssignGroupsRequest
 import models.bracket.CreateBracketRequest
+import models.bracket.ErrorResponse
 import models.bracket.GenerateBracketRequest
+import models.bracket.SuccessResponse
 import models.bracket.SwapTeamsRequest
 import models.bracket.UpdateScoreRequest
 import models.bracket.UpdateStatusRequest
+import models.bracket.UpdateScheduleRequest
 import models.bracket.WithdrawTeamRequest
 import services.bracket.BracketService
 
@@ -231,6 +234,31 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
                     onFailure = { call.respond(HttpStatusCode.BadRequest, mapOf("error" to (it.message ?: "Publish failed"))) }
+                )
+            }
+
+            // POST /api/brackets/{categoryId}/unpublish?tournament_id=xxx
+            // Requires authentication - unpublishes bracket (reverts to in_progress)
+            post("/{categoryId}/unpublish") {
+                val organizerId = call.getOrganizerId() ?: return@post
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@post
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@post
+                }
+
+                val result = bracketService.unpublishBracket(tournamentId, categoryId)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { call.respond(HttpStatusCode.BadRequest, mapOf("error" to (it.message ?: "Unpublish failed"))) }
                 )
             }
 
@@ -463,20 +491,23 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 )
 
                 result.fold(
-                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onSuccess = {
+                        // Return simple success - frontend will refetch the data
+                        call.respond(HttpStatusCode.OK, SuccessResponse("Equipos intercambiados"))
+                    },
                     onFailure = { e ->
                         when (e) {
                             is IllegalArgumentException -> call.respond(
                                 HttpStatusCode.BadRequest,
-                                mapOf("error" to (e.message ?: "Cannot swap teams"))
+                                ErrorResponse(e.message ?: "Cannot swap teams")
                             )
                             is IllegalStateException -> call.respond(
                                 HttpStatusCode.Conflict,
-                                mapOf("error" to (e.message ?: "Swap not allowed"))
+                                ErrorResponse(e.message ?: "Swap not allowed")
                             )
                             else -> call.respond(
                                 HttpStatusCode.InternalServerError,
-                                mapOf("error" to (e.message ?: "Swap failed"))
+                                ErrorResponse(e.message ?: "Swap failed")
                             )
                         }
                     }
@@ -552,6 +583,51 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     }
                 )
             }
+
+            // DELETE /api/brackets/{categoryId}/groups/knockout?tournament_id=xxx
+            // Delete knockout phase (keeps group stage intact)
+            delete("/{categoryId}/groups/knockout") {
+                val organizerId = call.getOrganizerId() ?: return@delete
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@delete
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@delete
+                }
+
+                val result = bracketService.deleteKnockoutPhase(tournamentId, categoryId)
+
+                result.fold(
+                    onSuccess = {
+                        call.respond(HttpStatusCode.OK, mapOf(
+                            "success" to true,
+                            "message" to "Knockout phase deleted successfully"
+                        ))
+                    },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.NotFound,
+                                mapOf("error" to (e.message ?: "No knockout phase found"))
+                            )
+                            is IllegalStateException -> call.respond(
+                                HttpStatusCode.Conflict,
+                                mapOf("error" to (e.message ?: "Cannot delete knockout phase"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Deletion failed"))
+                            )
+                        }
+                    }
+                )
+            }
         }
     }
 
@@ -586,15 +662,14 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
                     onFailure = { e ->
-                        when (e) {
-                            is IllegalArgumentException -> call.respond(
-                                HttpStatusCode.BadRequest,
-                                mapOf("error" to (e.message ?: "Validation failed"))
-                            )
-                            else -> call.respond(
-                                HttpStatusCode.InternalServerError,
-                                mapOf("error" to (e.message ?: "Update failed"))
-                            )
+                        val message = e.message ?: "Update failed"
+                        when {
+                            e is IllegalArgumentException && message.contains("not found", ignoreCase = true) ->
+                                call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
+                            e is IllegalArgumentException ->
+                                call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
+                            else ->
+                                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
                         }
                     }
                 )
@@ -625,6 +700,49 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                                 HttpStatusCode.InternalServerError,
                                 mapOf("error" to (e.message ?: "Advancement failed"))
                             )
+                        }
+                    }
+                )
+            }
+
+            // PATCH /api/matches/{id}/schedule
+            // Update match schedule (court and time)
+            patch("/{id}/schedule") {
+                val organizerId = call.getOrganizerId() ?: return@patch
+
+                val matchId = call.parameters["id"]
+                if (matchId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Match ID required"))
+                    return@patch
+                }
+
+                val request = try {
+                    call.receive<UpdateScheduleRequest>()
+                } catch (e: Exception) {
+                    println("❌ [BracketRoutes] Failed to parse UpdateScheduleRequest: ${e.message}")
+                    e.printStackTrace()
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "Invalid request format: ${e.localizedMessage}")
+                    )
+                    return@patch
+                }
+
+                println("✅ [BracketRoutes] UpdateScheduleRequest parsed: courtNumber=${request.courtNumber}, scheduledTime=${request.scheduledTime}")
+
+                val result = bracketService.updateMatchSchedule(matchId, request.courtNumber, request.scheduledTime)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        val message = e.message ?: "Update failed"
+                        when {
+                            e is IllegalArgumentException && message.contains("not found", ignoreCase = true) ->
+                                call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
+                            e is IllegalArgumentException ->
+                                call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
+                            else ->
+                                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
                         }
                     }
                 )

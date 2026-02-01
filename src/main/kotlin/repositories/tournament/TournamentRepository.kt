@@ -15,4 +15,8 @@ interface TournamentRepository {
     suspend fun patchField(id: String, fields: Map<String, Any>, patchType: String): Boolean
     suspend fun updateClubLogoUrl(id: String, logoUrl: String): Boolean
     suspend fun setTournamentCategories(tournamentId: String, categoryIds: List<Int>): Result<Unit>
+    suspend fun setCategoryPrices(tournamentId: String, categoryPrices: Map<Int, Int>): Boolean
+    suspend fun setCategoryColors(tournamentId: String, categoryColors: Map<Int, String>): Boolean
+    suspend fun getSchedulingConfig(tournamentId: String): models.tournament.SchedulingConfigResponse?
+    suspend fun saveSchedulingConfig(tournamentId: String, config: models.tournament.SchedulingConfigRequest): Boolean
 }

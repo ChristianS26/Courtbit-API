@@ -223,6 +223,32 @@ class TournamentRepositoryImpl(
         }
     }
 
+    override suspend fun setCategoryPrices(
+        tournamentId: String,
+        categoryPrices: Map<Int, Int>
+    ): Boolean {
+        if (categoryPrices.isEmpty()) return true
+
+        // Update each category price individually
+        var allSuccess = true
+        for ((categoryId, price) in categoryPrices) {
+            val url = "$apiUrl/tournament_categories?tournament_id=eq.$tournamentId&category_id=eq.$categoryId"
+            val response = client.patch(url) {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(mapOf("price" to price))
+            }
+
+            if (!response.status.isSuccess()) {
+                println("⚠️ Failed to set price for category $categoryId: ${response.status}")
+                allSuccess = false
+            }
+        }
+
+        return allSuccess
+    }
+
     override suspend fun updateFlyerUrl(id: String, flyerUrl: String): Boolean {
         val response = client.patch("$apiUrl/tournaments?id=eq.$id") {
             header("apikey", apiKey)
@@ -242,6 +268,111 @@ class TournamentRepositoryImpl(
             setBody(mapOf("club_logo_url" to logoUrl))
         }
         return response.status.isSuccess()
+    }
+
+    override suspend fun setCategoryColors(
+        tournamentId: String,
+        categoryColors: Map<Int, String>
+    ): Boolean {
+        if (categoryColors.isEmpty()) return true
+
+        // Update each category color individually
+        var allSuccess = true
+        for ((categoryId, color) in categoryColors) {
+            val url = "$apiUrl/tournament_categories?tournament_id=eq.$tournamentId&category_id=eq.$categoryId"
+            val response = client.patch(url) {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(mapOf("color" to color))
+            }
+
+            if (!response.status.isSuccess()) {
+                println("⚠️ Failed to set color for category $categoryId: ${response.status}")
+                allSuccess = false
+            }
+        }
+
+        return allSuccess
+    }
+
+    override suspend fun getSchedulingConfig(tournamentId: String): models.tournament.SchedulingConfigResponse? {
+        val response = client.get("$apiUrl/tournament_scheduling_config") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("tournament_id", "eq.$tournamentId")
+            parameter("select", "*")
+        }
+
+        return if (response.status.isSuccess()) {
+            val body = response.bodyAsText()
+            val configs = json.decodeFromString<List<SchedulingConfigRaw>>(body)
+            configs.firstOrNull()?.toResponse()
+        } else {
+            println("⚠️ Failed to get scheduling config: ${response.status}")
+            null
+        }
+    }
+
+    override suspend fun saveSchedulingConfig(
+        tournamentId: String,
+        config: models.tournament.SchedulingConfigRequest
+    ): Boolean {
+        // Check if config exists
+        val existing = getSchedulingConfig(tournamentId)
+
+        val payload = SchedulingConfigRaw(
+            tournamentId = tournamentId,
+            courts = json.encodeToString(config.courts),
+            matchDurationMinutes = config.matchDurationMinutes,
+            tournamentDays = config.tournamentDays
+        )
+
+        val response = if (existing != null) {
+            // Update existing
+            client.patch("$apiUrl/tournament_scheduling_config?tournament_id=eq.$tournamentId") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+        } else {
+            // Insert new
+            client.post("$apiUrl/tournament_scheduling_config") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+        }
+
+        val success = response.status.isSuccess()
+        if (!success) {
+            println("⚠️ Failed to save scheduling config: ${response.status} - ${response.bodyAsText()}")
+        }
+        return success
+    }
+}
+
+@Serializable
+private data class SchedulingConfigRaw(
+    @SerialName("tournament_id") val tournamentId: String,
+    val courts: String, // JSON string
+    @SerialName("match_duration_minutes") val matchDurationMinutes: Int,
+    @SerialName("tournament_days") val tournamentDays: List<String>
+) {
+    fun toResponse(): models.tournament.SchedulingConfigResponse {
+        val courtsList = try {
+            kotlinx.serialization.json.Json.decodeFromString<List<models.tournament.CourtConfig>>(courts)
+        } catch (e: Exception) {
+            emptyList()
+        }
+        return models.tournament.SchedulingConfigResponse(
+            tournamentId = tournamentId,
+            courts = courtsList,
+            matchDurationMinutes = matchDurationMinutes,
+            tournamentDays = tournamentDays
+        )
     }
 }
 
@@ -276,7 +407,9 @@ data class TournamentRawResponse(
     @SerialName("registration_open") val registrationOpen: Boolean,
     @SerialName("club_logo_url") val clubLogoUrl: String? = null,
     @SerialName("organizer_id") val organizerId: String? = null,
-    val organizers: OrganizerInfo? = null
+    val organizers: OrganizerInfo? = null,
+    @SerialName("city_id") val cityId: Int? = null,
+    @SerialName("padel_club_id") val padelClubId: Int? = null
 ) {
     fun toTournamentResponse(): TournamentResponse {
         return TournamentResponse(
@@ -296,7 +429,9 @@ data class TournamentRawResponse(
             clubLogoUrl = clubLogoUrl,
             organizerId = organizerId,
             organizerName = organizers?.name,
-            organizerLogoUrl = organizers?.logoUrl
+            organizerLogoUrl = organizers?.logoUrl,
+            cityId = cityId,
+            padelClubId = padelClubId
         )
     }
 }

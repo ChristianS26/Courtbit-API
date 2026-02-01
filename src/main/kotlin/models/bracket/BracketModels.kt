@@ -61,7 +61,7 @@ data class MatchResponse(
     @SerialName("team2_player2_id") val team2Player2Id: String? = null,
     @SerialName("score_team1") val scoreTeam1: Int? = null,
     @SerialName("score_team2") val scoreTeam2: Int? = null,
-    @SerialName("set_scores") val setScores: String? = null,  // JSON string
+    @SerialName("set_scores") val setScores: JsonElement? = null,  // JSON array of set scores
     @SerialName("winner_team") val winnerTeam: Int? = null,
     @SerialName("next_match_id") val nextMatchId: String? = null,
     @SerialName("next_match_position") val nextMatchPosition: Int? = null,
@@ -271,7 +271,6 @@ data class StandingInsertRequest(
     @SerialName("games_won") val gamesWon: Int,
     @SerialName("games_lost") val gamesLost: Int,
     @SerialName("point_difference") val pointDifference: Int,
-    @SerialName("round_reached") val roundReached: String? = null,
     @SerialName("group_number") val groupNumber: Int? = null
 )
 
@@ -283,6 +282,15 @@ data class StandingInsertRequest(
 @Serializable
 data class UpdateStatusRequest(
     val status: String
+)
+
+/**
+ * Request to update match schedule (court and time)
+ */
+@Serializable
+data class UpdateScheduleRequest(
+    @SerialName("court_number") val courtNumber: Int,
+    @SerialName("scheduled_time") val scheduledTime: String
 )
 
 // ============ Withdrawal DTOs ============
@@ -367,4 +375,22 @@ data class GroupsStateResponse(
     val groups: List<GroupState>,
     @SerialName("phase") val phase: String,  // "groups" or "knockout"
     @SerialName("knockout_generated") val knockoutGenerated: Boolean
+)
+
+// ============ Common Response DTOs ============
+
+/**
+ * Simple success response
+ */
+@Serializable
+data class SuccessResponse(
+    val message: String
+)
+
+/**
+ * Simple error response
+ */
+@Serializable
+data class ErrorResponse(
+    val error: String
 )

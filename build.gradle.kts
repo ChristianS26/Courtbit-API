@@ -2,6 +2,14 @@ val kotlin_version: String by project
 val logback_version: String by project
 val ktor_version = "2.3.9"
 
+// Load .env file for local development
+val dotenv = file(".env").takeIf { it.exists() }?.readLines()
+    ?.filter { it.isNotBlank() && !it.startsWith("#") }
+    ?.associate { line ->
+        val (key, value) = line.split("=", limit = 2)
+        key.trim() to value.trim()
+    } ?: emptyMap()
+
 plugins {
     kotlin("jvm") version "2.1.10"
     id("io.ktor.plugin") version "2.3.9"
@@ -13,6 +21,13 @@ version = "0.0.1"
 
 application {
     mainClass.set("com.incodap.ApplicationKt")
+}
+
+tasks.named<JavaExec>("run") {
+    // Load environment variables from .env file
+    dotenv.forEach { (key, value) ->
+        environment(key, value)
+    }
 }
 
 repositories { mavenCentral() }
