@@ -317,6 +317,20 @@ data class WithdrawTeamResponse(
 // ============ Groups + Knockout DTOs ============
 
 /**
+ * Match format configuration (for express/classic scoring)
+ */
+@Serializable
+data class MatchFormatConfig(
+    val sets: Int = 3,
+    @SerialName("points_per_set") val pointsPerSet: Int? = null,    // For express format (8, 16, 21 points)
+    @SerialName("games_per_set") val gamesPerSet: Int? = null,      // For classic format (6 games)
+    @SerialName("tie_break_at") val tieBreakAt: Int? = null,        // Tie-break at X games
+    @SerialName("golden_point") val goldenPoint: Boolean? = null,   // Golden point on deuce
+    @SerialName("super_tie_break") val superTieBreak: Boolean? = null,  // Super tie-break in decisive set
+    val description: String? = null                                  // Human readable description
+)
+
+/**
  * Configuration for groups + knockout format
  */
 @Serializable
@@ -326,7 +340,8 @@ data class GroupsKnockoutConfig(
     @SerialName("advancing_per_group") val advancingPerGroup: Int,  // How many advance (1, 2)
     @SerialName("third_place_match") val thirdPlaceMatch: Boolean = false,
     @SerialName("wildcard_count") val wildcardCount: Int = 0,  // Best runners-up to fill bracket (0, 1, 2, etc.)
-    @SerialName("wildcard_source") val wildcardSource: String? = null  // "second" or "third"
+    @SerialName("wildcard_source") val wildcardSource: String? = null,  // "second" or "third"
+    @SerialName("match_format") val matchFormat: MatchFormatConfig? = null  // Match format configuration
 )
 
 /**

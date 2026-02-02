@@ -597,6 +597,8 @@ class BracketService(
                 format = "groups_knockout",
                 seedingMethod = "manual"
             ) ?: return Result.failure(IllegalStateException("Failed to create bracket"))
+            // Save config to the new bracket
+            repository.updateBracketConfig(bracket.id, json.encodeToString(config))
         }
 
         // Generate round-robin matches for each group
