@@ -47,7 +47,6 @@ class BracketRepositoryImpl(
     }
 
     override suspend fun getBracket(tournamentId: String, categoryId: Int): BracketResponse? {
-        println("🔍 [getBracket] Looking for bracket with tournamentId=$tournamentId, categoryId=$categoryId")
         val response = client.get("$apiUrl/tournament_brackets") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -58,12 +57,8 @@ class BracketRepositoryImpl(
 
         return if (response.status.isSuccess()) {
             val bodyText = response.bodyAsText()
-            val brackets = json.decodeFromString<List<BracketResponse>>(bodyText)
-            val bracket = brackets.firstOrNull()
-            println("✅ [getBracket] Found bracket: id=${bracket?.id}, format=${bracket?.format}, tournamentId=${bracket?.tournamentId}")
-            bracket
+            json.decodeFromString<List<BracketResponse>>(bodyText).firstOrNull()
         } else {
-            println("❌ [getBracket] Failed: ${response.status}")
             null
         }
     }
@@ -78,10 +73,8 @@ class BracketRepositoryImpl(
 
         return if (response.status.isSuccess()) {
             val bodyText = response.bodyAsText()
-            val brackets = json.decodeFromString<List<BracketResponse>>(bodyText)
-            brackets.firstOrNull()
+            json.decodeFromString<List<BracketResponse>>(bodyText).firstOrNull()
         } else {
-            println("BracketRepository.getBracketById failed: ${response.status}")
             null
         }
     }
@@ -101,10 +94,8 @@ class BracketRepositoryImpl(
 
         var matches = if (matchesResponse.status.isSuccess()) {
             val bodyText = matchesResponse.bodyAsText()
-            val matchList = json.decodeFromString<List<MatchResponse>>(bodyText)
-            matchList
+            json.decodeFromString<List<MatchResponse>>(bodyText)
         } else {
-            println("❌ [getBracketWithMatches] Matches query failed: ${matchesResponse.status}")
             emptyList()
         }
 
@@ -125,19 +116,6 @@ class BracketRepositoryImpl(
         matches = matches.map { match ->
             val team1 = match.team1Id?.let { teamsMap[it] }
             val team2 = match.team2Id?.let { teamsMap[it] }
-            // Warn if a team exists but has no players at all (neither linked nor manual)
-            if (match.groupNumber == null) {
-                if (match.team1Id != null && team1 != null &&
-                    team1.playerAUid == null && team1.playerBUid == null &&
-                    team1.playerAName.isNullOrBlank() && team1.playerBName.isNullOrBlank()) {
-                    println("⚠️ [getBracketWithMatches] Match ${match.matchNumber}: team1 (${match.team1Id}) has NO players (linked or manual)!")
-                }
-                if (match.team2Id != null && team2 != null &&
-                    team2.playerAUid == null && team2.playerBUid == null &&
-                    team2.playerAName.isNullOrBlank() && team2.playerBName.isNullOrBlank()) {
-                    println("⚠️ [getBracketWithMatches] Match ${match.matchNumber}: team2 (${match.team2Id}) has NO players (linked or manual)!")
-                }
-            }
             match.copy(
                 team1Player1Id = getPlayerId(team1, 'a'),
                 team1Player2Id = getPlayerId(team1, 'b'),
@@ -180,10 +158,8 @@ class BracketRepositoryImpl(
 
         return if (teamsResponse.status.isSuccess()) {
             val teamsBody = teamsResponse.bodyAsText()
-            val teams = json.decodeFromString<List<TeamDto>>(teamsBody)
-            teams.associateBy { it.id }
+            json.decodeFromString<List<TeamDto>>(teamsBody).associateBy { it.id }
         } else {
-            println("BracketRepository.getTeamsMap failed: ${teamsResponse.status}")
             emptyMap()
         }
     }
@@ -210,7 +186,6 @@ class BracketRepositoryImpl(
         }
 
         if (!teamsResponse.status.isSuccess()) {
-            println("BracketRepository.getPlayersForBracket teams failed: ${teamsResponse.status}")
             return emptyList()
         }
 
@@ -238,8 +213,6 @@ class BracketRepositoryImpl(
                 val playersBody = playersResponse.bodyAsText()
                 val linkedPlayers = json.decodeFromString<List<BracketPlayerInfo>>(playersBody)
                 allPlayers.addAll(linkedPlayers)
-            } else {
-                println("BracketRepository.getPlayersForBracket profiles failed: ${playersResponse.status}")
             }
         }
 
@@ -286,10 +259,8 @@ class BracketRepositoryImpl(
         }
 
         return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            json.decodeFromString<List<BracketResponse>>(bodyText)
+            json.decodeFromString<List<BracketResponse>>(response.bodyAsText())
         } else {
-            println("BracketRepository.getBracketsByTournament failed: ${response.status}")
             emptyList()
         }
     }
@@ -316,12 +287,9 @@ class BracketRepositoryImpl(
             setBody(listOf(insertRequest)) // Supabase expects array
         }
 
-        val status = response.status
-        val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
-        println("BracketRepository.createBracket -> ${status.value} ${status.description}\nBody: $bodyText")
+        if (!response.status.isSuccess()) return null
 
-        if (!status.isSuccess()) return null
-
+        val bodyText = runCatching { response.bodyAsText() }.getOrElse { return null }
         return bodyText.takeIf { it.isNotBlank() }?.let {
             json.decodeFromString<List<BracketResponse>>(it).firstOrNull()
         }
@@ -356,12 +324,9 @@ class BracketRepositoryImpl(
             setBody(jsonBody)
         }
 
-        val status = response.status
-        val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
-        println("BracketRepository.createMatches -> ${status.value}\nBody: $bodyText")
+        if (!response.status.isSuccess()) return emptyList()
 
-        if (!status.isSuccess()) return emptyList()
-
+        val bodyText = runCatching { response.bodyAsText() }.getOrElse { return emptyList() }
         return bodyText.takeIf { it.isNotBlank() }?.let {
             json.decodeFromString<List<MatchResponse>>(it)
         } ?: emptyList()
@@ -388,9 +353,7 @@ class BracketRepositoryImpl(
             setBody(mapOf("status" to status))
         }
 
-        val responseStatus = response.status
-        println("BracketRepository.updateBracketStatus -> ${responseStatus.value}")
-        return responseStatus.isSuccess()
+        return response.status.isSuccess()
     }
 
     override suspend fun deleteBracket(bracketId: String): Boolean {
@@ -400,20 +363,13 @@ class BracketRepositoryImpl(
             header("Authorization", "Bearer $apiKey")
         }
 
-        if (!matchesResponse.status.isSuccess()) {
-            println("BracketRepository.deleteBracket matches failed: ${matchesResponse.status}")
-            // Continue anyway - matches might not exist
-        }
-
         // Delete bracket
         val bracketResponse = client.delete("$apiUrl/tournament_brackets?id=eq.$bracketId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
         }
 
-        val status = bracketResponse.status
-        println("BracketRepository.deleteBracket -> ${status.value}")
-        return status.isSuccess()
+        return bracketResponse.status.isSuccess()
     }
 
     override suspend fun deleteMatchesByBracketId(bracketId: String): Boolean {
@@ -422,9 +378,7 @@ class BracketRepositoryImpl(
             header("Authorization", "Bearer $apiKey")
         }
 
-        val status = response.status
-        println("BracketRepository.deleteMatchesByBracketId -> ${status.value}")
-        return status.isSuccess()
+        return response.status.isSuccess()
     }
 
     override suspend fun deleteMatchesByIds(matchIds: List<String>): Int {
@@ -437,11 +391,7 @@ class BracketRepositoryImpl(
             header("Prefer", "return=representation")
         }
 
-        val status = response.status
-        println("BracketRepository.deleteMatchesByIds -> ${status.value}, ${matchIds.size} matches")
-
-        // Return count of deleted matches
-        return if (status.isSuccess()) matchIds.size else 0
+        return if (response.status.isSuccess()) matchIds.size else 0
     }
 
     // ============ Match Scoring ============
@@ -455,10 +405,8 @@ class BracketRepositoryImpl(
         }
 
         return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            json.decodeFromString<List<MatchResponse>>(bodyText).firstOrNull()
+            json.decodeFromString<List<MatchResponse>>(response.bodyAsText()).firstOrNull()
         } else {
-            println("BracketRepository.getMatch failed: ${response.status}")
             null
         }
     }
@@ -482,26 +430,22 @@ class BracketRepositoryImpl(
             setBody(jsonBody)
         }
 
-        val status = response.status
         val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
-        println("BracketRepository.updateMatchScore(matchId=$matchId) -> ${status.value}\nBody: $bodyText")
 
-        return if (status.isSuccess()) {
+        return if (response.status.isSuccess()) {
             val matches = runCatching {
                 json.decodeFromString<List<MatchResponse>>(bodyText)
             }.getOrElse { e ->
-                println("Failed to parse response: ${e.message}")
                 return Result.failure(IllegalStateException("Failed to parse Supabase response: ${e.message}"))
             }
 
             if (matches.isEmpty()) {
-                // Supabase returns 200 with empty array when no rows match
                 return Result.failure(IllegalArgumentException("Match not found with ID: $matchId"))
             }
 
             Result.success(matches.first())
         } else {
-            Result.failure(IllegalStateException("Failed to update score: ${status.value} - $bodyText"))
+            Result.failure(IllegalStateException("Failed to update score: ${response.status.value} - $bodyText"))
         }
     }
 
@@ -526,13 +470,10 @@ class BracketRepositoryImpl(
             setBody(mapOf(fieldToUpdate to winnerTeamId))
         }
 
-        val status = response.status
-        println("BracketRepository.advanceWinner -> ${status.value} (field: $fieldToUpdate)")
-
-        return if (status.isSuccess()) {
+        return if (response.status.isSuccess()) {
             Result.success(Unit)
         } else {
-            Result.failure(IllegalStateException("Failed to advance winner to next match: ${status.value}"))
+            Result.failure(IllegalStateException("Failed to advance winner to next match: ${response.status.value}"))
         }
     }
 
@@ -550,7 +491,6 @@ class BracketRepositoryImpl(
         return if (response.status.isSuccess()) {
             json.decodeFromString<List<StandingEntry>>(response.bodyAsText())
         } else {
-            println("BracketRepository.getStandings failed: ${response.status}")
             emptyList()
         }
     }
@@ -583,9 +523,6 @@ class BracketRepositoryImpl(
         // Use jsonForBulkInsert to ensure all objects have the same keys
         val jsonBody = jsonForBulkInsert.encodeToString(insertRequests)
 
-        // Debug: print the JSON being sent
-        println("📤 [upsertStandings] Sending ${standings.size} standings, JSON sample: ${jsonBody.take(500)}...")
-
         val response = client.post("$apiUrl/tournament_standings") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -594,13 +531,7 @@ class BracketRepositoryImpl(
             setBody(jsonBody)
         }
 
-        val status = response.status
-        val responseBody = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
-        println("BracketRepository.upsertStandings -> ${status.value}")
-        if (!status.isSuccess()) {
-            println("❌ [upsertStandings] Error response: $responseBody")
-        }
-        return status.isSuccess()
+        return response.status.isSuccess()
     }
 
     override suspend fun deleteStandings(bracketId: String): Boolean {
@@ -608,9 +539,7 @@ class BracketRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
         }
-        val status = response.status
-        println("BracketRepository.deleteStandings -> ${status.value}")
-        return status.isSuccess()
+        return response.status.isSuccess()
     }
 
     // ============ Status and Withdrawal ============
@@ -624,12 +553,10 @@ class BracketRepositoryImpl(
             setBody(mapOf("status" to status))
         }
 
-        val responseStatus = response.status
         val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
-        println("BracketRepository.updateMatchStatus -> ${responseStatus.value}\nBody: $bodyText")
 
-        if (!responseStatus.isSuccess()) {
-            throw IllegalStateException("Failed to update match status: ${responseStatus.value}")
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException("Failed to update match status: ${response.status.value}")
         }
 
         val matches = json.decodeFromString<List<MatchResponse>>(bodyText)
@@ -649,10 +576,8 @@ class BracketRepositoryImpl(
         }
 
         return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            json.decodeFromString<List<MatchResponse>>(bodyText)
+            json.decodeFromString<List<MatchResponse>>(response.bodyAsText())
         } else {
-            println("BracketRepository.getMatchesForTeam failed: ${response.status}")
             emptyList()
         }
     }
@@ -667,9 +592,7 @@ class BracketRepositoryImpl(
             setBody(jsonBody)
         }
 
-        val status = response.status
-        println("BracketRepository.updateMatchForfeit -> ${status.value}")
-        return status.isSuccess()
+        return response.status.isSuccess()
     }
 
     override suspend fun advanceToNextMatch(matchId: String, winnerId: String, nextMatchId: String, position: Int): Boolean {
@@ -682,9 +605,7 @@ class BracketRepositoryImpl(
             setBody(mapOf(fieldToUpdate to winnerId))
         }
 
-        val status = response.status
-        println("BracketRepository.advanceToNextMatch -> ${status.value} (field: $fieldToUpdate, next: $nextMatchId)")
-        return status.isSuccess()
+        return response.status.isSuccess()
     }
 
     // ============ Groups + Knockout ============
@@ -697,9 +618,7 @@ class BracketRepositoryImpl(
             setBody("""{"config":$configJson}""")
         }
 
-        val status = response.status
-        println("BracketRepository.updateBracketConfig -> ${status.value}")
-        return status.isSuccess()
+        return response.status.isSuccess()
     }
 
     override suspend fun updateMatchTeams(matchId: String, team1Id: String?, team2Id: String?, groupNumber: Int?): Boolean {
@@ -717,9 +636,7 @@ class BracketRepositoryImpl(
             setBody(updateMap)
         }
 
-        val status = response.status
-        println("BracketRepository.updateMatchTeams -> ${status.value}")
-        return status.isSuccess()
+        return response.status.isSuccess()
     }
 
     override suspend fun updateStandingGroupNumber(bracketId: String, teamId: String, groupNumber: Int): Boolean {
@@ -730,9 +647,7 @@ class BracketRepositoryImpl(
             setBody(mapOf("group_number" to groupNumber))
         }
 
-        val status = response.status
-        println("BracketRepository.updateStandingGroupNumber -> ${status.value}")
-        return status.isSuccess()
+        return response.status.isSuccess()
     }
 
     override suspend fun updateMatchSchedule(matchId: String, courtNumber: Int, scheduledTime: String): MatchResponse {
@@ -744,12 +659,10 @@ class BracketRepositoryImpl(
             setBody(MatchScheduleUpdateDto(courtNumber, scheduledTime))
         }
 
-        val responseStatus = response.status
         val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
-        println("BracketRepository.updateMatchSchedule -> ${responseStatus.value}\nBody: $bodyText")
 
-        if (!responseStatus.isSuccess()) {
-            throw IllegalStateException("Failed to update match schedule: ${responseStatus.value}")
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException("Failed to update match schedule: ${response.status.value}")
         }
 
         val matches = json.decodeFromString<List<MatchResponse>>(bodyText)

@@ -41,8 +41,6 @@ class PaymentService(
 
     init {
         Stripe.apiKey = System.getenv("STRIPE_SECRET_KEY")
-        val mode = if (Stripe.apiKey?.startsWith("sk_live_") == true) "LIVE" else "TEST"
-        println("🔑 [Stripe] API key initialized in $mode mode")
     }
 
     // -------------------------------------------------------
@@ -132,11 +130,6 @@ class PaymentService(
         request: PaymentRequest,
         userEmail: String?
     ): CreateIntentResponse {
-        println("➡️ [PI] createPaymentIntent start " +
-                "uid=${request.playerUid}, tournament=${request.tournamentId}, cat=${request.categoryId}, " +
-                "amount=${request.amount}, currency=${request.currency}, paidFor=${request.paidFor}, " +
-                "reqEmail=${request.email ?: ""}, paramEmail=${userEmail ?: ""}")
-
         validatePaymentRequest(request)
 
         require(request.amount > 0) { "El monto debe ser mayor a cero." }
@@ -151,29 +144,17 @@ class PaymentService(
             val fromRequest = request.email?.trim().orEmpty()
             if (fromRequest.isNotEmpty()) return@run fromRequest
 
-            val fromDb = userRepository.findByUid(request.playerUid)?.email?.trim().orEmpty()
-            fromDb
+            userRepository.findByUid(request.playerUid)?.email?.trim().orEmpty()
         }
-
-        val source = when {
-            !userEmail.isNullOrBlank() -> "param"
-            !request.email.isNullOrBlank() -> "request"
-            else -> "db"
-        }
-        println("📧 [PI] resolvedEmail=$resolvedEmail (source=$source)")
 
         val email = resolvedEmail
         val customer: Customer? = if (email.isNotEmpty()) {
-            println("👤 [PI] ensureCustomer(uid=${request.playerUid}, email=$email)")
             ensureCustomer(uid = request.playerUid, email = email)
         } else {
-            println("⚠️ [PI] No email available for uid=${request.playerUid} → proceeding WITHOUT Customer.")
             null
         }
 
         val idem = UUID.randomUUID().toString()
-        println("🧱 [PI] creating PaymentIntent (idempotency=$idem) " +
-                "hasCustomer=${customer != null}, currency=$normalizedCurrency, amount=${request.amount}")
 
         val params = PaymentIntentCreateParams.builder()
             .setAmount(request.amount * 100L)
@@ -203,20 +184,13 @@ class PaymentService(
         val intent = PaymentIntent.create(params, requestOptions)
 
         if (intent.clientSecret.isNullOrBlank() || !intent.clientSecret.contains("_secret_")) {
-            println("❌ [PI] invalid client_secret: ${intent.clientSecret}")
             throw IllegalStateException("Stripe no devolvió un client_secret válido.")
         }
 
-        println("✅ [PI] created id=${intent.id} clientSecret=${intent.clientSecret.take(14)}... " +
-                "customer=${intent.customer ?: customer?.id ?: "null"}")
-
         val ephemeralKeySecret = customer?.let {
             try {
-                val ek = createEphemeralKey(it.id).secret
-                println("🔑 [EK] created for customer=${it.id} secret=${ek.take(10)}...")
-                ek
+                createEphemeralKey(it.id).secret
             } catch (e: Exception) {
-                println("❌ [EK] error creating EK for ${it.id}: ${e.message}")
                 null
             }
         }
@@ -234,25 +208,19 @@ class PaymentService(
     @Throws(StripeException::class)
     private suspend fun ensureCustomer(uid: String, email: String): Customer {
         val existingCustomerId = userRepository.getStripeCustomerIdByUid(uid)
-        println("👤 [Customer] existing in DB for uid=$uid -> $existingCustomerId")
 
         if (!existingCustomerId.isNullOrBlank()) {
             return try {
-                val c = Customer.retrieve(existingCustomerId)
-                println("👤 [Customer] retrieved from Stripe: ${c.id}")
-                c
+                Customer.retrieve(existingCustomerId)
             } catch (ex: Exception) {
-                println("⚠️ [Customer] retrieve failed for $existingCustomerId: ${ex.message} → recreating")
                 val recreated = createCustomer(uid, email)
-                val ok = userRepository.updateStripeCustomerId(uid, recreated.id)
-                println("📝 [Customer] DB update after recreate -> $ok (id=${recreated.id})")
+                userRepository.updateStripeCustomerId(uid, recreated.id)
                 recreated
             }
         }
 
         val created = createCustomer(uid, email)
-        val ok = userRepository.updateStripeCustomerId(uid, created.id)
-        println("📝 [Customer] DB update after create -> $ok (id=${created.id})")
+        userRepository.updateStripeCustomerId(uid, created.id)
         return created
     }
 
@@ -262,27 +230,17 @@ class PaymentService(
             "email" to email,
             "metadata" to mapOf("app_uid" to uid, "app_email" to email)
         )
-        val customer = Customer.create(params)
-        println("✅ [Customer] created ${customer.id} ($email)")
-        return customer
+        return Customer.create(params)
     }
 
     @Throws(StripeException::class)
     private fun createEphemeralKey(customerId: String): EphemeralKey {
-        // ⚠️ Debe ir en los params, NO en headers
         val ekParams = EphemeralKeyCreateParams.builder()
-            .setStripeVersion(STRIPE_MOBILE_SDK_API_VERSION) // p. ej. "2020-08-27"
+            .setStripeVersion(STRIPE_MOBILE_SDK_API_VERSION)
             .putExtraParam("customer", customerId)
             .build()
 
-        return try {
-            val ek = EphemeralKey.create(ekParams)
-            println("🔑 [EK] created for customer=$customerId secret=${ek.secret.take(10)}... using version=$STRIPE_MOBILE_SDK_API_VERSION")
-            ek
-        } catch (e: Exception) {
-            println("❌ [EK] error creating EphemeralKey for $customerId: ${e.message}")
-            throw e
-        }
+        return EphemeralKey.create(ekParams)
     }
 
     // -------------------------------------------------------

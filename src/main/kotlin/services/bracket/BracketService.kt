@@ -330,12 +330,10 @@ class BracketService(
                         "groups_knockout" -> {
                             // Recalculate group standings
                             calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
-                            println("Recalculated group standings for bracket ${bracket.id}")
                         }
                         "round_robin" -> {
                             // Recalculate standings for round robin
                             calculateStandings(bracket.tournamentId, bracket.categoryId)
-                            println("Recalculated standings for bracket ${bracket.id}")
                         }
                         // knockout format doesn't need standings recalculation
                     }
@@ -864,15 +862,7 @@ class BracketService(
 
         // Check if knockout already exists
         val knockoutMatches = matches.filter { it.groupNumber == null }
-        println("🔍 [generateKnockoutFromGroups] Total matches: ${matches.size}, Knockout matches (groupNumber=null): ${knockoutMatches.size}")
-        matches.take(5).forEach { m ->
-            println("   Match ${m.matchNumber}: groupNumber=${m.groupNumber}, roundName=${m.roundName}")
-        }
         if (knockoutMatches.isNotEmpty()) {
-            println("❌ [generateKnockoutFromGroups] Knockout already exists! Found ${knockoutMatches.size} matches with groupNumber=null")
-            knockoutMatches.take(3).forEach { m ->
-                println("   Knockout match ${m.matchNumber}: roundName=${m.roundName}, status=${m.status}")
-            }
             return Result.failure(IllegalStateException("Knockout phase already generated"))
         }
 
@@ -892,16 +882,12 @@ class BracketService(
 
         // If standings don't have group numbers, recalculate them first
         if (groupStandings.isEmpty() && groupMatches.isNotEmpty()) {
-            println("⚠️ [generateKnockoutFromGroups] Standings missing group numbers, recalculating...")
             val recalcResult = calculateGroupStandings(tournamentId, categoryId)
             if (recalcResult.isSuccess) {
                 val recalcStandings = recalcResult.getOrNull()?.standings ?: emptyList()
                 groupStandings = recalcStandings
                     .filter { it.groupNumber != null }
                     .groupBy { it.groupNumber!! }
-                println("✅ [generateKnockoutFromGroups] Recalculated standings, groups: ${groupStandings.keys}")
-            } else {
-                println("❌ [generateKnockoutFromGroups] Failed to recalculate standings: ${recalcResult.exceptionOrNull()?.message}")
             }
         }
 
@@ -910,16 +896,12 @@ class BracketService(
 
         // Interleave seeds: 1A vs 2B, 1B vs 2A pattern
         // First collect group winners, then runners-up
-        println("🏆 [generateKnockoutFromGroups] Looking for advancing teams: ${config.advancingPerGroup} per group, ${config.groupCount} groups")
-        println("   Group standings count by group: ${groupStandings.mapValues { it.value.size }}")
         for (position in 1..config.advancingPerGroup) {
             for (groupNum in 1..config.groupCount) {
                 val groupTeams = groupStandings[groupNum]?.sortedBy { it.position } ?: emptyList()
                 val teamAtPosition = groupTeams.getOrNull(position - 1)
                 val teamId = teamAtPosition?.teamId
                 if (teamId == null) {
-                    println("❌ [generateKnockoutFromGroups] No team at position $position in group $groupNum")
-                    println("   Available teams in group $groupNum: ${groupTeams.map { "pos=${it.position}, teamId=${it.teamId}" }}")
                     return Result.failure(IllegalStateException(
                         "No team at position $position in group $groupNum"
                     ))
@@ -935,7 +917,6 @@ class BracketService(
             // If advancingPerGroup == 1, wildcards come from 2nd place
             // If advancingPerGroup == 2, wildcards come from 3rd place
             val wildcardPosition = config.advancingPerGroup + 1
-            println("🃏 [generateKnockoutFromGroups] Adding $wildcardCount wildcards from position $wildcardPosition")
 
             // Collect all teams at the wildcard position from all groups
             val wildcardCandidates = mutableListOf<StandingEntry>()
@@ -956,25 +937,12 @@ class BracketService(
 
             // Take the best N wildcards
             val selectedWildcards = sortedWildcards.take(wildcardCount)
-            println("   Selected wildcards: ${selectedWildcards.map { "teamId=${it.teamId}, pts=${it.totalPoints}, diff=${it.pointDifference}" }}")
 
             for (wildcard in selectedWildcards) {
-                val teamId = wildcard.teamId
-                if (teamId == null) {
-                    println("   ⚠️ WARNING: Wildcard has null teamId, skipping!")
-                    continue
-                }
+                val teamId = wildcard.teamId ?: continue
                 advancingTeams.add(TeamSeed(teamId, seedCounter++))
             }
-
-            // Validate that we got enough wildcards
-            val addedWildcards = advancingTeams.size - (config.advancingPerGroup * config.groupCount)
-            if (addedWildcards < wildcardCount) {
-                println("   ⚠️ WARNING: Expected $wildcardCount wildcards but only found $addedWildcards valid ones")
-            }
         }
-
-        println("📋 [generateKnockoutFromGroups] Total advancing teams: ${advancingTeams.size}")
 
         // Generate seeding order for bracket (proper seeding placement)
         // For groups + knockout: 1A vs 2D, 1B vs 2C, 1C vs 2B, 1D vs 2A (if 4 groups, 2 advance each)
@@ -1194,10 +1162,7 @@ class BracketService(
     private fun generateKnockoutMatches(teams: List<TeamSeed>): List<GeneratedMatch> {
         val teamCount = teams.size
         val bracketSize = nextPowerOfTwo(teamCount)
-        val byeCount = bracketSize - teamCount
         val totalRounds = kotlin.math.log2(bracketSize.toDouble()).toInt()
-
-        println("🏟️ [generateKnockoutMatches] $teamCount teams → bracket size $bracketSize ($byeCount byes)")
 
         // Generate seed positions for bracket
         val seedPositions = generateSeedPositions(bracketSize)
@@ -1208,8 +1173,6 @@ class BracketService(
             val position = seedPositions.indexOf(team.seed)
             if (position >= 0) {
                 positionToTeam[position] = team.teamId
-            } else {
-                println("   ⚠️ WARNING: seed ${team.seed} not found in seedPositions!")
             }
         }
         // Fill remaining positions with null (BYEs)
@@ -1369,14 +1332,10 @@ class BracketService(
      * Used by the scheduling UI to assign matches to courts/times.
      */
     suspend fun updateMatchSchedule(matchId: String, courtNumber: Int, scheduledTime: String): Result<MatchResponse> {
-        println("📅 [BracketService] updateMatchSchedule called: matchId=$matchId, courtNumber=$courtNumber, scheduledTime=$scheduledTime")
         return try {
             val updated = repository.updateMatchSchedule(matchId, courtNumber, scheduledTime)
-            println("✅ [BracketService] updateMatchSchedule success: ${updated.id}")
             Result.success(updated)
         } catch (e: Exception) {
-            println("❌ [BracketService] updateMatchSchedule failed: ${e::class.simpleName}: ${e.message}")
-            e.printStackTrace()
             Result.failure(e)
         }
     }

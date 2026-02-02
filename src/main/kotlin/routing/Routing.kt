@@ -75,10 +75,7 @@ import services.remoteconfig.RemoteConfigService
 import services.teams.TeamService
 
 fun Application.configureRouting() {
-    var rootRoute: Route? = null
-
     routing {
-        rootRoute = this
 
         // Root health check endpoint
         get("/") {
@@ -172,13 +169,4 @@ fun Application.configureRouting() {
         }
     }
 
-    // Log del árbol de rutas al iniciar (útil para confirmar que /api/config/remote-config existe)
-    environment.monitor.subscribe(ApplicationStarted) {
-        rootRoute?.printTree(this)
-    }
-}
-
-private fun Route.printTree(app: Application, prefix: String = "") {
-    app.log.info("$prefix$selector")
-    children.forEach { it.printTree(app, "$prefix  ") }
 }

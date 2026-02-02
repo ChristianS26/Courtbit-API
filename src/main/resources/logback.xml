@@ -1,12 +1,23 @@
 <configuration>
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{YYYY-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>%d{HH:mm:ss} %-5level %logger{20} - %msg%n</pattern>
         </encoder>
     </appender>
-    <root level="INFO">
+
+    <!-- Root level: WARN to reduce noise -->
+    <root level="WARN">
         <appender-ref ref="STDOUT"/>
     </root>
-    <logger name="org.eclipse.jetty" level="INFO"/>
-    <logger name="io.netty" level="INFO"/>
+
+    <!-- App logs at INFO level -->
+    <logger name="com.incodap" level="INFO"/>
+
+    <!-- Suppress noisy libraries -->
+    <logger name="org.eclipse.jetty" level="WARN"/>
+    <logger name="io.netty" level="WARN"/>
+    <logger name="io.ktor" level="WARN"/>
+    <logger name="org.apache.http" level="WARN"/>
+    <logger name="com.stripe" level="WARN"/>
+    <logger name="Exposed" level="WARN"/>
 </configuration>

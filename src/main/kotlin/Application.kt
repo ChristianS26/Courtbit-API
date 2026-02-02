@@ -17,9 +17,6 @@ fun main(args: Array<String>) {
 }
 
 fun Application.module() {
-    val supabaseKey = System.getenv("SUPABASE_API_KEY") ?: ""
-    utils.SupabaseKeyChecker.logRoleFromKey(supabaseKey)
-
     install(Koin) {
         modules(
             CoreModule,
@@ -49,7 +46,7 @@ fun Application.module() {
     }
 
     configureSecurity()
-    configureSerialization() // ahora incluye CallLogging + StatusPages
+    configureSerialization()
     configureCors()
     configureRouting()
 }
