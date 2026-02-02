@@ -286,11 +286,12 @@ data class UpdateStatusRequest(
 
 /**
  * Request to update match schedule (court and time)
+ * Both fields are nullable to allow clearing the schedule
  */
 @Serializable
 data class UpdateScheduleRequest(
-    @SerialName("court_number") val courtNumber: Int,
-    @SerialName("scheduled_time") val scheduledTime: String
+    @SerialName("court_number") val courtNumber: Int? = null,
+    @SerialName("scheduled_time") val scheduledTime: String? = null
 )
 
 // ============ Withdrawal DTOs ============

@@ -23,9 +23,8 @@ private data class TeamDto(
 
 @Serializable
 private data class MatchScheduleUpdateDto(
-    @SerialName("court_number") val courtNumber: Int,
-    @SerialName("scheduled_time") val scheduledTime: String,
-    val status: String = "scheduled"
+    @SerialName("court_number") val courtNumber: Int?,
+    @SerialName("scheduled_time") val scheduledTime: String?
 )
 
 class BracketRepositoryImpl(
@@ -650,13 +649,16 @@ class BracketRepositoryImpl(
         return response.status.isSuccess()
     }
 
-    override suspend fun updateMatchSchedule(matchId: String, courtNumber: Int, scheduledTime: String): MatchResponse {
+    override suspend fun updateMatchSchedule(matchId: String, courtNumber: Int?, scheduledTime: String?): MatchResponse {
+        // Use jsonForBulkInsert which has explicitNulls=true to send null values to Supabase
+        val bodyJson = jsonForBulkInsert.encodeToString(MatchScheduleUpdateDto.serializer(), MatchScheduleUpdateDto(courtNumber, scheduledTime))
+
         val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
             contentType(ContentType.Application.Json)
-            setBody(MatchScheduleUpdateDto(courtNumber, scheduledTime))
+            setBody(bodyJson)
         }
 
         val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }

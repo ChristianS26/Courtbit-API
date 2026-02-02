@@ -1330,8 +1330,9 @@ class BracketService(
     /**
      * Update match schedule (court number and scheduled time).
      * Used by the scheduling UI to assign matches to courts/times.
+     * Pass null values to clear the schedule.
      */
-    suspend fun updateMatchSchedule(matchId: String, courtNumber: Int, scheduledTime: String): Result<MatchResponse> {
+    suspend fun updateMatchSchedule(matchId: String, courtNumber: Int?, scheduledTime: String?): Result<MatchResponse> {
         return try {
             val updated = repository.updateMatchSchedule(matchId, courtNumber, scheduledTime)
             Result.success(updated)

@@ -156,6 +156,7 @@ interface BracketRepository {
 
     /**
      * Update match schedule (court number and scheduled time)
+     * Pass null values to clear the schedule
      */
-    suspend fun updateMatchSchedule(matchId: String, courtNumber: Int, scheduledTime: String): MatchResponse
+    suspend fun updateMatchSchedule(matchId: String, courtNumber: Int?, scheduledTime: String?): MatchResponse
 }
