@@ -37,4 +37,5 @@ data class PublicUser(
 
     @SerialName("shirt_size") val shirtSize: String? = null,
     @SerialName("shirt_style") val shirtStyle: String? = null,
+    val birthdate: String? = null,
 )

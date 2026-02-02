@@ -219,6 +219,7 @@ class UserRepositoryImpl(
                 request.photoUrl?.let { put("photo_url", it) }
                 request.countryIso?.let { put("country_iso", it) }
                 request.shirtSize?.let { put("shirt_size", it) }
+                request.birthdate?.let { put("birthdate", it) }
             }
 
             val response = client.patch("$apiUrl/users") {

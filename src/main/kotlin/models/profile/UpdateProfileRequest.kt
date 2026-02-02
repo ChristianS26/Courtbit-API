@@ -11,6 +11,6 @@ data class UpdateProfileRequest(
     val gender: String? = null,
     @SerialName("photo_url") val photoUrl: String? = null,
     @SerialName("country_iso") val countryIso: String? = null,
-
     @SerialName("shirt_size") val shirtSize: String? = null,
+    val birthdate: String? = null,
 )
