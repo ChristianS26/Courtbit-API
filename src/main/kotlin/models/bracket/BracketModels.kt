@@ -323,7 +323,9 @@ data class GroupsKnockoutConfig(
     @SerialName("group_count") val groupCount: Int,           // Number of groups (2, 4, 8)
     @SerialName("teams_per_group") val teamsPerGroup: Int,    // Teams per group (3, 4, 5)
     @SerialName("advancing_per_group") val advancingPerGroup: Int,  // How many advance (1, 2)
-    @SerialName("third_place_match") val thirdPlaceMatch: Boolean = false
+    @SerialName("third_place_match") val thirdPlaceMatch: Boolean = false,
+    @SerialName("wildcard_count") val wildcardCount: Int = 0,  // Best runners-up to fill bracket (0, 1, 2, etc.)
+    @SerialName("wildcard_source") val wildcardSource: String? = null  // "second" or "third"
 )
 
 /**

@@ -142,6 +142,9 @@ class TournamentRepositoryImpl(
     }
 
     override suspend fun update(id: String, request: UpdateTournamentRequest): Boolean {
+        println("📤 [TournamentRepo.update] Sending to Supabase: $request")
+        println("📤 [TournamentRepo.update] flyerUrl = ${request.flyerUrl}")
+
         val response = client.patch("$apiUrl/tournaments?id=eq.$id") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -149,6 +152,7 @@ class TournamentRepositoryImpl(
             setBody(request)
         }
 
+        println("📤 [TournamentRepo.update] Response status: ${response.status}")
         return response.status.isSuccess()
     }
 

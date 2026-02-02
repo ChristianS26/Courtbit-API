@@ -928,10 +928,58 @@ class BracketService(
             }
         }
 
+        // Add wildcards (best runners-up) if configured
+        val wildcardCount = config.wildcardCount
+        if (wildcardCount > 0) {
+            // Determine which position to pick wildcards from
+            // If advancingPerGroup == 1, wildcards come from 2nd place
+            // If advancingPerGroup == 2, wildcards come from 3rd place
+            val wildcardPosition = config.advancingPerGroup + 1
+            println("🃏 [generateKnockoutFromGroups] Adding $wildcardCount wildcards from position $wildcardPosition")
+
+            // Collect all teams at the wildcard position from all groups
+            val wildcardCandidates = mutableListOf<StandingEntry>()
+            for (groupNum in 1..config.groupCount) {
+                val groupTeams = groupStandings[groupNum]?.sortedBy { it.position } ?: emptyList()
+                val candidate = groupTeams.getOrNull(wildcardPosition - 1)
+                if (candidate != null) {
+                    wildcardCandidates.add(candidate)
+                }
+            }
+
+            // Sort wildcards by: total points DESC, point difference DESC, games won DESC
+            val sortedWildcards = wildcardCandidates.sortedWith(
+                compareByDescending<StandingEntry> { it.totalPoints }
+                    .thenByDescending { it.pointDifference }
+                    .thenByDescending { it.gamesWon }
+            )
+
+            // Take the best N wildcards
+            val selectedWildcards = sortedWildcards.take(wildcardCount)
+            println("   Selected wildcards: ${selectedWildcards.map { "teamId=${it.teamId}, pts=${it.totalPoints}, diff=${it.pointDifference}" }}")
+
+            for (wildcard in selectedWildcards) {
+                val teamId = wildcard.teamId
+                if (teamId == null) {
+                    println("   ⚠️ WARNING: Wildcard has null teamId, skipping!")
+                    continue
+                }
+                advancingTeams.add(TeamSeed(teamId, seedCounter++))
+            }
+
+            // Validate that we got enough wildcards
+            val addedWildcards = advancingTeams.size - (config.advancingPerGroup * config.groupCount)
+            if (addedWildcards < wildcardCount) {
+                println("   ⚠️ WARNING: Expected $wildcardCount wildcards but only found $addedWildcards valid ones")
+            }
+        }
+
+        println("📋 [generateKnockoutFromGroups] Total advancing teams: ${advancingTeams.size}")
+
         // Generate seeding order for bracket (proper seeding placement)
         // For groups + knockout: 1A vs 2D, 1B vs 2C, 1C vs 2B, 1D vs 2A (if 4 groups, 2 advance each)
-        val seededTeams = if (config.groupCount == 4 && config.advancingPerGroup == 2) {
-            // 8 teams: cross-group matchups
+        val seededTeams = if (config.groupCount == 4 && config.advancingPerGroup == 2 && wildcardCount == 0) {
+            // 8 teams: cross-group matchups (only when no wildcards, as they change the seeding)
             listOf(
                 advancingTeams[0],  // 1A
                 advancingTeams[7],  // 2D
@@ -943,7 +991,7 @@ class BracketService(
                 advancingTeams[4],  // 2A
             )
         } else {
-            // Generic seeding
+            // Generic seeding for other configurations or when wildcards are present
             advancingTeams
         }
 
@@ -1149,6 +1197,8 @@ class BracketService(
         val byeCount = bracketSize - teamCount
         val totalRounds = kotlin.math.log2(bracketSize.toDouble()).toInt()
 
+        println("🏟️ [generateKnockoutMatches] $teamCount teams → bracket size $bracketSize ($byeCount byes)")
+
         // Generate seed positions for bracket
         val seedPositions = generateSeedPositions(bracketSize)
 
@@ -1158,6 +1208,8 @@ class BracketService(
             val position = seedPositions.indexOf(team.seed)
             if (position >= 0) {
                 positionToTeam[position] = team.teamId
+            } else {
+                println("   ⚠️ WARNING: seed ${team.seed} not found in seedPositions!")
             }
         }
         // Fill remaining positions with null (BYEs)
@@ -1187,11 +1239,13 @@ class BracketService(
                 else -> "pending"
             }
 
+            val roundName = getRoundName(1, totalRounds)
+
             matches.add(
                 GeneratedMatch(
                     roundNumber = 1,
                     matchNumber = matchNumber,
-                    roundName = getRoundName(1, totalRounds),
+                    roundName = roundName,
                     team1Id = team1,
                     team2Id = team2,
                     isBye = isBye,

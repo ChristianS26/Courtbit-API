@@ -15,7 +15,10 @@ import models.bracket.*
 private data class TeamDto(
     val id: String,
     @SerialName("player_a_uid") val playerAUid: String?,
-    @SerialName("player_b_uid") val playerBUid: String?
+    @SerialName("player_b_uid") val playerBUid: String?,
+    // Manual player fields (for players not linked to user accounts)
+    @SerialName("player_a_name") val playerAName: String? = null,
+    @SerialName("player_b_name") val playerBName: String? = null
 )
 
 @Serializable
@@ -44,6 +47,7 @@ class BracketRepositoryImpl(
     }
 
     override suspend fun getBracket(tournamentId: String, categoryId: Int): BracketResponse? {
+        println("🔍 [getBracket] Looking for bracket with tournamentId=$tournamentId, categoryId=$categoryId")
         val response = client.get("$apiUrl/tournament_brackets") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -55,9 +59,11 @@ class BracketRepositoryImpl(
         return if (response.status.isSuccess()) {
             val bodyText = response.bodyAsText()
             val brackets = json.decodeFromString<List<BracketResponse>>(bodyText)
-            brackets.firstOrNull()
+            val bracket = brackets.firstOrNull()
+            println("✅ [getBracket] Found bracket: id=${bracket?.id}, format=${bracket?.format}, tournamentId=${bracket?.tournamentId}")
+            bracket
         } else {
-            println("BracketRepository.getBracket failed: ${response.status}")
+            println("❌ [getBracket] Failed: ${response.status}")
             null
         }
     }
@@ -95,24 +101,48 @@ class BracketRepositoryImpl(
 
         var matches = if (matchesResponse.status.isSuccess()) {
             val bodyText = matchesResponse.bodyAsText()
-            json.decodeFromString<List<MatchResponse>>(bodyText)
+            val matchList = json.decodeFromString<List<MatchResponse>>(bodyText)
+            matchList
         } else {
-            println("BracketRepository.getBracketWithMatches matches failed: ${matchesResponse.status}")
+            println("❌ [getBracketWithMatches] Matches query failed: ${matchesResponse.status}")
             emptyList()
         }
 
         // Get teams to populate player IDs in matches
         val teamsMap = getTeamsMap(matches)
 
-        // Enrich matches with player IDs from teams
+        // Helper to get player ID (UID for linked players, or generated ID for manual players)
+        fun getPlayerId(team: TeamDto?, playerType: Char): String? {
+            if (team == null) return null
+            return when (playerType) {
+                'a' -> team.playerAUid ?: if (!team.playerAName.isNullOrBlank()) "manual-${team.id}-a" else null
+                'b' -> team.playerBUid ?: if (!team.playerBName.isNullOrBlank()) "manual-${team.id}-b" else null
+                else -> null
+            }
+        }
+
+        // Enrich matches with player IDs from teams (supports both linked and manual players)
         matches = matches.map { match ->
             val team1 = match.team1Id?.let { teamsMap[it] }
             val team2 = match.team2Id?.let { teamsMap[it] }
+            // Warn if a team exists but has no players at all (neither linked nor manual)
+            if (match.groupNumber == null) {
+                if (match.team1Id != null && team1 != null &&
+                    team1.playerAUid == null && team1.playerBUid == null &&
+                    team1.playerAName.isNullOrBlank() && team1.playerBName.isNullOrBlank()) {
+                    println("⚠️ [getBracketWithMatches] Match ${match.matchNumber}: team1 (${match.team1Id}) has NO players (linked or manual)!")
+                }
+                if (match.team2Id != null && team2 != null &&
+                    team2.playerAUid == null && team2.playerBUid == null &&
+                    team2.playerAName.isNullOrBlank() && team2.playerBName.isNullOrBlank()) {
+                    println("⚠️ [getBracketWithMatches] Match ${match.matchNumber}: team2 (${match.team2Id}) has NO players (linked or manual)!")
+                }
+            }
             match.copy(
-                team1Player1Id = team1?.playerAUid,
-                team1Player2Id = team1?.playerBUid,
-                team2Player1Id = team2?.playerAUid,
-                team2Player2Id = team2?.playerBUid
+                team1Player1Id = getPlayerId(team1, 'a'),
+                team1Player2Id = getPlayerId(team1, 'b'),
+                team2Player1Id = getPlayerId(team2, 'a'),
+                team2Player2Id = getPlayerId(team2, 'b')
             )
         }
 
@@ -145,7 +175,7 @@ class BracketRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("id", "in.($teamIdsFilter)")
-            parameter("select", "id,player_a_uid,player_b_uid")
+            parameter("select", "id,player_a_uid,player_b_uid,player_a_name,player_b_name")
         }
 
         return if (teamsResponse.status.isSuccess()) {
@@ -159,7 +189,8 @@ class BracketRepositoryImpl(
     }
 
     /**
-     * Get players involved in the bracket matches by looking up teams
+     * Get players involved in the bracket matches by looking up teams.
+     * Supports both linked players (with UIDs) and manual players (with names only).
      */
     private suspend fun getPlayersForBracket(bracketId: String, matches: List<MatchResponse>): List<BracketPlayerInfo> {
         // Collect all team IDs from matches
@@ -169,13 +200,13 @@ class BracketRepositoryImpl(
 
         if (teamIds.isEmpty()) return emptyList()
 
-        // Query teams table to get player UIDs (teams have player_a_uid and player_b_uid)
+        // Query teams table to get player UIDs and manual player names
         val teamIdsFilter = teamIds.joinToString(",") { "\"$it\"" }
         val teamsResponse = client.get("$apiUrl/teams") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("id", "in.($teamIdsFilter)")
-            parameter("select", "id,player_a_uid,player_b_uid")
+            parameter("select", "id,player_a_uid,player_b_uid,player_a_name,player_b_name")
         }
 
         if (!teamsResponse.status.isSuccess()) {
@@ -186,29 +217,63 @@ class BracketRepositoryImpl(
         val teamsBody = teamsResponse.bodyAsText()
         val teams = json.decodeFromString<List<TeamDto>>(teamsBody)
 
-        // Collect all player UIDs
+        val allPlayers = mutableListOf<BracketPlayerInfo>()
+
+        // Collect all player UIDs for linked players
         val playerUids = teams.flatMap { team ->
             listOfNotNull(team.playerAUid, team.playerBUid)
         }.distinct()
 
-        if (playerUids.isEmpty()) return emptyList()
+        // Get linked player profiles from users table
+        if (playerUids.isNotEmpty()) {
+            val playerUidsFilter = playerUids.joinToString(",") { "\"$it\"" }
+            val playersResponse = client.get("$apiUrl/users") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                parameter("uid", "in.($playerUidsFilter)")
+                parameter("select", "uid,first_name,last_name,email,photo_url")
+            }
 
-        // Get player profiles from users table
-        val playerUidsFilter = playerUids.joinToString(",") { "\"$it\"" }
-        val playersResponse = client.get("$apiUrl/users") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("uid", "in.($playerUidsFilter)")
-            parameter("select", "uid,first_name,last_name,email,photo_url")
+            if (playersResponse.status.isSuccess()) {
+                val playersBody = playersResponse.bodyAsText()
+                val linkedPlayers = json.decodeFromString<List<BracketPlayerInfo>>(playersBody)
+                allPlayers.addAll(linkedPlayers)
+            } else {
+                println("BracketRepository.getPlayersForBracket profiles failed: ${playersResponse.status}")
+            }
         }
 
-        return if (playersResponse.status.isSuccess()) {
-            val playersBody = playersResponse.bodyAsText()
-            json.decodeFromString<List<BracketPlayerInfo>>(playersBody)
-        } else {
-            println("BracketRepository.getPlayersForBracket profiles failed: ${playersResponse.status}")
-            emptyList()
+        // Create player info for manual players (players without UIDs but with names)
+        for (team in teams) {
+            // Player A - if no UID but has name, create manual player entry
+            if (team.playerAUid == null && !team.playerAName.isNullOrBlank()) {
+                val manualId = "manual-${team.id}-a"
+                val playerName = team.playerAName!! // Safe - already checked not null/blank
+                val nameParts = playerName.split(" ", limit = 2)
+                allPlayers.add(BracketPlayerInfo(
+                    uid = manualId,
+                    firstName = nameParts.first(),
+                    lastName = nameParts.getOrNull(1) ?: "",
+                    email = null,
+                    photoUrl = null
+                ))
+            }
+            // Player B - if no UID but has name, create manual player entry
+            if (team.playerBUid == null && !team.playerBName.isNullOrBlank()) {
+                val manualId = "manual-${team.id}-b"
+                val playerName = team.playerBName!! // Safe - already checked not null/blank
+                val nameParts = playerName.split(" ", limit = 2)
+                allPlayers.add(BracketPlayerInfo(
+                    uid = manualId,
+                    firstName = nameParts.first(),
+                    lastName = nameParts.getOrNull(1) ?: "",
+                    email = null,
+                    photoUrl = null
+                ))
+            }
         }
+
+        return allPlayers
     }
 
     override suspend fun getBracketsByTournament(tournamentId: String): List<BracketResponse> {

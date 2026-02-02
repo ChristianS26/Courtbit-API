@@ -556,6 +556,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 }
 
                 val tournamentId = call.request.queryParameters["tournament_id"]
+                println("🎯 [generate-knockout] Received: tournamentId=$tournamentId, categoryId=$categoryId")
                 if (tournamentId.isNullOrBlank()) {
                     call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
                     return@post

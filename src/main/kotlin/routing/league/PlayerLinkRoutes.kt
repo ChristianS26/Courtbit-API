@@ -1,5 +1,6 @@
 package routing.league
 
+import com.incodap.repositories.teams.TeamRepository
 import com.incodap.repositories.users.UserRepository
 import com.incodap.security.requireUserUid
 import io.ktor.http.HttpStatusCode
@@ -12,6 +13,8 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.league.LinkPlayerRequest
+import models.teams.LinkTournamentPlayerRequest
+import models.teams.LinkTournamentPlayerResponse
 import repositories.league.LeaguePlayerRepository
 
 /**
@@ -19,6 +22,7 @@ import repositories.league.LeaguePlayerRepository
  */
 fun Route.playerLinkRoutes(
     leaguePlayerRepository: LeaguePlayerRepository,
+    teamRepository: TeamRepository,
     userRepository: UserRepository
 ) {
     route("/player-links") {
@@ -36,12 +40,22 @@ fun Route.playerLinkRoutes(
                     )
                 }
 
-                val pendingLinks = leaguePlayerRepository.findPendingLinks(
+                // Get league pending links
+                val leagueLinks = leaguePlayerRepository.findPendingLinks(
                     email = user.email,
                     phone = user.phone
                 )
 
-                call.respond(HttpStatusCode.OK, pendingLinks)
+                // Get tournament pending links
+                val tournamentLinks = teamRepository.findPendingTournamentLinks(
+                    email = user.email,
+                    phone = user.phone
+                )
+
+                call.respond(HttpStatusCode.OK, mapOf(
+                    "league_links" to leagueLinks,
+                    "tournament_links" to tournamentLinks
+                ))
             }
 
             // POST /api/player-links/link - Link a manual player to current user
@@ -134,6 +148,111 @@ fun Route.playerLinkRoutes(
                         )
                     }
                 )
+            }
+
+            // POST /api/player-links/link-tournament - Link a tournament manual player to current user
+            post("/link-tournament") {
+                val userUid = call.requireUserUid() ?: return@post
+
+                val request = try {
+                    call.receive<LinkTournamentPlayerRequest>()
+                } catch (e: Exception) {
+                    return@post call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "Invalid request: ${e.localizedMessage}")
+                    )
+                }
+
+                // Validate player position
+                if (request.playerPosition != "a" && request.playerPosition != "b") {
+                    return@post call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "playerPosition must be 'a' or 'b'")
+                    )
+                }
+
+                // Get the team to verify it has a manual player at that position
+                val team = teamRepository.findTeamById(request.teamId)
+                if (team == null) {
+                    return@post call.respond(
+                        HttpStatusCode.NotFound,
+                        mapOf("error" to "Team not found")
+                    )
+                }
+
+                // Check the position has a manual player (no uid, but has name)
+                val playerUid = if (request.playerPosition == "a") team.playerAUid else team.playerBUid
+                val playerName = if (request.playerPosition == "a") team.playerAName else team.playerBName
+                val playerEmail = if (request.playerPosition == "a") team.playerAEmail else team.playerBEmail
+                val playerPhone = if (request.playerPosition == "a") team.playerAPhone else team.playerBPhone
+
+                if (playerUid != null) {
+                    return@post call.respond(
+                        HttpStatusCode.Conflict,
+                        mapOf("error" to "Player is already linked to an account")
+                    )
+                }
+
+                if (playerName == null) {
+                    return@post call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "No manual player at position ${request.playerPosition}")
+                    )
+                }
+
+                // Get user details to verify email/phone match
+                val user = userRepository.findByUid(userUid)
+                if (user == null) {
+                    return@post call.respond(
+                        HttpStatusCode.NotFound,
+                        mapOf("error" to "User not found")
+                    )
+                }
+
+                // Security: Verify email or phone matches
+                val emailMatch = playerEmail?.equals(user.email, ignoreCase = true) == true
+                val phoneMatch = if (!playerPhone.isNullOrBlank() && !user.phone.isNullOrBlank()) {
+                    val playerDigits = normalizePhone(playerPhone)
+                    val userDigits = normalizePhone(user.phone)
+                    val playerLast10 = if (playerDigits.length > 10) playerDigits.takeLast(10) else playerDigits
+                    val userLast10 = if (userDigits.length > 10) userDigits.takeLast(10) else userDigits
+                    playerLast10 == userLast10
+                } else false
+
+                if (!emailMatch && !phoneMatch) {
+                    println("❌ Tournament player link validation failed:")
+                    println("  Player email: ${playerEmail?.take(3)}***")
+                    println("  User email: ${user.email.take(3)}***")
+                    println("  Email match: $emailMatch")
+                    println("  Phone match: $phoneMatch")
+
+                    return@post call.respond(
+                        HttpStatusCode.Forbidden,
+                        mapOf("error" to "Player does not match your account credentials")
+                    )
+                }
+
+                // Perform the link
+                val success = teamRepository.linkTournamentPlayerToUser(
+                    teamId = request.teamId,
+                    playerPosition = request.playerPosition,
+                    userUid = userUid
+                )
+
+                if (success) {
+                    call.respond(
+                        HttpStatusCode.OK,
+                        LinkTournamentPlayerResponse(
+                            success = true,
+                            message = "Player linked successfully"
+                        )
+                    )
+                } else {
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Failed to link player")
+                    )
+                }
             }
         }
     }
