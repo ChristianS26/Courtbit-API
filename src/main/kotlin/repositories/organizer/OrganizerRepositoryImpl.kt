@@ -69,7 +69,6 @@ class OrganizerRepositoryImpl(
             @Serializable
             data class GetUserOrganizerPayload(val user_uid: String)
 
-            println("🔍 [OrganizerRepo] Calling get_user_organizer with UID: $userUid")
 
             val response = client.post("$apiUrl/rpc/get_user_organizer") {
                 header("apikey", apiKey)
@@ -78,20 +77,15 @@ class OrganizerRepositoryImpl(
                 setBody(GetUserOrganizerPayload(user_uid = userUid))
             }
 
-            println("📡 [OrganizerRepo] RPC Response status: ${response.status}")
             val body = response.bodyAsText()
-            println("📦 [OrganizerRepo] RPC Response body: $body")
 
             if (response.status.isSuccess()) {
                 val result = json.decodeFromString<List<OrganizerResponse>>(body).firstOrNull()
-                println("✅ [OrganizerRepo] Organizer found: ${result != null}")
                 result
             } else {
-                println("❌ [OrganizerRepo] RPC call failed")
                 null
             }
         } catch (e: Exception) {
-            println("💥 [OrganizerRepo] Exception: ${e.message}")
             e.printStackTrace()
             null
         }
@@ -172,7 +166,6 @@ class OrganizerRepositoryImpl(
                 null
             }
         } catch (e: Exception) {
-            println("💥 [OrganizerRepo] Error creating organizer: ${e.message}")
             null
         }
     }
@@ -230,12 +223,9 @@ class OrganizerRepositoryImpl(
             }
 
             if (memberResponse.status.isSuccess()) {
-                println("✅ [OrganizerRepo] Added creator as owner in organization_members")
             } else {
-                println("⚠️ [OrganizerRepo] Failed to add creator as owner: ${memberResponse.status}")
             }
         } catch (e: Exception) {
-            println("💥 [OrganizerRepo] Error adding creator as owner: ${e.message}")
             // Don't throw - organizer was created successfully, this is a secondary operation
         }
     }

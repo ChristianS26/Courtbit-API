@@ -42,13 +42,10 @@ class TournamentService(
         categoryPrices: List<CategoryPriceRequest>? = null,
         categoryColors: List<CategoryColorRequest>? = null
     ): TournamentResponse? {
-        println("🟡 Creando torneo con datos: $tournament")
 
         val created = repository.create(tournament) ?: run {
-            println("🔴 No se pudo crear el torneo en Supabase")
             return null
         }
-        println("🟢 Torneo creado con ID: ${created.id}")
 
         // Si no hay categorías, no hay nada más que hacer
         if (categoryIds.isEmpty()) {
@@ -60,14 +57,11 @@ class TournamentService(
 
         if (rpc.isFailure) {
             val cause = rpc.exceptionOrNull()?.message ?: "RPC set_tournament_categories failed"
-            println("🔴 $cause")
 
             // 🚨 Compensación: borra el torneo para no dejar basura
             val rolledBack = runCatching { repository.delete(created.id) }.getOrDefault(false)
             if (rolledBack) {
-                println("↩️ Rollback OK: torneo eliminado porque categorías no se pudieron asignar")
             } else {
-                println("🧨 Rollback FALLÓ: revisar manualmente el torneo ${created.id}")
             }
             return null
         }
@@ -77,7 +71,6 @@ class TournamentService(
             val priceMap = categoryPrices.associate { it.categoryId to it.price }
             val pricesSet = repository.setCategoryPrices(created.id, priceMap)
             if (!pricesSet) {
-                println("⚠️ No se pudieron establecer los precios de categorías")
             }
         }
 
@@ -87,7 +80,6 @@ class TournamentService(
             if (colorMap.isNotEmpty()) {
                 val colorsSet = repository.setCategoryColors(created.id, colorMap)
                 if (!colorsSet) {
-                    println("⚠️ No se pudieron establecer los colores de categorías")
                 }
             }
         }
@@ -129,23 +121,18 @@ class TournamentService(
 
     // Nuevo: resultado tipado con manejo de pagos
     suspend fun deleteTournament(id: String): DeleteTournamentResult {
-        println("🗑️ [TournamentService] Intentando eliminar torneo $id")
 
         return try {
             val deleted = repository.delete(id)
 
             if (deleted) {
-                println("🗑️ [TournamentService] Torneo $id eliminado correctamente")
                 DeleteTournamentResult.Deleted
             } else {
-                println("⚠️ [TournamentService] Supabase DELETE devolvió false para torneo $id")
                 DeleteTournamentResult.Error("No se pudo eliminar el torneo en Supabase.")
             }
         } catch (e: TournamentHasPaymentsException) {
-            println("⛔ [TournamentService] Torneo $id tiene pagos registrados: ${e.message}")
             DeleteTournamentResult.HasPayments
         } catch (e: Exception) {
-            println("🧨 [TournamentService] Error inesperado al eliminar torneo $id: ${e.stackTraceToString()}")
             DeleteTournamentResult.Error(e.message)
         }
     }

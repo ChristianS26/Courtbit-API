@@ -70,10 +70,8 @@ fun Route.organizerRoutes(
             // Get my organizer profile
             get("/me") {
                 val uid = call.requireUserUid() ?: return@get
-                println("🔍 [/organizers/me] UID from token: $uid")
 
                 val organizer = organizerService.getMyOrganizer(uid)
-                println("📦 [/organizers/me] Organizer found: ${organizer != null}")
 
                 if (organizer != null) {
                     call.respond(HttpStatusCode.OK, organizer)

@@ -63,11 +63,9 @@ class OrganizationTeamRepositoryImpl(
                     )
                 }
             } else {
-                println("❌ [OrganizationTeamRepo] getMembers failed: ${response.bodyAsText()}")
                 emptyList()
             }
         } catch (e: Exception) {
-            println("💥 [OrganizationTeamRepo] getMembers error: ${e.message}")
             emptyList()
         }
     }
@@ -93,7 +91,6 @@ class OrganizationTeamRepositoryImpl(
                 emptyList()
             }
         } catch (e: Exception) {
-            println("💥 [OrganizationTeamRepo] getInvitations error: ${e.message}")
             emptyList()
         }
     }
@@ -122,11 +119,9 @@ class OrganizationTeamRepositoryImpl(
             if (response.status.isSuccess()) {
                 json.decodeFromString<List<OrganizationInvitationResponse>>(response.bodyAsText()).firstOrNull()
             } else {
-                println("❌ [OrganizationTeamRepo] createInvitation failed: ${response.bodyAsText()}")
                 null
             }
         } catch (e: Exception) {
-            println("💥 [OrganizationTeamRepo] createInvitation error: ${e.message}")
             null
         }
     }
@@ -140,7 +135,6 @@ class OrganizationTeamRepositoryImpl(
             }
             response.status.isSuccess()
         } catch (e: Exception) {
-            println("💥 [OrganizationTeamRepo] deleteInvitation error: ${e.message}")
             false
         }
     }
@@ -168,7 +162,6 @@ class OrganizationTeamRepositoryImpl(
 
             if (response.status.isSuccess()) {
                 val body = response.bodyAsText()
-                println("📦 [OrganizationTeamRepo] joinWithCode response: $body")
                 // Database function returns a table (array), get first element
                 val results = json.decodeFromString<List<JoinOrganizationResult>>(body)
                 results.firstOrNull() ?: JoinOrganizationResult(
@@ -176,14 +169,12 @@ class OrganizationTeamRepositoryImpl(
                     message = "No response from database"
                 )
             } else {
-                println("❌ [OrganizationTeamRepo] joinWithCode failed: ${response.bodyAsText()}")
                 JoinOrganizationResult(
                     success = false,
                     message = "Failed to join organization"
                 )
             }
         } catch (e: Exception) {
-            println("💥 [OrganizationTeamRepo] joinWithCode error: ${e.message}")
             JoinOrganizationResult(
                 success = false,
                 message = e.message ?: "Unknown error"
@@ -215,7 +206,6 @@ class OrganizationTeamRepositoryImpl(
                 emptyList()
             }
         } catch (e: Exception) {
-            println("💥 [OrganizationTeamRepo] getUserOrganizations error: ${e.message}")
             emptyList()
         }
     }
@@ -243,7 +233,6 @@ class OrganizationTeamRepositoryImpl(
                 false
             }
         } catch (e: Exception) {
-            println("💥 [OrganizationTeamRepo] userHasAccess error: ${e.message}")
             false
         }
     }
@@ -257,7 +246,6 @@ class OrganizationTeamRepositoryImpl(
             }
             response.status.isSuccess()
         } catch (e: Exception) {
-            println("💥 [OrganizationTeamRepo] removeMember error: ${e.message}")
             false
         }
     }
@@ -304,7 +292,6 @@ class OrganizationTeamRepositoryImpl(
                 null
             }
         } catch (e: Exception) {
-            println("💥 [OrganizationTeamRepo] getMemberById error: ${e.message}")
             null
         }
     }

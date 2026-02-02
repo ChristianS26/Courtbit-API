@@ -52,8 +52,6 @@ fun Route.profileRoute(
                     val uid = call.uid
                     val updateRequest = call.receive<UpdateProfileRequest>()
 
-                    println("🧾 Claim UID: $uid")
-                    println("📥 Update request: $updateRequest")
 
                     val updatedUser = userRepository.updateProfile(uid, updateRequest)
 

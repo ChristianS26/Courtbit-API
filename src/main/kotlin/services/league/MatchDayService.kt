@@ -45,19 +45,13 @@ class MatchDayService(
 
         return if (response.status.isSuccess()) {
             val bodyText = response.bodyAsText()
-            println("✅ Complete match day response: ${bodyText.take(500)}")
             try {
                 val list = json.decodeFromString<List<CompleteMatchDayRaw>>(bodyText)
-                println("✅ Parsed ${list.size} match days")
                 list.firstOrNull()?.toResponse()
             } catch (e: Exception) {
-                println("❌ Error parsing complete match day: ${e.message}")
-                println("Body sample: ${bodyText.take(1000)}")
                 null
             }
         } else {
-            println("❌ Error fetching complete match day: ${response.status}")
-            println("Body: ${response.bodyAsText()}")
             null
         }
     }

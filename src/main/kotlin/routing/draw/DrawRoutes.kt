@@ -34,7 +34,6 @@ fun Route.drawRoutes(drawService: DrawService) {
                         call.respond(HttpStatusCode.InternalServerError, ApiError(error = "No se pudo guardar el draw"))
                     }
                 } catch (e: Exception) {
-                    println("❌ Error deserializando/creando Draw: ${e.stackTraceToString()}")
                     call.respond(
                         HttpStatusCode.BadRequest,
                         ApiError(error = "Formato de payload inválido", exception = e.message)

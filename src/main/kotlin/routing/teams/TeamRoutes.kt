@@ -137,7 +137,6 @@ fun Route.teamRoutes(
                 }
 
                 // Log opcional para depurar
-                println("📦 /pay body: $reqRaw")
 
                 // 1) paidBy solo player_a | player_b
                 if (reqRaw.paidBy != "player_a" && reqRaw.paidBy != "player_b") {

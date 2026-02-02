@@ -64,7 +64,6 @@ class CategoryRepositoryImpl(
             } ?: emptyList()
         }
 
-        println("📦 Payload para asignar categorías:\n$payload")
 
         val response = client.post("${config.apiUrl}/tournament_categories") {
             header("apikey", config.apiKey)
@@ -79,7 +78,6 @@ class CategoryRepositoryImpl(
         }
 
         val body = response.bodyAsText()
-        println("🔁 Supabase response: ${response.status}\n📄 Body: $body")
 
         return response.status.isSuccess()
     }
@@ -115,7 +113,6 @@ class CategoryRepositoryImpl(
         tournamentId: String,
         tournamentType: String
     ): List<CategoryPriceResponse> {
-        println("📥 Buscando categorías para torneoId=$tournamentId y type=$tournamentType")
 
         // Obtener IDs de categoría asociadas al torneo
         val categoryIdsResponse = client.get("${config.apiUrl}/tournament_categories?select=category_id&tournament_id=eq.$tournamentId") {
@@ -128,7 +125,6 @@ class CategoryRepositoryImpl(
         val categoryIdMaps = json.decodeFromString<List<Map<String, Int>>>(body)
         val categoryIds = categoryIdMaps.mapNotNull { it["category_id"] }
 
-        println("🧩 IDs extraídas: $categoryIds")
 
         if (categoryIds.isEmpty()) return emptyList()
 
@@ -158,7 +154,6 @@ class CategoryRepositoryImpl(
             positionMap[price.categoryId.toString()]?.position ?: Int.MAX_VALUE
         }
 
-        println("📊 Lista ordenada por posición:\n$sorted")
 
         return sorted
     }

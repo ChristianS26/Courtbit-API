@@ -399,11 +399,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                println("📦 [BracketRoutes] AssignGroupsRequest received:")
-                println("   - Config: groupCount=${request.config.groupCount}, teamsPerGroup=${request.config.teamsPerGroup}, advancingPerGroup=${request.config.advancingPerGroup}")
-                println("   - Groups: ${request.groups.size} groups")
                 request.groups.forEach { group ->
-                    println("     - Group ${group.groupNumber}: ${group.teamIds.size} teams")
                 }
 
                 val result = bracketService.generateGroupStage(tournamentId, categoryId, request)
@@ -556,7 +552,6 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 }
 
                 val tournamentId = call.request.queryParameters["tournament_id"]
-                println("🎯 [generate-knockout] Received: tournamentId=$tournamentId, categoryId=$categoryId")
                 if (tournamentId.isNullOrBlank()) {
                     call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
                     return@post
@@ -720,7 +715,6 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 val request = try {
                     call.receive<UpdateScheduleRequest>()
                 } catch (e: Exception) {
-                    println("❌ [BracketRoutes] Failed to parse UpdateScheduleRequest: ${e.message}")
                     e.printStackTrace()
                     call.respond(
                         HttpStatusCode.BadRequest,
@@ -729,7 +723,6 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@patch
                 }
 
-                println("✅ [BracketRoutes] UpdateScheduleRequest parsed: courtNumber=${request.courtNumber}, scheduledTime=${request.scheduledTime}")
 
                 val result = bracketService.updateMatchSchedule(matchId, request.courtNumber, request.scheduledTime)
 

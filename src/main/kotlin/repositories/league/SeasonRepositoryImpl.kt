@@ -35,7 +35,6 @@ class SeasonRepositoryImpl(
             val rawList = json.decodeFromString<List<SeasonRawResponse>>(bodyText)
             rawList.map { it.toSeasonResponse() }
         } else {
-            println("❌ Error getAll seasons: ${response.status}")
             emptyList()
         }
     }
@@ -54,7 +53,6 @@ class SeasonRepositoryImpl(
             val rawList = json.decodeFromString<List<SeasonRawResponse>>(bodyText)
             rawList.map { it.toSeasonResponse() }
         } else {
-            println("❌ Error getByOrganizerId: ${response.status}")
             emptyList()
         }
     }
@@ -72,7 +70,6 @@ class SeasonRepositoryImpl(
             val rawList = json.decodeFromString<List<SeasonRawResponse>>(bodyText)
             rawList.firstOrNull()?.toSeasonResponse()
         } else {
-            println("❌ Error getById: ${response.status}")
             null
         }
     }
@@ -91,7 +88,6 @@ class SeasonRepositoryImpl(
 
         val status = response.status
         val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(sin body)" }
-        println("🛰️ Supabase POST $url -> ${status.value} ${status.description}\nBody: $bodyText")
 
         if (!status.isSuccess()) return null
 
@@ -125,11 +121,9 @@ class SeasonRepositoryImpl(
 
             val status = response.status
             val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(sin body)" }
-            println("🗑️ Supabase DELETE $url -> ${status.value} ${status.description}")
 
             status.isSuccess()
         } catch (e: Exception) {
-            println("🧨 Supabase DELETE exception for season $id: ${e.stackTraceToString()}")
             false
         }
     }

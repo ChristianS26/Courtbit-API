@@ -115,13 +115,6 @@ fun Route.playerLinkRoutes(
 
                 if (!emailMatch && !phoneMatch) {
                     // Log detailed info for debugging (sanitized for privacy)
-                    println("❌ Player link validation failed:")
-                    println("  Player email: ${player.email?.take(3)}***")
-                    println("  User email: ${user.email.take(3)}***")
-                    println("  Email match: $emailMatch")
-                    println("  Player phone: ${player.phoneNumber?.take(3)}***")
-                    println("  User phone: ${user.phone?.take(3)}***")
-                    println("  Phone match: $phoneMatch")
 
                     return@post call.respond(
                         HttpStatusCode.Forbidden,
@@ -220,11 +213,6 @@ fun Route.playerLinkRoutes(
                 } else false
 
                 if (!emailMatch && !phoneMatch) {
-                    println("❌ Tournament player link validation failed:")
-                    println("  Player email: ${playerEmail?.take(3)}***")
-                    println("  User email: ${user.email.take(3)}***")
-                    println("  Email match: $emailMatch")
-                    println("  Phone match: $phoneMatch")
 
                     return@post call.respond(
                         HttpStatusCode.Forbidden,

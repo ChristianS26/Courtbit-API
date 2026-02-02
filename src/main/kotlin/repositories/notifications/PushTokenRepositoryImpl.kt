@@ -54,7 +54,6 @@ class PushTokenRepositoryImpl(
             }
             if (!resp.status.isSuccess()) {
                 val body = runCatching { resp.bodyAsText() }.getOrDefault("(sin body)")
-                println("❌ PATCH deactivate by device failed: ${resp.status} | $body")
             }
         }
 
@@ -95,7 +94,6 @@ class PushTokenRepositoryImpl(
         }
         if (!patch.status.isSuccess()) {
             val body = runCatching { patch.bodyAsText() }.getOrDefault("(sin body)")
-            println("❌ PATCH reactivate token failed: ${patch.status} | $body")
         }
     }
 

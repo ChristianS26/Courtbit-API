@@ -37,7 +37,6 @@ class ShirtSizeRepositoryImpl(
             val bodyText = response.bodyAsText()
             json.decodeFromString<List<ShirtSizeResponse>>(bodyText)
         } else {
-            println("❌ Error fetching shirt sizes: ${response.status}")
             emptyList()
         }
     }
@@ -56,7 +55,6 @@ class ShirtSizeRepositoryImpl(
             val bodyText = response.bodyAsText()
             json.decodeFromString<List<ShirtSizeResponse>>(bodyText)
         } else {
-            println("❌ Error fetching shirt sizes for $genderStyle: ${response.status}")
             emptyList()
         }
     }
@@ -72,7 +70,6 @@ class ShirtSizeRepositoryImpl(
         }
 
         if (!response.status.isSuccess()) {
-            println("❌ Error fetching season shirt sizes: ${response.status}")
             return emptyList()
         }
 
@@ -89,7 +86,6 @@ class ShirtSizeRepositoryImpl(
                 compareBy({ it.genderStyle }, { it.sortOrder })
             )
         } catch (e: Exception) {
-            println("❌ Error parsing season shirt sizes: ${e.message}")
             emptyList()
         }
     }
@@ -103,7 +99,6 @@ class ShirtSizeRepositoryImpl(
         }
 
         if (!deleteResponse.status.isSuccess() && deleteResponse.status != HttpStatusCode.NoContent) {
-            println("❌ Error deleting existing season shirt sizes: ${deleteResponse.status}")
             return false
         }
 

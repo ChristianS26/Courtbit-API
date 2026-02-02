@@ -36,7 +36,6 @@ fun Route.registrationCodeRoutes(
                     val code = registrationCodeService.createRegistrationCode(email, organizerId)
                     call.respond(HttpStatusCode.Created, mapOf("code" to code))
                 } catch (e: Exception) {
-                    println("❌ Error al crear código: ${e.message}")
                     call.respond(HttpStatusCode.InternalServerError, "Error al crear código")
                 }
             }
@@ -54,7 +53,6 @@ fun Route.registrationCodeRoutes(
 
                     call.respond(HttpStatusCode.OK, codes)
                 } catch (e: Exception) {
-                    println("❌ Error obteniendo códigos: ${e.message}")
                     call.respond(HttpStatusCode.InternalServerError, "Error al obtener códigos")
                 }
             }

@@ -53,7 +53,6 @@ class RankingRepositoryImpl(
             }
             json.decodeFromString(ListSerializer(RankingItemResponse.serializer()), response.bodyAsText())
         } catch (e: Exception) {
-            println("❌ Error en getRankingEntries: ${e.message}")
             emptyList()
         }
     }
@@ -72,7 +71,6 @@ class RankingRepositoryImpl(
         return if (response.status.isSuccess()) {
             json.decodeFromString(ListSerializer(Ranking.serializer()), response.bodyAsText())
         } else {
-            println("\u274C Error getRankingByUser: \${response.status}")
             emptyList()
         }
     }
@@ -174,7 +172,6 @@ class RankingRepositoryImpl(
         return if (response.status.isSuccess()) {
             json.decodeFromString(ListSerializer(Ranking.serializer()), response.bodyAsText())
         } else {
-            println("❌ Error getRankingByUsersAndCategories: ${response.status}")
             emptyList()
         }
     }

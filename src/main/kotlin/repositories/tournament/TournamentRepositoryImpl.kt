@@ -40,7 +40,6 @@ class TournamentRepositoryImpl(
             val rawList = json.decodeFromString<List<TournamentRawResponse>>(bodyText)
             rawList.map { it.toTournamentResponse() }
         } else {
-            println("❌ Error getAll: ${response.status}")
             emptyList()
         }
     }
@@ -59,7 +58,6 @@ class TournamentRepositoryImpl(
             val rawList = json.decodeFromString<List<TournamentRawResponse>>(bodyText)
             rawList.map { it.toTournamentResponse() }
         } else {
-            println("❌ Error getByOrganizerId: ${response.status}")
             emptyList()
         }
     }
@@ -77,7 +75,6 @@ class TournamentRepositoryImpl(
             val rawList = json.decodeFromString<List<TournamentRawResponse>>(bodyText)
             rawList.firstOrNull()?.toTournamentResponse()
         } else {
-            println("❌ Error getTournamentById: ${response.status}")
             null
         }
     }
@@ -99,7 +96,6 @@ class TournamentRepositoryImpl(
             val arrayJson = "[${jsonPayload.toString()}]"
 
             val url = "$apiUrl/tournaments?id=eq.$id"
-            println("PATCH (micro): PATCH a $url con body $arrayJson")
 
             val response = client.patch(url) {
                 header("apikey", apiKey)
@@ -112,10 +108,8 @@ class TournamentRepositoryImpl(
             } catch (e: Exception) {
                 "No se pudo leer el body: ${e.message}"
             }
-            println("PATCH (micro): status=${response.status} body=$responseBody")
             response.status.isSuccess()
         } catch (e: Exception) {
-            println("PATCH (micro): Exception lanzada al hacer PATCH: ${e.stackTraceToString()}")
             false
         }
     }
@@ -132,7 +126,6 @@ class TournamentRepositoryImpl(
 
         val status = response.status
         val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(sin body)" }
-        println("🛰️ Supabase POST $url -> ${status.value} ${status.description}\nBody: $bodyText")
 
         if (!status.isSuccess()) return null
 
@@ -142,8 +135,6 @@ class TournamentRepositoryImpl(
     }
 
     override suspend fun update(id: String, request: UpdateTournamentRequest): Boolean {
-        println("📤 [TournamentRepo.update] Sending to Supabase: $request")
-        println("📤 [TournamentRepo.update] flyerUrl = ${request.flyerUrl}")
 
         val response = client.patch("$apiUrl/tournaments?id=eq.$id") {
             header("apikey", apiKey)
@@ -152,7 +143,6 @@ class TournamentRepositoryImpl(
             setBody(request)
         }
 
-        println("📤 [TournamentRepo.update] Response status: ${response.status}")
         return response.status.isSuccess()
     }
 
@@ -171,8 +161,6 @@ class TournamentRepositoryImpl(
             val status = response.status
             val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(sin body)" }
 
-            println("🗑️ Supabase RPC delete_tournament_cascade -> ${status.value} ${status.description}")
-            println("🗑️ RPC response: $bodyText")
 
             if (status.isSuccess()) {
                 // Parse the result - it's returned as a JSON string
@@ -183,19 +171,16 @@ class TournamentRepositoryImpl(
                         "No se puede eliminar el torneo porque tiene pagos registrados."
                     )
                     else -> {
-                        println("⚠️ RPC returned unexpected result: $result")
                         false
                     }
                 }
             } else {
-                println("❌ RPC failed with status: ${status.value}")
                 false
             }
         } catch (e: TournamentHasPaymentsException) {
             // se repropaga para que el service lo maneje
             throw e
         } catch (e: Exception) {
-            println("🧨 Supabase RPC exception para torneo $id: ${e.stackTraceToString()}")
             false
         }
     }
@@ -218,7 +203,6 @@ class TournamentRepositoryImpl(
         }
 
         val text = runCatching { response.bodyAsText() }.getOrElse { "(sin body)" }
-        println("RPC set_tournament_categories => ${response.status}\nBody: $text")
 
         return if (response.status.isSuccess()) {
             Result.success(Unit)
@@ -245,7 +229,6 @@ class TournamentRepositoryImpl(
             }
 
             if (!response.status.isSuccess()) {
-                println("⚠️ Failed to set price for category $categoryId: ${response.status}")
                 allSuccess = false
             }
         }
@@ -292,7 +275,6 @@ class TournamentRepositoryImpl(
             }
 
             if (!response.status.isSuccess()) {
-                println("⚠️ Failed to set color for category $categoryId: ${response.status}")
                 allSuccess = false
             }
         }
@@ -313,7 +295,6 @@ class TournamentRepositoryImpl(
             val configs = json.decodeFromString<List<SchedulingConfigRaw>>(body)
             configs.firstOrNull()?.toResponse()
         } else {
-            println("⚠️ Failed to get scheduling config: ${response.status}")
             null
         }
     }
@@ -352,7 +333,6 @@ class TournamentRepositoryImpl(
 
         val success = response.status.isSuccess()
         if (!success) {
-            println("⚠️ Failed to save scheduling config: ${response.status} - ${response.bodyAsText()}")
         }
         return success
     }

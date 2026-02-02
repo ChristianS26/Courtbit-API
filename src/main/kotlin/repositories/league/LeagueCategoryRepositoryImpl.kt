@@ -33,7 +33,6 @@ class LeagueCategoryRepositoryImpl(
             val bodyText = response.bodyAsText()
             json.decodeFromString<List<LeagueCategoryResponse>>(bodyText)
         } else {
-            println("❌ Error getAll league categories: ${response.status}")
             emptyList()
         }
     }
@@ -50,7 +49,6 @@ class LeagueCategoryRepositoryImpl(
             val bodyText = response.bodyAsText()
             json.decodeFromString<List<LeagueCategoryResponse>>(bodyText)
         } else {
-            println("❌ Error getBySeasonId: ${response.status}")
             emptyList()
         }
     }
@@ -67,7 +65,6 @@ class LeagueCategoryRepositoryImpl(
             val list = json.decodeFromString<List<LeagueCategoryResponse>>(bodyText)
             list.firstOrNull()
         } else {
-            println("❌ Error getById: ${response.status}")
             null
         }
     }
@@ -115,7 +112,6 @@ class LeagueCategoryRepositoryImpl(
 
             response.status.isSuccess()
         } catch (e: Exception) {
-            println("🧨 Supabase DELETE exception for league category $id: ${e.stackTraceToString()}")
             false
         }
     }
@@ -125,7 +121,6 @@ class LeagueCategoryRepositoryImpl(
     override suspend fun updateMaxPlayers(categoryId: String, maxPlayers: Int): Boolean {
         // Validate maxPlayers is 16 or 20
         if (maxPlayers != 16 && maxPlayers != 20) {
-            println("❌ Invalid maxPlayers value: $maxPlayers. Must be 16 or 20.")
             return false
         }
 
@@ -140,7 +135,6 @@ class LeagueCategoryRepositoryImpl(
         }
 
         if (!updateResponse.status.isSuccess()) {
-            println("❌ Error updating max_players: ${updateResponse.status}")
             return false
         }
 
@@ -154,7 +148,6 @@ class LeagueCategoryRepositoryImpl(
         }
 
         if (!playersResponse.status.isSuccess()) {
-            println("❌ Error fetching players for waiting list recalculation: ${playersResponse.status}")
             return false
         }
 
@@ -177,7 +170,6 @@ class LeagueCategoryRepositoryImpl(
                 }
 
                 if (!playerUpdateResponse.status.isSuccess()) {
-                    println("⚠️ Failed to update waiting list status for player ${player.id}")
                 }
             }
 
@@ -186,7 +178,6 @@ class LeagueCategoryRepositoryImpl(
             }
         }
 
-        println("✅ Updated max_players to $maxPlayers and recalculated waiting list for $categoryId")
         return true
     }
 
@@ -212,7 +203,6 @@ class LeagueCategoryRepositoryImpl(
                 )
             }
         } else {
-            println("❌ Error getEffectivePlayoffConfig: ${response.status}")
             null
         }
     }

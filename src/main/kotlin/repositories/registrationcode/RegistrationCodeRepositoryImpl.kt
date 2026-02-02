@@ -36,9 +36,7 @@ class RegistrationCodeRepositoryImpl(
             setBody(listOf(payload))
         }
 
-        println("🧾 Código generado: $code → status: ${response.status} (organizer: $organizerId)")
         if (!response.status.isSuccess()) {
-            println("❌ Supabase error [registration_codes]: ${response.bodyAsText()}")
             throw RuntimeException("Error al crear código de registro")
         }
 
@@ -58,7 +56,6 @@ class RegistrationCodeRepositoryImpl(
             val codes = json.decodeFromString(ListSerializer(RegistrationCode.serializer()), body)
             codes.firstOrNull()
         } else {
-            println("❌ Error obteniendo código $code: ${response.status}")
             null
         }
     }
@@ -91,7 +88,6 @@ class RegistrationCodeRepositoryImpl(
             val body = response.bodyAsText()
             json.decodeFromString(ListSerializer(RegistrationCode.serializer()), body)
         } else {
-            println("❌ Error obteniendo todos los códigos: ${response.status}")
             emptyList()
         }
     }
@@ -106,7 +102,6 @@ class RegistrationCodeRepositoryImpl(
             val body = response.bodyAsText()
             json.decodeFromString(ListSerializer(RegistrationCode.serializer()), body)
         } else {
-            println("❌ Error obteniendo códigos por organizer_id: ${response.status}")
             emptyList()
         }
     }
@@ -123,13 +118,11 @@ class RegistrationCodeRepositoryImpl(
 
             // --- LOG PARA VALIDAR NOMBRES DE TORNEOS ---
             codes.forEach { code ->
-                println("🟦 Código: ${code.code} | Torneo: ${code.tournaments?.name} | Usado: ${code.used} | UsedAt: ${code.used_at}")
             }
             // ------------------------------------------
 
             codes
         } else {
-            println("❌ Error obteniendo códigos con torneo: ${response.status}")
             emptyList()
         }
     }

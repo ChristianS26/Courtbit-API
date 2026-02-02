@@ -207,7 +207,6 @@ class TeamService(
         return try {
             val registrationCode = registrationCodeRepository.getValidCode(request.code)
             if (registrationCode == null) {
-                println("❌ Código inválido o ya utilizado: ${request.code}")
                 return RegisterTeamResult.InvalidCode
             }
 
@@ -225,14 +224,12 @@ class TeamService(
                 }
 
                 if (alreadyPaid) {
-                    println("ℹ️ Jugador ya registrado y con pago confirmado: ${request.playerUid}")
                     return RegisterTeamResult.AlreadyRegistered
                 }
 
                 val success =
                     registrationCodeRepository.markCodeAsUsed(request.code, request.email, request.tournamentId)
                 if (!success) {
-                    println("❌ Error al marcar código como usado: ${request.code}")
                     return RegisterTeamResult.InvalidCode
                 }
 
@@ -257,20 +254,17 @@ class TeamService(
 
             val marked = registrationCodeRepository.markCodeAsUsed(request.code, request.email, request.tournamentId)
             if (!marked) {
-                println("❌ No se pudo marcar el código como usado antes de crear el equipo")
                 return RegisterTeamResult.InvalidCode
             }
 
             val created = createTeamWithCode(request)
             if (!created) {
-                println("❌ Fallo al crear el equipo después de marcar código como usado")
                 return RegisterTeamResult.InvalidCode
             }
 
             return RegisterTeamResult.Created
 
         } catch (e: Exception) {
-            println("❌ Error inesperado en registerTeamWithCode: ${e.message}")
             RegisterTeamResult.InvalidCode
         }
     }

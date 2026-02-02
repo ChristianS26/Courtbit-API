@@ -15,9 +15,7 @@ const val ROLE_ADMIN = "admin"
 val ApplicationCall.uid: String
     get() {
         val principal = principal<JWTPrincipal>()
-        println("🔍 Principal completo: $principal")
         val uid = principal?.payload?.getClaim("uid")?.asString()
-        println("🧾 Claim uid: $uid")
         return uid ?: throw IllegalArgumentException("UID no encontrado en el token")
     }
 

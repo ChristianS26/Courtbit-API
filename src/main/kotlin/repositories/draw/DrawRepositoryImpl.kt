@@ -36,7 +36,6 @@ class DrawRepositoryImpl(
                 response.bodyAsText()
             )
         } else {
-            println("❌ Error getDrawsByTournament: ${response.status}")
             emptyList()
         }
     }
@@ -52,10 +51,8 @@ class DrawRepositoryImpl(
                 setBody(listOf(draw)) // Supabase insert: array de objetos
             }
             val body = runCatching { response.bodyAsText() }.getOrElse { "(sin body)" }
-            println("🛰️ POST $url -> ${response.status}. Body=$body") // <-- LOG CLAVE
             response.status.isSuccess()
         } catch (e: Exception) {
-            println("❗️Excepción al crear draw: ${e.stackTraceToString()}")
             false
         }
     }

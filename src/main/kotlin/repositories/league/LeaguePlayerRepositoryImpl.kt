@@ -52,7 +52,6 @@ class LeaguePlayerRepositoryImpl(
         }
 
         // Fallback: try without user join (in case foreign key relation fails)
-        println("⚠️ getAll with user join failed (${response.status}), trying without join...")
         val fallbackResponse = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -64,7 +63,6 @@ class LeaguePlayerRepositoryImpl(
             val bodyText = fallbackResponse.bodyAsText()
             json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
         } else {
-            println("❌ Error getAll league players (fallback): ${fallbackResponse.status}")
             emptyList()
         }
     }
@@ -85,7 +83,6 @@ class LeaguePlayerRepositoryImpl(
         }
 
         // Fallback: try without user join (in case foreign key relation fails)
-        println("⚠️ getByCategoryId with user join failed (${response.status}), trying without join...")
         val fallbackResponse = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -98,7 +95,6 @@ class LeaguePlayerRepositoryImpl(
             val bodyText = fallbackResponse.bodyAsText()
             json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
         } else {
-            println("❌ Error getByCategoryId (fallback): ${fallbackResponse.status}")
             emptyList()
         }
     }
@@ -119,7 +115,6 @@ class LeaguePlayerRepositoryImpl(
         }
 
         // Fallback: try without user join
-        println("⚠️ getById with user join failed (${response.status}), trying without join...")
         val fallbackResponse = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -132,7 +127,6 @@ class LeaguePlayerRepositoryImpl(
             val list = json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
             list.firstOrNull()
         } else {
-            println("❌ Error getById (fallback): ${fallbackResponse.status}")
             null
         }
     }
@@ -213,7 +207,6 @@ class LeaguePlayerRepositoryImpl(
 
             response.status.isSuccess()
         } catch (e: Exception) {
-            println("🧨 Supabase DELETE exception for league player $id: ${e.stackTraceToString()}")
             false
         }
     }
@@ -235,7 +228,6 @@ class LeaguePlayerRepositoryImpl(
         }
 
         // Fallback: try without user join
-        println("⚠️ getByUserUidAndCategoryId with user join failed (${response.status}), trying without join...")
         val fallbackResponse = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
@@ -249,7 +241,6 @@ class LeaguePlayerRepositoryImpl(
             val list = json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
             list.firstOrNull()
         } else {
-            println("❌ Error getByUserUidAndCategoryId (fallback): ${fallbackResponse.status}")
             null
         }
     }
@@ -304,7 +295,6 @@ class LeaguePlayerRepositoryImpl(
         }
 
         if (!response.status.isSuccess()) {
-            println("❌ Error getMyRegistrations: ${response.status}")
             return emptyList()
         }
 
@@ -319,13 +309,11 @@ class LeaguePlayerRepositoryImpl(
         return players.mapNotNull { player ->
             val category = categoryRepository?.getById(player.categoryId)
             if (category == null) {
-                println("⚠️ Category not found for player ${player.id}")
                 return@mapNotNull null
             }
 
             val season = seasonRepository?.getById(category.seasonId)
             if (season == null) {
-                println("⚠️ Season not found for category ${category.id}")
                 return@mapNotNull null
             }
 
@@ -368,11 +356,9 @@ class LeaguePlayerRepositoryImpl(
             try {
                 json.decodeFromString<List<MatchIdOnly>>(bodyText).size
             } catch (e: Exception) {
-                println("⚠️ Error parsing match count: ${e.message}")
                 0
             }
         } else {
-            println("⚠️ Error checking matches for player $playerId: ${matchCountResponse.status}")
             0
         }
 
@@ -429,7 +415,6 @@ class LeaguePlayerRepositoryImpl(
         // 5. Delete the old player
         val deleteSuccess = delete(oldPlayerId)
         if (!deleteSuccess) {
-            println("⚠️ Warning: Failed to delete old player $oldPlayerId after replacement")
         }
 
         return Result.success(ReplacePlayerResponse(
@@ -449,14 +434,12 @@ class LeaguePlayerRepositoryImpl(
         }
 
         if (!dayGroupsResponse.status.isSuccess()) {
-            println("⚠️ Error fetching day_groups for replacement: ${dayGroupsResponse.status}")
             return 0
         }
 
         val dayGroups = try {
             json.decodeFromString<List<DayGroupPlayerIds>>(dayGroupsResponse.bodyAsText())
         } catch (e: Exception) {
-            println("⚠️ Error parsing day_groups: ${e.message}")
             return 0
         }
 
@@ -482,7 +465,6 @@ class LeaguePlayerRepositoryImpl(
             if (updateResponse.status.isSuccess()) {
                 updatedCount++
             } else {
-                println("⚠️ Failed to update day_group ${dayGroup.id}: ${updateResponse.status}")
             }
         }
 
@@ -499,14 +481,12 @@ class LeaguePlayerRepositoryImpl(
         }
 
         if (!matchesResponse.status.isSuccess()) {
-            println("⚠️ Error fetching matches for replacement: ${matchesResponse.status}")
             return 0
         }
 
         val matches = try {
             json.decodeFromString<List<MatchPlayerIds>>(matchesResponse.bodyAsText())
         } catch (e: Exception) {
-            println("⚠️ Error parsing matches: ${e.message}")
             return 0
         }
 
@@ -530,7 +510,6 @@ class LeaguePlayerRepositoryImpl(
             if (updateResponse.status.isSuccess()) {
                 updatedCount++
             } else {
-                println("⚠️ Failed to update match ${match.id}: ${updateResponse.status}")
             }
         }
 
@@ -570,7 +549,6 @@ class LeaguePlayerRepositoryImpl(
         }
 
         if (!response.status.isSuccess()) {
-            println("❌ Error findPendingLinks: ${response.status}")
             return emptyList()
         }
 
@@ -580,7 +558,6 @@ class LeaguePlayerRepositoryImpl(
         val rawPlayers = try {
             json.decodeFromString<List<PendingPlayerLinkRaw>>(bodyText)
         } catch (e: Exception) {
-            println("⚠️ Error parsing pending links: ${e.message}")
             return emptyList()
         }
 

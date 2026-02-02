@@ -28,7 +28,6 @@ class MatchDayRepositoryImpl(
             val bodyText = response.bodyAsText()
             json.decodeFromString<List<MatchDayResponse>>(bodyText)
         } else {
-            println("❌ Error getAll match days: ${response.status}")
             emptyList()
         }
     }
@@ -45,7 +44,6 @@ class MatchDayRepositoryImpl(
             val bodyText = response.bodyAsText()
             json.decodeFromString<List<MatchDayResponse>>(bodyText)
         } else {
-            println("❌ Error getByCategoryId: ${response.status}")
             emptyList()
         }
     }
@@ -62,7 +60,6 @@ class MatchDayRepositoryImpl(
             val list = json.decodeFromString<List<MatchDayResponse>>(bodyText)
             list.firstOrNull()
         } else {
-            println("❌ Error getById: ${response.status}")
             null
         }
     }

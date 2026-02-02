@@ -33,8 +33,6 @@ class EmailRepositoryImpl(
 
         val status = response.status
         val body = response.bodyAsText()
-        println("📨 Resend status: $status")
-        println("📨 Resend body: $body")
 
         return status.isSuccess()
     }

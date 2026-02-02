@@ -30,7 +30,6 @@ class LeaguePaymentRepositoryImpl(
             val bodyText = response.bodyAsText()
             json.decodeFromString<List<LeaguePaymentResponse>>(bodyText).firstOrNull()
         } else {
-            println("Error getById league payment: ${response.status}")
             null
         }
     }
@@ -47,7 +46,6 @@ class LeaguePaymentRepositoryImpl(
             val bodyText = response.bodyAsText()
             json.decodeFromString<List<LeaguePaymentResponse>>(bodyText)
         } else {
-            println("Error getByPlayerId: ${response.status}")
             emptyList()
         }
     }
@@ -64,7 +62,6 @@ class LeaguePaymentRepositoryImpl(
             val bodyText = response.bodyAsText()
             json.decodeFromString<List<LeaguePaymentResponse>>(bodyText)
         } else {
-            println("Error getBySeasonId: ${response.status}")
             emptyList()
         }
     }
@@ -99,7 +96,6 @@ class LeaguePaymentRepositoryImpl(
             val bodyText = response.bodyAsText()
             json.decodeFromString<List<LeaguePaymentResponse>>(bodyText).firstOrNull()
         } else {
-            println("Error creating league payment: ${response.status} - ${response.bodyAsText()}")
             null
         }
     }
@@ -132,7 +128,6 @@ class LeaguePaymentRepositoryImpl(
             }
             response.status.isSuccess()
         } catch (e: Exception) {
-            println("Error deleting league payment $id: ${e.message}")
             false
         }
     }
@@ -155,11 +150,9 @@ class LeaguePaymentRepositoryImpl(
                 // RPC returns an array, get first element
                 json.decodeFromString<List<PlayerPaymentSummary>>(bodyText).firstOrNull()
             } catch (e: Exception) {
-                println("Error parsing payment summary: ${e.message}")
                 null
             }
         } else {
-            println("Error getPlayerPaymentSummary: ${response.status} - ${response.bodyAsText()}")
             null
         }
     }
@@ -181,11 +174,9 @@ class LeaguePaymentRepositoryImpl(
             try {
                 json.decodeFromString<List<SeasonPaymentReportRow>>(bodyText)
             } catch (e: Exception) {
-                println("Error parsing payment report: ${e.message}")
                 emptyList()
             }
         } else {
-            println("Error getSeasonPaymentReport: ${response.status} - ${response.bodyAsText()}")
             emptyList()
         }
     }

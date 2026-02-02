@@ -62,12 +62,7 @@ class TeamRepositoryImpl(
         if (!success) {
             val responseBody = runCatching { response.bodyAsText() }.getOrDefault("(No body)")
             // Cambia por tu logger preferido si usas uno
-            println("❌ Error al crear equipo")
-            println("Status: ${response.status}")
-            println("Body: $responseBody")
-            println("Request: $request")
         } else {
-            println("✅ Equipo creado correctamente: ${request.playerAUid} + ${request.playerBUid}")
         }
         return success
     }
@@ -86,7 +81,6 @@ class TeamRepositoryImpl(
 
         val status = response.status.value
         val text = response.bodyAsText()
-        println("PATCH /teams?id=eq.$teamId body=$patchBody -> $status | $text") // 🔎 LOG
 
         // Supabase suele devolver 200/204 en éxito; 204 también es isSuccess()
         return response.status.isSuccess()
@@ -331,7 +325,6 @@ class TeamRepositoryImpl(
         }
 
         val body = response.bodyAsText()
-        println("RPC pay_and_mark_manual -> ${response.status} | $body")
 
         return response.status.isSuccess()
     }
@@ -354,7 +347,6 @@ class TeamRepositoryImpl(
 
         val body = response.bodyAsText()
         if (!response.status.isSuccess()) {
-            println("❌ RPC get_user_registrations_in_tournament failed: ${response.status} | $body")
             return emptyList()
         }
 
@@ -386,7 +378,6 @@ class TeamRepositoryImpl(
 
         val body = response.bodyAsText()
         if (!response.status.isSuccess()) {
-            println("❌ RPC get_user_registrations failed: ${response.status} | $body")
             return emptyList()
         }
 
@@ -423,7 +414,6 @@ class TeamRepositoryImpl(
         }
 
         if (!response.status.isSuccess()) {
-            println("❌ findPendingTournamentLinks failed: ${response.status}")
             return emptyList()
         }
 
@@ -477,7 +467,6 @@ class TeamRepositoryImpl(
                 results
             }
         } catch (e: Exception) {
-            println("❌ Error parsing pending links: ${e.message}")
             emptyList()
         }
     }
@@ -509,9 +498,7 @@ class TeamRepositoryImpl(
 
         val success = response.status.isSuccess()
         if (success) {
-            println("✅ Linked player $playerPosition to user $userUid for team $teamId")
         } else {
-            println("❌ Failed to link player: ${response.status} ${response.bodyAsText()}")
         }
         return success
     }

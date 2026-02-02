@@ -99,8 +99,6 @@ fun Route.tournamentRoutes(
                     return@patch
                 }
 
-                println("📝 [PATCH tournament] flyerUrl = ${request.tournament.flyerUrl}")
-                println("📝 [PATCH tournament] full request = $request")
 
                 try {
                     tournamentService.updateTournament(
