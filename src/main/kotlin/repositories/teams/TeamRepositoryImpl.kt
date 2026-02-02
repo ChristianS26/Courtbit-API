@@ -19,6 +19,7 @@ import com.incodap.models.teams.SetTeamResultRequest
 import com.incodap.models.teams.TeamResultStatusDto
 import models.payments.RpcPayAndMarkManualDto
 import models.ranking.TeamWithResultStatusDto
+import models.teams.PendingTournamentPlayerLinkResponse
 import models.teams.Team
 import models.teams.TeamIdOnly
 import models.teams.TeamRequest
@@ -394,4 +395,149 @@ class TeamRepositoryImpl(
             body
         )
     }
+
+    override suspend fun findPendingTournamentLinks(
+        email: String,
+        phone: String?
+    ): List<PendingTournamentPlayerLinkResponse> {
+        // Build filter for teams with manual players matching email or phone
+        val emailLower = email.lowercase()
+        val phoneLast10 = phone?.takeLast(10)
+
+        // Query for player A matches
+        val orConditions = mutableListOf<String>()
+        orConditions.add("player_a_email.ilike.$emailLower")
+        if (phoneLast10 != null) {
+            orConditions.add("player_a_phone.ilike.%$phoneLast10")
+        }
+        orConditions.add("player_b_email.ilike.$emailLower")
+        if (phoneLast10 != null) {
+            orConditions.add("player_b_phone.ilike.%$phoneLast10")
+        }
+
+        val response = client.get("$apiUrl/teams") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("or", "(${orConditions.joinToString(",")})")
+            parameter("select", "*,categories(*),tournaments(id,name)")
+        }
+
+        if (!response.status.isSuccess()) {
+            println("❌ findPendingTournamentLinks failed: ${response.status}")
+            return emptyList()
+        }
+
+        val body = response.bodyAsText()
+        // Parse and transform results
+        return try {
+            val teams = json.decodeFromString(ListSerializer(TeamWithTournamentDto.serializer()), body)
+            teams.flatMap { team ->
+                val results = mutableListOf<PendingTournamentPlayerLinkResponse>()
+
+                // Check player A
+                if (team.playerAUid == null && team.playerAName != null) {
+                    val matchesEmail = team.playerAEmail?.lowercase() == emailLower
+                    val matchesPhone = phoneLast10 != null && team.playerAPhone?.takeLast(10) == phoneLast10
+                    if (matchesEmail || matchesPhone) {
+                        results.add(
+                            PendingTournamentPlayerLinkResponse(
+                                teamId = team.id,
+                                playerPosition = "a",
+                                name = team.playerAName,
+                                email = team.playerAEmail,
+                                phone = team.playerAPhone,
+                                tournamentId = team.tournament?.id ?: team.tournamentId,
+                                tournamentName = team.tournament?.name ?: "",
+                                categoryName = team.category.name
+                            )
+                        )
+                    }
+                }
+
+                // Check player B
+                if (team.playerBUid == null && team.playerBName != null) {
+                    val matchesEmail = team.playerBEmail?.lowercase() == emailLower
+                    val matchesPhone = phoneLast10 != null && team.playerBPhone?.takeLast(10) == phoneLast10
+                    if (matchesEmail || matchesPhone) {
+                        results.add(
+                            PendingTournamentPlayerLinkResponse(
+                                teamId = team.id,
+                                playerPosition = "b",
+                                name = team.playerBName,
+                                email = team.playerBEmail,
+                                phone = team.playerBPhone,
+                                tournamentId = team.tournament?.id ?: team.tournamentId,
+                                tournamentName = team.tournament?.name ?: "",
+                                categoryName = team.category.name
+                            )
+                        )
+                    }
+                }
+
+                results
+            }
+        } catch (e: Exception) {
+            println("❌ Error parsing pending links: ${e.message}")
+            emptyList()
+        }
+    }
+
+    override suspend fun linkTournamentPlayerToUser(
+        teamId: String,
+        playerPosition: String,
+        userUid: String
+    ): Boolean {
+        val uidField = if (playerPosition == "a") "player_a_uid" else "player_b_uid"
+        val nameField = if (playerPosition == "a") "player_a_name" else "player_b_name"
+        val emailField = if (playerPosition == "a") "player_a_email" else "player_b_email"
+        val phoneField = if (playerPosition == "a") "player_a_phone" else "player_b_phone"
+
+        // Update: set UID and clear manual fields
+        val patchBody = mapOf(
+            uidField to userUid,
+            nameField to null,
+            emailField to null,
+            phoneField to null
+        )
+
+        val response = client.patch("$apiUrl/teams?id=eq.$teamId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(patchBody)
+        }
+
+        val success = response.status.isSuccess()
+        if (success) {
+            println("✅ Linked player $playerPosition to user $userUid for team $teamId")
+        } else {
+            println("❌ Failed to link player: ${response.status} ${response.bodyAsText()}")
+        }
+        return success
+    }
 }
+
+/**
+ * DTO for teams with tournament info for pending links query
+ */
+@kotlinx.serialization.Serializable
+private data class TeamWithTournamentDto(
+    val id: String,
+    @kotlinx.serialization.SerialName("tournament_id") val tournamentId: String,
+    @kotlinx.serialization.SerialName("player_a_uid") val playerAUid: String? = null,
+    @kotlinx.serialization.SerialName("player_b_uid") val playerBUid: String? = null,
+    @kotlinx.serialization.SerialName("player_a_name") val playerAName: String? = null,
+    @kotlinx.serialization.SerialName("player_a_email") val playerAEmail: String? = null,
+    @kotlinx.serialization.SerialName("player_a_phone") val playerAPhone: String? = null,
+    @kotlinx.serialization.SerialName("player_b_name") val playerBName: String? = null,
+    @kotlinx.serialization.SerialName("player_b_email") val playerBEmail: String? = null,
+    @kotlinx.serialization.SerialName("player_b_phone") val playerBPhone: String? = null,
+    @kotlinx.serialization.SerialName("categories") val category: models.category.CategoryResponseDto,
+    @kotlinx.serialization.SerialName("tournaments") val tournament: TournamentMinimalDto? = null
+)
+
+@kotlinx.serialization.Serializable
+private data class TournamentMinimalDto(
+    val id: String,
+    val name: String
+)

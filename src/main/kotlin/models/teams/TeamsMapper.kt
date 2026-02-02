@@ -8,5 +8,28 @@ fun UserDto.toTeamPlayerDto(): TeamPlayerDto = TeamPlayerDto(
     lastName = lastName,
     photoUrl = photoUrl,
     phone = phone,
-    gender = gender
+    gender = gender,
+    email = email,
+    isManual = false
 )
+
+/**
+ * Creates a TeamPlayerDto for a manual player (no CourtBit account)
+ */
+fun createManualPlayerDto(
+    name: String,
+    email: String? = null,
+    phone: String? = null
+): TeamPlayerDto {
+    val nameParts = name.trim().split(" ", limit = 2)
+    return TeamPlayerDto(
+        uid = null,
+        firstName = nameParts.getOrElse(0) { name },
+        lastName = nameParts.getOrElse(1) { "" },
+        photoUrl = null,
+        phone = phone,
+        gender = null,
+        email = email,
+        isManual = true
+    )
+}

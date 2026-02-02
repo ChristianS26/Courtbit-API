@@ -5,6 +5,7 @@ import com.incodap.models.users.UserDto
 import com.incodap.models.teams.SetTeamResultRequest
 import com.incodap.models.teams.TeamResultStatusDto
 import models.ranking.TeamWithResultStatusDto
+import models.teams.PendingTournamentPlayerLinkResponse
 import models.teams.Team
 import models.teams.TeamRequest
 
@@ -44,4 +45,8 @@ interface TeamRepository {
         limit: Int = 50,
         offset: Int = 0
     ): List<RpcRegistrationRowDto>
+
+    // Manual player linking
+    suspend fun findPendingTournamentLinks(email: String, phone: String?): List<PendingTournamentPlayerLinkResponse>
+    suspend fun linkTournamentPlayerToUser(teamId: String, playerPosition: String, userUid: String): Boolean
 }

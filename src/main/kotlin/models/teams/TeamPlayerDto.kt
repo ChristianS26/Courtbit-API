@@ -6,16 +6,20 @@ import kotlinx.serialization.SerialName
 @Serializable
 data class TeamPlayerDto(
     @SerialName("uid")
-    val uid: String,
+    val uid: String? = null,
     @SerialName("first_name")
     val firstName: String,
     @SerialName("last_name")
     val lastName: String,
     @SerialName("photo_url")
-    val photoUrl: String?,
+    val photoUrl: String? = null,
     @SerialName("phone")
-    val phone: String?,
+    val phone: String? = null,
     @SerialName("gender")
-    val gender: String?
+    val gender: String? = null,
+    @SerialName("email")
+    val email: String? = null,
+    @SerialName("is_manual")
+    val isManual: Boolean = false
 )
 
