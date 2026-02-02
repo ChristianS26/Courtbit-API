@@ -22,17 +22,15 @@ import models.bracket.WithdrawTeamResponse
 import repositories.bracket.BracketRepository
 
 /**
- * Padel score validation following FIP official rules.
+ * Padel score validation supporting both classic and express formats.
  *
- * Valid set scores:
+ * Classic format (FIP official rules):
  * - 6-0, 6-1, 6-2, 6-3, 6-4 (standard win)
  * - 7-5 (win from 5-5)
  * - 7-6 (tiebreak win at 6-6)
  *
- * Invalid:
- * - 6-5 (impossible - must reach 7-5 or tiebreak)
- * - 8-6 (no advantage sets in padel)
- * - 4-4 or any incomplete score
+ * Express format (points-based):
+ * - First to N points wins (e.g., 8-0 through 8-7 for 8-point format)
  */
 object PadelScoreValidator {
     private val VALID_WINNING_SCORES = listOf(
@@ -52,6 +50,69 @@ object PadelScoreValidator {
         return (team1Games to team2Games) in VALID_SET_SCORES
     }
 
+    /**
+     * Validate express format score (points-based).
+     * One team must reach maxPoints, the other must be less than maxPoints.
+     */
+    fun validateExpressScore(setScores: List<SetScore>, maxPoints: Int, totalSets: Int): ScoreValidationResult {
+        if (setScores.isEmpty()) {
+            return ScoreValidationResult.Invalid("At least one set required")
+        }
+        if (setScores.size > totalSets) {
+            return ScoreValidationResult.Invalid("Maximum $totalSets set(s) allowed")
+        }
+
+        var team1SetsWon = 0
+        var team2SetsWon = 0
+        val setsNeededToWin = (totalSets + 1) / 2  // Ceiling division for best-of-N
+
+        for ((index, set) in setScores.withIndex()) {
+            // Validate express score: one team must reach maxPoints exactly
+            val team1Wins = set.team1 == maxPoints && set.team2 < maxPoints
+            val team2Wins = set.team2 == maxPoints && set.team1 < maxPoints
+
+            if (!team1Wins && !team2Wins) {
+                // Check if it's a valid incomplete set or invalid score
+                if (set.team1 > maxPoints || set.team2 > maxPoints) {
+                    return ScoreValidationResult.Invalid(
+                        "Set ${index + 1}: Maximum score is $maxPoints points"
+                    )
+                }
+                if (set.team1 == maxPoints && set.team2 == maxPoints) {
+                    return ScoreValidationResult.Invalid(
+                        "Set ${index + 1}: Both teams cannot have $maxPoints points"
+                    )
+                }
+                return ScoreValidationResult.Invalid(
+                    "Set ${index + 1}: One team must reach $maxPoints points to win"
+                )
+            }
+
+            // Determine set winner
+            if (team1Wins) team1SetsWon++
+            if (team2Wins) team2SetsWon++
+
+            // Check if match is already decided
+            if (team1SetsWon >= setsNeededToWin || team2SetsWon >= setsNeededToWin) {
+                if (index < setScores.size - 1) {
+                    return ScoreValidationResult.Invalid(
+                        "Match already decided after set ${index + 1}, but ${setScores.size} sets provided"
+                    )
+                }
+            }
+        }
+
+        // Verify match is complete
+        return when {
+            team1SetsWon >= setsNeededToWin -> ScoreValidationResult.Valid(winner = 1, setsWon = team1SetsWon to team2SetsWon)
+            team2SetsWon >= setsNeededToWin -> ScoreValidationResult.Valid(winner = 2, setsWon = team1SetsWon to team2SetsWon)
+            else -> ScoreValidationResult.Invalid("Match incomplete: need $setsNeededToWin set(s) to win (current: $team1SetsWon-$team2SetsWon)")
+        }
+    }
+
+    /**
+     * Validate classic format score (games-based).
+     */
     fun validateMatchScore(setScores: List<SetScore>): ScoreValidationResult {
         if (setScores.isEmpty()) {
             return ScoreValidationResult.Invalid("At least one set required")
@@ -290,15 +351,40 @@ class BracketService(
 
     /**
      * Update match score with padel validation.
-     * Validates the score according to FIP rules before persisting.
+     * Validates the score according to the bracket's format (classic or express).
      * Automatically updates standings for group stage matches.
      */
     suspend fun updateMatchScore(
         matchId: String,
         setScores: List<SetScore>
     ): Result<MatchResponse> {
-        // Validate padel score
-        val validation = PadelScoreValidator.validateMatchScore(setScores)
+        // Get match to find its bracket
+        val match = repository.getMatch(matchId)
+            ?: return Result.failure(IllegalArgumentException("Match not found"))
+
+        // Get bracket config to determine format
+        val bracket = repository.getBracketById(match.bracketId)
+            ?: return Result.failure(IllegalArgumentException("Bracket not found"))
+
+        // Parse match format from bracket config
+        val matchFormat = bracket.config?.let {
+            try {
+                val config = json.decodeFromString<GroupsKnockoutConfig>(it.toString())
+                config.matchFormat
+            } catch (e: Exception) { null }
+        }
+
+        // Validate based on format
+        val validation = if (matchFormat?.pointsPerSet != null) {
+            // Express format validation
+            val maxPoints = matchFormat.pointsPerSet
+            val totalSets = matchFormat.sets
+            PadelScoreValidator.validateExpressScore(setScores, maxPoints, totalSets)
+        } else {
+            // Classic format validation
+            PadelScoreValidator.validateMatchScore(setScores)
+        }
+
         if (validation is ScoreValidationResult.Invalid) {
             return Result.failure(IllegalArgumentException(validation.message))
         }
