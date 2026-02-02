@@ -285,11 +285,16 @@ fun Route.tournamentRoutes(
                     return@put
                 }
 
-                val saved = tournamentService.saveSchedulingConfig(id, request)
-                if (saved) {
-                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
-                } else {
-                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo guardar la configuración"))
+                try {
+                    val saved = tournamentService.saveSchedulingConfig(id, request)
+                    if (saved) {
+                        call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                    } else {
+                        call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo guardar la configuración"))
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Error interno: ${e.localizedMessage}"))
                 }
             }
 
