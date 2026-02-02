@@ -48,7 +48,7 @@ class UserRepositoryImpl(
 
         val safe = q.replace("%", "\\%").replace("_", "\\_")
         val like = "%$safe%"
-        val filter = "(first_name.ilike.$like,last_name.ilike.$like,email.ilike.$like)"
+        val filter = "(first_name.ilike.$like,last_name.ilike.$like,email.ilike.$like,phone.ilike.$like)"
 
         return try {
             val response = client.get("$apiUrl/users") {
@@ -219,6 +219,7 @@ class UserRepositoryImpl(
                 request.photoUrl?.let { put("photo_url", it) }
                 request.countryIso?.let { put("country_iso", it) }
                 request.shirtSize?.let { put("shirt_size", it) }
+                request.birthdate?.let { put("birthdate", it) }
             }
 
             val response = client.patch("$apiUrl/users") {

@@ -44,6 +44,7 @@ fun Application.module() {
             ShirtSizeModule,
             BracketModule,
             ClubModule,
+            CityPadelClubModule,
         )
     }
 

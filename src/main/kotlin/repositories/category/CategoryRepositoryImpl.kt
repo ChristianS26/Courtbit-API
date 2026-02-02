@@ -43,11 +43,25 @@ class CategoryRepositoryImpl(
     }
 
     override suspend fun assignCategoriesToTournament(request: TournamentCategoryRequest): Boolean {
-        val payload = request.categoryIds.map { categoryId ->
-            TournamentCategoryPair(
-                tournament_id = request.tournamentId,
-                category_id = categoryId
-            )
+        // Support both formats: simple categoryIds list or categories with colors
+        val payload = if (request.categories != null) {
+            // New format with colors
+            request.categories.map { cat ->
+                TournamentCategoryPair(
+                    tournament_id = request.tournamentId,
+                    category_id = cat.categoryId,
+                    color = cat.color
+                )
+            }
+        } else {
+            // Legacy format: just category IDs
+            request.categoryIds?.map { categoryId ->
+                TournamentCategoryPair(
+                    tournament_id = request.tournamentId,
+                    category_id = categoryId,
+                    color = null
+                )
+            } ?: emptyList()
         }
 
         println("📦 Payload para asignar categorías:\n$payload")
@@ -75,7 +89,7 @@ class CategoryRepositoryImpl(
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
             parameter("tournament_id", "eq.$tournamentId")
-            parameter("select", "category_id,categories(name,position)")
+            parameter("select", "category_id,color,categories(name,position)")
             parameter("order", "categories(position)")
         }
 
@@ -88,7 +102,8 @@ class CategoryRepositoryImpl(
                 TournamentCategoryDto(
                     id = it["category_id"]?.jsonPrimitive?.content ?: "",
                     name = it["categories"]?.jsonObject?.get("name")?.jsonPrimitive?.content ?: "",
-                    position = it["categories"]?.jsonObject?.get("position")?.jsonPrimitive?.intOrNull ?: Int.MAX_VALUE
+                    position = it["categories"]?.jsonObject?.get("position")?.jsonPrimitive?.intOrNull ?: Int.MAX_VALUE,
+                    color = it["color"]?.jsonPrimitive?.content
                 )
             }.sortedBy { it.position }
         } else {

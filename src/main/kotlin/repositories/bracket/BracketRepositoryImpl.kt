@@ -18,6 +18,13 @@ private data class TeamDto(
     @SerialName("player_b_uid") val playerBUid: String?
 )
 
+@Serializable
+private data class MatchScheduleUpdateDto(
+    @SerialName("court_number") val courtNumber: Int,
+    @SerialName("scheduled_time") val scheduledTime: String,
+    val status: String = "scheduled"
+)
+
 class BracketRepositoryImpl(
     private val client: HttpClient,
     private val json: Json,
@@ -51,6 +58,24 @@ class BracketRepositoryImpl(
             brackets.firstOrNull()
         } else {
             println("BracketRepository.getBracket failed: ${response.status}")
+            null
+        }
+    }
+
+    override suspend fun getBracketById(bracketId: String): BracketResponse? {
+        val response = client.get("$apiUrl/tournament_brackets") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("id", "eq.$bracketId")
+            parameter("select", "*")
+        }
+
+        return if (response.status.isSuccess()) {
+            val bodyText = response.bodyAsText()
+            val brackets = json.decodeFromString<List<BracketResponse>>(bodyText)
+            brackets.firstOrNull()
+        } else {
+            println("BracketRepository.getBracketById failed: ${response.status}")
             null
         }
     }
@@ -337,6 +362,23 @@ class BracketRepositoryImpl(
         return status.isSuccess()
     }
 
+    override suspend fun deleteMatchesByIds(matchIds: List<String>): Int {
+        if (matchIds.isEmpty()) return 0
+
+        // Delete matches using IN query
+        val response = client.delete("$apiUrl/tournament_matches?id=in.(${matchIds.joinToString(",")})") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=representation")
+        }
+
+        val status = response.status
+        println("BracketRepository.deleteMatchesByIds -> ${status.value}, ${matchIds.size} matches")
+
+        // Return count of deleted matches
+        return if (status.isSuccess()) matchIds.size else 0
+    }
+
     // ============ Match Scoring ============
 
     override suspend fun getMatch(matchId: String): MatchResponse? {
@@ -377,14 +419,24 @@ class BracketRepositoryImpl(
 
         val status = response.status
         val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
-        println("BracketRepository.updateMatchScore -> ${status.value}\nBody: $bodyText")
+        println("BracketRepository.updateMatchScore(matchId=$matchId) -> ${status.value}\nBody: $bodyText")
 
         return if (status.isSuccess()) {
-            val matches = json.decodeFromString<List<MatchResponse>>(bodyText)
-            matches.firstOrNull()?.let { Result.success(it) }
-                ?: Result.failure(IllegalStateException("Match not found after update"))
+            val matches = runCatching {
+                json.decodeFromString<List<MatchResponse>>(bodyText)
+            }.getOrElse { e ->
+                println("Failed to parse response: ${e.message}")
+                return Result.failure(IllegalStateException("Failed to parse Supabase response: ${e.message}"))
+            }
+
+            if (matches.isEmpty()) {
+                // Supabase returns 200 with empty array when no rows match
+                return Result.failure(IllegalArgumentException("Match not found with ID: $matchId"))
+            }
+
+            Result.success(matches.first())
         } else {
-            Result.failure(IllegalStateException("Failed to update score: ${status.value}"))
+            Result.failure(IllegalStateException("Failed to update score: ${status.value} - $bodyText"))
         }
     }
 
@@ -459,13 +511,15 @@ class BracketRepositoryImpl(
                 gamesWon = s.gamesWon,
                 gamesLost = s.gamesLost,
                 pointDifference = s.pointDifference,
-                roundReached = s.roundReached,
                 groupNumber = s.groupNumber
             )
         }
 
         // Use jsonForBulkInsert to ensure all objects have the same keys
         val jsonBody = jsonForBulkInsert.encodeToString(insertRequests)
+
+        // Debug: print the JSON being sent
+        println("📤 [upsertStandings] Sending ${standings.size} standings, JSON sample: ${jsonBody.take(500)}...")
 
         val response = client.post("$apiUrl/tournament_standings") {
             header("apikey", apiKey)
@@ -476,7 +530,11 @@ class BracketRepositoryImpl(
         }
 
         val status = response.status
+        val responseBody = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
         println("BracketRepository.upsertStandings -> ${status.value}")
+        if (!status.isSuccess()) {
+            println("❌ [upsertStandings] Error response: $responseBody")
+        }
         return status.isSuccess()
     }
 
@@ -610,5 +668,27 @@ class BracketRepositoryImpl(
         val status = response.status
         println("BracketRepository.updateStandingGroupNumber -> ${status.value}")
         return status.isSuccess()
+    }
+
+    override suspend fun updateMatchSchedule(matchId: String, courtNumber: Int, scheduledTime: String): MatchResponse {
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            setBody(MatchScheduleUpdateDto(courtNumber, scheduledTime))
+        }
+
+        val responseStatus = response.status
+        val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
+        println("BracketRepository.updateMatchSchedule -> ${responseStatus.value}\nBody: $bodyText")
+
+        if (!responseStatus.isSuccess()) {
+            throw IllegalStateException("Failed to update match schedule: ${responseStatus.value}")
+        }
+
+        val matches = json.decodeFromString<List<MatchResponse>>(bodyText)
+        return matches.firstOrNull()
+            ?: throw IllegalStateException("Match not found after update")
     }
 }

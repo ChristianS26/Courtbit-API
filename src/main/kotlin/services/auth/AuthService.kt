@@ -4,6 +4,8 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.incodap.models.users.UserDto
 import com.incodap.models.users.toPublicUser
+import com.incodap.models.users.MaskedUserSearchResult
+import com.incodap.models.users.toMaskedSearchResult
 import com.incodap.repositories.users.UserRepository
 import config.JwtConfig
 import models.auth.*
@@ -22,8 +24,8 @@ class AuthService(
     private val jwtIssuer = JwtConfig.ISSUER
     private val jwtAudience = JwtConfig.AUDIENCE
 
-    suspend fun searchUsers(query: String, limit: Int = 20, offset: Int = 0) =
-        userRepository.searchUsers(query, limit, offset)
+    suspend fun searchUsers(query: String, limit: Int = 20, offset: Int = 0): List<MaskedUserSearchResult> =
+        userRepository.searchUsers(query, limit, offset).map { it.toMaskedSearchResult() }
 
     fun hashPassword(password: String): String = BCrypt.hashpw(password, BCrypt.gensalt())
     fun verifyPassword(plain: String, hash: String): Boolean = BCrypt.checkpw(plain, hash)

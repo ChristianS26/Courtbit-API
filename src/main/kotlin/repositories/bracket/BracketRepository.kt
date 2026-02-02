@@ -18,6 +18,11 @@ interface BracketRepository {
     suspend fun getBracket(tournamentId: String, categoryId: Int): BracketResponse?
 
     /**
+     * Get bracket by ID
+     */
+    suspend fun getBracketById(bracketId: String): BracketResponse?
+
+    /**
      * Get bracket with all its matches
      */
     suspend fun getBracketWithMatches(tournamentId: String, categoryId: Int): BracketWithMatchesResponse?
@@ -62,6 +67,12 @@ interface BracketRepository {
      * Delete all matches for a bracket (used when regenerating)
      */
     suspend fun deleteMatchesByBracketId(bracketId: String): Boolean
+
+    /**
+     * Delete specific matches by their IDs (used for deleting knockout phase only)
+     * @return Number of matches deleted
+     */
+    suspend fun deleteMatchesByIds(matchIds: List<String>): Int
 
     // ============ Match Scoring ============
 
@@ -142,4 +153,9 @@ interface BracketRepository {
      * Update standing's group number (for swapping teams between groups)
      */
     suspend fun updateStandingGroupNumber(bracketId: String, teamId: String, groupNumber: Int): Boolean
+
+    /**
+     * Update match schedule (court number and scheduled time)
+     */
+    suspend fun updateMatchSchedule(matchId: String, courtNumber: Int, scheduledTime: String): MatchResponse
 }

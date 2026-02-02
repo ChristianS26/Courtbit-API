@@ -51,7 +51,11 @@ import routing.remoteconfig.remoteConfigRoutes
 import routing.shirtSizeRoutes
 import routing.bracket.bracketRoutes
 import com.incodap.routing.club.clubRoutes
+import com.incodap.routing.city.cityRoutes
+import com.incodap.routing.padelclub.padelClubRoutes
 import com.incodap.services.club.ClubService
+import services.city.CityService
+import services.padelclub.PadelClubService
 import services.auth.AuthService
 import services.email.EmailService
 import services.league.AutoSchedulingService
@@ -108,6 +112,12 @@ fun Application.configureRouting() {
 
             // Clubs (venue management)
             clubRoutes(get<ClubService>())
+
+            // Cities catalog
+            cityRoutes(get<CityService>())
+
+            // Padel Clubs catalog
+            padelClubRoutes(get<PadelClubService>())
 
             // Draws
             drawRoutes(get())

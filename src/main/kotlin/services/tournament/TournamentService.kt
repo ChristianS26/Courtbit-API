@@ -3,6 +3,8 @@ package services.tournament
 import com.incodap.models.tournament.UpdateTournamentRequest
 import com.incodap.repositories.teams.TeamRepository
 import models.category.TournamentCategoryRequest
+import models.tournament.CategoryColorRequest
+import models.tournament.CategoryPriceRequest
 import models.tournament.CreateTournamentRequest
 import models.tournament.DeleteTournamentResult
 import models.tournament.TournamentResponse
@@ -36,7 +38,9 @@ class TournamentService(
 
     suspend fun createTournament(
         tournament: CreateTournamentRequest,
-        categoryIds: List<Int>
+        categoryIds: List<Int>,
+        categoryPrices: List<CategoryPriceRequest>? = null,
+        categoryColors: List<CategoryColorRequest>? = null
     ): TournamentResponse? {
         println("🟡 Creando torneo con datos: $tournament")
 
@@ -66,6 +70,26 @@ class TournamentService(
                 println("🧨 Rollback FALLÓ: revisar manualmente el torneo ${created.id}")
             }
             return null
+        }
+
+        // Set category prices if provided
+        if (!categoryPrices.isNullOrEmpty()) {
+            val priceMap = categoryPrices.associate { it.categoryId to it.price }
+            val pricesSet = repository.setCategoryPrices(created.id, priceMap)
+            if (!pricesSet) {
+                println("⚠️ No se pudieron establecer los precios de categorías")
+            }
+        }
+
+        // Set category colors if provided
+        if (!categoryColors.isNullOrEmpty()) {
+            val colorMap = categoryColors.filter { it.color != null }.associate { it.categoryId to it.color!! }
+            if (colorMap.isNotEmpty()) {
+                val colorsSet = repository.setCategoryColors(created.id, colorMap)
+                if (!colorsSet) {
+                    println("⚠️ No se pudieron establecer los colores de categorías")
+                }
+            }
         }
 
         // Todo OK: devuelve el torneo con categorías asignadas
@@ -131,4 +155,13 @@ class TournamentService(
 
     suspend fun updateClubLogoUrl(id: String, clubLogoUrl: String): Boolean =
         repository.updateClubLogoUrl(id, clubLogoUrl)
+
+    suspend fun updateCategoryColor(tournamentId: String, categoryId: Int, color: String): Boolean =
+        repository.setCategoryColors(tournamentId, mapOf(categoryId to color))
+
+    suspend fun getSchedulingConfig(tournamentId: String): models.tournament.SchedulingConfigResponse? =
+        repository.getSchedulingConfig(tournamentId)
+
+    suspend fun saveSchedulingConfig(tournamentId: String, config: models.tournament.SchedulingConfigRequest): Boolean =
+        repository.saveSchedulingConfig(tournamentId, config)
 }

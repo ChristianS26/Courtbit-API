@@ -1,6 +1,7 @@
 package services.bracket
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.encodeToString
 import models.bracket.AssignGroupsRequest
 import models.bracket.BracketResponse
@@ -256,6 +257,29 @@ class BracketService(
     }
 
     /**
+     * Unpublish a bracket, reverting to in_progress status
+     */
+    suspend fun unpublishBracket(tournamentId: String, categoryId: Int): Result<BracketResponse> {
+        val bracket = repository.getBracket(tournamentId, categoryId)
+            ?: return Result.failure(IllegalArgumentException("Bracket not found"))
+
+        if (bracket.status != "published") {
+            return Result.failure(IllegalStateException("Bracket is not published"))
+        }
+
+        val updated = repository.updateBracketStatus(bracket.id, "in_progress")
+        if (!updated) {
+            return Result.failure(IllegalStateException("Failed to unpublish bracket"))
+        }
+
+        // Return updated bracket
+        val result = repository.getBracket(tournamentId, categoryId)
+            ?: return Result.failure(IllegalStateException("Failed to fetch updated bracket"))
+
+        return Result.success(result)
+    }
+
+    /**
      * Delete a bracket
      */
     suspend fun deleteBracket(bracketId: String): Boolean {
@@ -267,6 +291,7 @@ class BracketService(
     /**
      * Update match score with padel validation.
      * Validates the score according to FIP rules before persisting.
+     * Automatically updates standings for group stage matches.
      */
     suspend fun updateMatchScore(
         matchId: String,
@@ -280,17 +305,45 @@ class BracketService(
 
         val validResult = validation as ScoreValidationResult.Valid
 
-        // Calculate total games for scoreTeam1/scoreTeam2
-        val totalTeam1 = setScores.sumOf { it.team1 }
-        val totalTeam2 = setScores.sumOf { it.team2 }
+        // Use sets won (not total games) for scoreTeam1/scoreTeam2
+        val setsWonTeam1 = validResult.setsWon.first
+        val setsWonTeam2 = validResult.setsWon.second
 
-        return repository.updateMatchScore(
+        // Update the match score
+        val updateResult = repository.updateMatchScore(
             matchId = matchId,
-            scoreTeam1 = totalTeam1,
-            scoreTeam2 = totalTeam2,
+            scoreTeam1 = setsWonTeam1,
+            scoreTeam2 = setsWonTeam2,
             setScores = setScores,
             winnerTeam = validResult.winner
         )
+
+        // If score update succeeded, recalculate standings
+        if (updateResult.isSuccess) {
+            val updatedMatch = updateResult.getOrNull()
+            if (updatedMatch != null) {
+                // Get bracket info to recalculate standings
+                val bracket = repository.getBracketById(updatedMatch.bracketId)
+                if (bracket != null) {
+                    // Recalculate standings based on bracket format
+                    when (bracket.format) {
+                        "groups_knockout" -> {
+                            // Recalculate group standings
+                            calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
+                            println("Recalculated group standings for bracket ${bracket.id}")
+                        }
+                        "round_robin" -> {
+                            // Recalculate standings for round robin
+                            calculateStandings(bracket.tournamentId, bracket.categoryId)
+                            println("Recalculated standings for bracket ${bracket.id}")
+                        }
+                        // knockout format doesn't need standings recalculation
+                    }
+                }
+            }
+        }
+
+        return updateResult
     }
 
     /**
@@ -393,7 +446,7 @@ class BracketService(
 
             // Get set scores for game counts
             val setScores = match.setScores?.let {
-                try { json.decodeFromString<List<SetScore>>(it) }
+                try { json.decodeFromJsonElement<List<SetScore>>(it) }
                 catch (e: Exception) { null }
             } ?: emptyList()
 
@@ -691,6 +744,23 @@ class BracketService(
             )
         }
 
+        // If no standings exist, initialize from match participants
+        if (standingsMap.isEmpty() && groupMatches.isNotEmpty()) {
+            for (match in groupMatches) {
+                val groupNumber = match.groupNumber ?: continue
+                match.team1Id?.let { teamId ->
+                    if (teamId !in standingsMap) {
+                        standingsMap[teamId] = GroupStandingBuilder(teamId = teamId, groupNumber = groupNumber)
+                    }
+                }
+                match.team2Id?.let { teamId ->
+                    if (teamId !in standingsMap) {
+                        standingsMap[teamId] = GroupStandingBuilder(teamId = teamId, groupNumber = groupNumber)
+                    }
+                }
+            }
+        }
+
         // Process completed group matches
         for (match in groupMatches.filter { it.status == "completed" }) {
             val team1Id = match.team1Id ?: continue
@@ -698,7 +768,7 @@ class BracketService(
 
             // Parse set scores
             val setScores = match.setScores?.let {
-                try { json.decodeFromString<List<SetScore>>(it) }
+                try { json.decodeFromJsonElement<List<SetScore>>(it) }
                 catch (e: Exception) { null }
             } ?: emptyList()
 
@@ -794,7 +864,15 @@ class BracketService(
 
         // Check if knockout already exists
         val knockoutMatches = matches.filter { it.groupNumber == null }
+        println("🔍 [generateKnockoutFromGroups] Total matches: ${matches.size}, Knockout matches (groupNumber=null): ${knockoutMatches.size}")
+        matches.take(5).forEach { m ->
+            println("   Match ${m.matchNumber}: groupNumber=${m.groupNumber}, roundName=${m.roundName}")
+        }
         if (knockoutMatches.isNotEmpty()) {
+            println("❌ [generateKnockoutFromGroups] Knockout already exists! Found ${knockoutMatches.size} matches with groupNumber=null")
+            knockoutMatches.take(3).forEach { m ->
+                println("   Knockout match ${m.matchNumber}: roundName=${m.roundName}, status=${m.status}")
+            }
             return Result.failure(IllegalStateException("Knockout phase already generated"))
         }
 
@@ -808,23 +886,44 @@ class BracketService(
         }
 
         // Get advancing teams from each group
-        val groupStandings = standings
+        var groupStandings = standings
             .filter { it.groupNumber != null }
             .groupBy { it.groupNumber!! }
+
+        // If standings don't have group numbers, recalculate them first
+        if (groupStandings.isEmpty() && groupMatches.isNotEmpty()) {
+            println("⚠️ [generateKnockoutFromGroups] Standings missing group numbers, recalculating...")
+            val recalcResult = calculateGroupStandings(tournamentId, categoryId)
+            if (recalcResult.isSuccess) {
+                val recalcStandings = recalcResult.getOrNull()?.standings ?: emptyList()
+                groupStandings = recalcStandings
+                    .filter { it.groupNumber != null }
+                    .groupBy { it.groupNumber!! }
+                println("✅ [generateKnockoutFromGroups] Recalculated standings, groups: ${groupStandings.keys}")
+            } else {
+                println("❌ [generateKnockoutFromGroups] Failed to recalculate standings: ${recalcResult.exceptionOrNull()?.message}")
+            }
+        }
 
         val advancingTeams = mutableListOf<TeamSeed>()
         var seedCounter = 1
 
         // Interleave seeds: 1A vs 2B, 1B vs 2A pattern
         // First collect group winners, then runners-up
+        println("🏆 [generateKnockoutFromGroups] Looking for advancing teams: ${config.advancingPerGroup} per group, ${config.groupCount} groups")
+        println("   Group standings count by group: ${groupStandings.mapValues { it.value.size }}")
         for (position in 1..config.advancingPerGroup) {
             for (groupNum in 1..config.groupCount) {
                 val groupTeams = groupStandings[groupNum]?.sortedBy { it.position } ?: emptyList()
                 val teamAtPosition = groupTeams.getOrNull(position - 1)
                 val teamId = teamAtPosition?.teamId
-                    ?: return Result.failure(IllegalStateException(
+                if (teamId == null) {
+                    println("❌ [generateKnockoutFromGroups] No team at position $position in group $groupNum")
+                    println("   Available teams in group $groupNum: ${groupTeams.map { "pos=${it.position}, teamId=${it.teamId}" }}")
+                    return Result.failure(IllegalStateException(
                         "No team at position $position in group $groupNum"
                     ))
+                }
                 advancingTeams.add(TeamSeed(teamId, seedCounter++))
             }
         }
@@ -882,6 +981,45 @@ class BracketService(
     }
 
     /**
+     * Delete knockout phase matches (keeps group stage intact).
+     * Allows regenerating knockout with different rules or fixing errors.
+     */
+    suspend fun deleteKnockoutPhase(
+        tournamentId: String,
+        categoryId: Int
+    ): Result<Unit> {
+        val bracketWithMatches = repository.getBracketWithMatches(tournamentId, categoryId)
+            ?: return Result.failure(IllegalArgumentException("Bracket not found"))
+
+        val bracket = bracketWithMatches.bracket
+        val matches = bracketWithMatches.matches
+
+        // Find all knockout matches (matches with groupNumber = null)
+        val knockoutMatches = matches.filter { it.groupNumber == null }
+
+        if (knockoutMatches.isEmpty()) {
+            return Result.failure(IllegalArgumentException("No knockout phase found to delete"))
+        }
+
+        // Check if any knockout match has been played
+        val playedKnockoutMatches = knockoutMatches.filter { it.status in listOf("in_progress", "completed") }
+        if (playedKnockoutMatches.isNotEmpty()) {
+            return Result.failure(IllegalStateException(
+                "Cannot delete knockout phase: ${playedKnockoutMatches.size} match(es) already started or completed"
+            ))
+        }
+
+        // Delete all knockout matches
+        val deletedCount = repository.deleteMatchesByIds(knockoutMatches.map { it.id })
+
+        if (deletedCount != knockoutMatches.size) {
+            return Result.failure(IllegalStateException("Failed to delete all knockout matches"))
+        }
+
+        return Result.success(Unit)
+    }
+
+    /**
      * Swap two teams between groups (before group stage starts).
      */
     suspend fun swapTeamsInGroups(
@@ -896,11 +1034,24 @@ class BracketService(
         val bracket = bracketWithMatches.bracket
         val matches = bracketWithMatches.matches
 
-        // Check no matches have started
-        val startedMatches = matches.count { it.status in listOf("in_progress", "completed") }
-        if (startedMatches > 0) {
+        // Check if the specific teams being swapped have played matches
+        val team1HasPlayedMatches = matches.any {
+            (it.team1Id == team1Id || it.team2Id == team1Id) &&
+            it.status in listOf("in_progress", "completed")
+        }
+        val team2HasPlayedMatches = matches.any {
+            (it.team1Id == team2Id || it.team2Id == team2Id) &&
+            it.status in listOf("in_progress", "completed")
+        }
+
+        if (team1HasPlayedMatches) {
             return Result.failure(IllegalStateException(
-                "Cannot swap teams: $startedMatches matches already in progress or completed"
+                "El primer equipo ya tiene partidos jugados y no puede ser movido"
+            ))
+        }
+        if (team2HasPlayedMatches) {
+            return Result.failure(IllegalStateException(
+                "El segundo equipo ya tiene partidos jugados y no puede ser movido"
             ))
         }
 
@@ -1155,6 +1306,23 @@ class BracketService(
             val updated = repository.updateMatchStatus(matchId, status)
             Result.success(updated)
         } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Update match schedule (court number and scheduled time).
+     * Used by the scheduling UI to assign matches to courts/times.
+     */
+    suspend fun updateMatchSchedule(matchId: String, courtNumber: Int, scheduledTime: String): Result<MatchResponse> {
+        println("📅 [BracketService] updateMatchSchedule called: matchId=$matchId, courtNumber=$courtNumber, scheduledTime=$scheduledTime")
+        return try {
+            val updated = repository.updateMatchSchedule(matchId, courtNumber, scheduledTime)
+            println("✅ [BracketService] updateMatchSchedule success: ${updated.id}")
+            Result.success(updated)
+        } catch (e: Exception) {
+            println("❌ [BracketService] updateMatchSchedule failed: ${e::class.simpleName}: ${e.message}")
+            e.printStackTrace()
             Result.failure(e)
         }
     }
