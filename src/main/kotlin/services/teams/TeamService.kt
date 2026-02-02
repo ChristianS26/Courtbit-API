@@ -19,6 +19,7 @@ import models.teams.TeamGroupByCategoryFullResponse
 import models.teams.TeamPlayerDto
 import models.teams.TeamRequest
 import models.teams.TeamWithPlayerDto
+import models.teams.createManualPlayerDto
 import models.teams.toTeamPlayerDto
 import repositories.registrationcode.RegistrationCodeRepository
 import services.ranking.RankingService
@@ -42,12 +43,15 @@ class TeamService(
     }
 
     suspend fun registerTeam(req: RegisterTeamRequest): Boolean {
-        val existing = teamRepository.findTeam(req.tournamentId, req.playerUid, req.partnerUid)
-        return if (existing == null) {
-            createNewTeam(req)
-        } else {
-            updateExistingTeam(existing, req)
+        // For teams with linked users, check if team already exists
+        if (req.playerUid != null && req.partnerUid != null) {
+            val existing = teamRepository.findTeam(req.tournamentId, req.playerUid, req.partnerUid)
+            if (existing != null) {
+                return updateExistingTeam(existing, req)
+            }
         }
+        // Create new team (may have manual players)
+        return createNewTeam(req)
     }
 
     suspend fun teamExists(tournamentId: String, playerA: String, playerB: String): Team? {
@@ -60,13 +64,16 @@ class TeamService(
         val teams = teamRepository.findTeamsByTournament(tournamentId)
         if (teams.isEmpty()) return emptyList()
 
-        val allPlayerUids = teams.flatMap { listOf(it.playerAUid, it.playerBUid) }.distinct()
+        // Only fetch users for linked players (non-null UIDs)
+        val allPlayerUids = teams.flatMap { listOfNotNull(it.playerAUid, it.playerBUid) }.distinct()
         val allCategoryIds = teams.map { it.category.id }.distinct()
         val userMap = teamRepository.findUsersByIds(allPlayerUids).associateBy { it.uid }
 
-        val allRankings = rankingService.getRankingForMultipleUsersAndCategories(
-            allPlayerUids, allCategoryIds, "2025"
-        )
+        val allRankings = if (allPlayerUids.isNotEmpty()) {
+            rankingService.getRankingForMultipleUsersAndCategories(
+                allPlayerUids, allCategoryIds, "2025"
+            )
+        } else emptyList()
         val pointsByUserAndCategory =
             allRankings.associate { (it.userId to it.category.id) to it.totalPoints }
 
@@ -88,8 +95,8 @@ class TeamService(
 
             val sortedTeams = teamsInCategory
                 .map { team ->
-                    val aPts = pointsByUserAndCategory[(team.playerAUid to team.category.id)] ?: 0
-                    val bPts = pointsByUserAndCategory[(team.playerBUid to team.category.id)] ?: 0
+                    val aPts = team.playerAUid?.let { pointsByUserAndCategory[(it to team.category.id)] } ?: 0
+                    val bPts = team.playerBUid?.let { pointsByUserAndCategory[(it to team.category.id)] } ?: 0
                     Triple(team, aPts, bPts)
                 }
                 .sortedByDescending { it.second + it.third }
@@ -100,8 +107,8 @@ class TeamService(
                     TeamWithPlayerDto(
                         id = team.id,
                         category = team.category,
-                        playerA = userMap[team.playerAUid]?.toTeamPlayerDto() ?: error("No user A"),
-                        playerB = userMap[team.playerBUid]?.toTeamPlayerDto() ?: error("No user B"),
+                        playerA = resolvePlayer(team.playerAUid, team.playerAName, team.playerAEmail, team.playerAPhone, userMap),
+                        playerB = resolvePlayer(team.playerBUid, team.playerBName, team.playerBEmail, team.playerBPhone, userMap),
                         playerAPoints = aPts,
                         playerAPaid = team.playerAPaid,
                         playerBPoints = bPts,
@@ -114,6 +121,26 @@ class TeamService(
         }
     }
 
+    /**
+     * Resolves a player to a TeamPlayerDto.
+     * If uid is provided, looks up the user in the map.
+     * If uid is null but name is provided, creates a manual player entry.
+     */
+    private fun resolvePlayer(
+        uid: String?,
+        manualName: String?,
+        manualEmail: String?,
+        manualPhone: String?,
+        userMap: Map<String, UserDto>
+    ): TeamPlayerDto {
+        return when {
+            uid != null -> userMap[uid]?.toTeamPlayerDto()
+                ?: error("No user found for uid: $uid")
+            manualName != null -> createManualPlayerDto(manualName, manualEmail, manualPhone)
+            else -> error("Player has neither uid nor name")
+        }
+    }
+
     fun mapTeamToPlayerDtoWithPoints(
         team: Team,
         userMap: Map<String, UserDto>,
@@ -121,19 +148,17 @@ class TeamService(
     ): TeamWithPlayerDto {
         val categoryId = team.category.id
 
-        val playerA = userMap[team.playerAUid]
-            ?: error("No se encontró el usuario A con uid: ${team.playerAUid}")
-        val playerB = userMap[team.playerBUid]
-            ?: error("No se encontró el usuario B con uid: ${team.playerBUid}")
+        val playerA = resolvePlayer(team.playerAUid, team.playerAName, team.playerAEmail, team.playerAPhone, userMap)
+        val playerB = resolvePlayer(team.playerBUid, team.playerBName, team.playerBEmail, team.playerBPhone, userMap)
 
         return TeamWithPlayerDto(
             id = team.id,
             category = team.category,
-            playerA = playerA.toTeamPlayerDto(),
-            playerB = playerB.toTeamPlayerDto(),
-            playerAPoints = pointsByUserAndCategory[team.playerAUid to categoryId] ?: 0,
+            playerA = playerA,
+            playerB = playerB,
+            playerAPoints = team.playerAUid?.let { pointsByUserAndCategory[it to categoryId] } ?: 0,
             playerAPaid = team.playerAPaid,
-            playerBPoints = pointsByUserAndCategory[team.playerBUid to categoryId] ?: 0,
+            playerBPoints = team.playerBUid?.let { pointsByUserAndCategory[it to categoryId] } ?: 0,
             playerBPaid = team.playerBPaid
         )
     }
@@ -150,6 +175,16 @@ class TeamService(
                 teamId = req.teamId,
                 paidField = fieldName,
                 value = false
+            )
+        }
+
+        // For manual players (no playerUid), use simple direct update
+        // The RPC function requires playerUid for audit/payment tracking
+        if (req.playerUid.isNullOrBlank()) {
+            return teamRepository.updateTeamPaidStatus(
+                teamId = req.teamId,
+                paidField = fieldName,
+                value = true
             )
         }
 
@@ -253,7 +288,14 @@ class TeamService(
                 playerBUid = request.partnerUid,
                 categoryId = request.categoryId,
                 playerAPaid = false,
-                playerBPaid = false
+                playerBPaid = false,
+                // Manual player fields
+                playerAName = request.playerName,
+                playerAEmail = request.playerEmail,
+                playerAPhone = request.playerPhone,
+                playerBName = request.partnerName,
+                playerBEmail = request.partnerEmail,
+                playerBPhone = request.partnerPhone
             )
         )
     }
@@ -286,17 +328,20 @@ class TeamService(
     suspend fun getTeamWithFullPlayerInfo(teamId: String): TeamWithPlayerDto? {
         val team = teamRepository.findTeamById(teamId) ?: return null
 
-        val userUids = listOf(team.playerAUid, team.playerBUid)
+        // Only fetch users for linked players (non-null UIDs)
+        val userUids = listOfNotNull(team.playerAUid, team.playerBUid)
         val users = teamRepository.findUsersByIds(userUids).associateBy { it.uid }
 
-        val points = rankingService.getRankingForMultipleUsersAndCategories(
-            userUids,
-            listOf(team.category.id),
-            "2025"
-        ).associateBy(
-            { it.userId to it.category.id },
-            { it.totalPoints }
-        )
+        val points = if (userUids.isNotEmpty()) {
+            rankingService.getRankingForMultipleUsersAndCategories(
+                userUids,
+                listOf(team.category.id),
+                "2025"
+            ).associateBy(
+                { it.userId to it.category.id },
+                { it.totalPoints }
+            )
+        } else emptyMap()
 
         val base = mapTeamToPlayerDtoWithPoints(team, users, points)
 
