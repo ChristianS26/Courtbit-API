@@ -49,4 +49,14 @@ interface TeamRepository {
     // Manual player linking
     suspend fun findPendingTournamentLinks(email: String, phone: String?): List<PendingTournamentPlayerLinkResponse>
     suspend fun linkTournamentPlayerToUser(teamId: String, playerPosition: String, userUid: String): Boolean
+
+    // Replace player in team
+    suspend fun replacePlayer(
+        teamId: String,
+        playerPosition: String,
+        newPlayerUid: String?,
+        newPlayerName: String?,
+        newPlayerEmail: String?,
+        newPlayerPhone: String?
+    ): Boolean
 }

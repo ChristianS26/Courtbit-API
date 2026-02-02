@@ -12,6 +12,7 @@ import models.registrationcode.RegisterTeamResult
 import models.teams.MarkPaymentRequest
 import models.teams.RegisterTeamRequest
 import models.teams.RegisteredInTournamentResponse
+import models.teams.ReplacePlayerRequest
 import models.teams.RegistrationItemDto
 import models.teams.RegistrationTournamentDto
 import models.teams.Team
@@ -460,5 +461,38 @@ class TeamService(
                 paidByPartner = r.paid_by_partner
             )
         }
+    }
+
+    suspend fun replacePlayer(request: ReplacePlayerRequest): Boolean {
+        // Validate player position
+        if (request.playerPosition != "a" && request.playerPosition != "b") {
+            return false
+        }
+
+        // Validate new player has either uid OR name
+        val hasNewPlayerIdentity = request.newPlayerUid != null || !request.newPlayerName.isNullOrBlank()
+        if (!hasNewPlayerIdentity) {
+            return false
+        }
+
+        // Get existing team to validate and check for duplicate player
+        val existingTeam = teamRepository.findTeamById(request.teamId) ?: return false
+
+        // If replacing with a registered user, check they're not already on the team
+        if (request.newPlayerUid != null) {
+            val otherPlayerUid = if (request.playerPosition == "a") existingTeam.playerBUid else existingTeam.playerAUid
+            if (request.newPlayerUid == otherPlayerUid) {
+                return false // Can't have same player twice on a team
+            }
+        }
+
+        return teamRepository.replacePlayer(
+            teamId = request.teamId,
+            playerPosition = request.playerPosition,
+            newPlayerUid = request.newPlayerUid,
+            newPlayerName = request.newPlayerName,
+            newPlayerEmail = request.newPlayerEmail,
+            newPlayerPhone = request.newPlayerPhone
+        )
     }
 }

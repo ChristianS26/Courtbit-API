@@ -502,6 +502,48 @@ class TeamRepositoryImpl(
         }
         return success
     }
+
+    override suspend fun replacePlayer(
+        teamId: String,
+        playerPosition: String,
+        newPlayerUid: String?,
+        newPlayerName: String?,
+        newPlayerEmail: String?,
+        newPlayerPhone: String?
+    ): Boolean {
+        val uidField = if (playerPosition == "a") "player_a_uid" else "player_b_uid"
+        val nameField = if (playerPosition == "a") "player_a_name" else "player_b_name"
+        val emailField = if (playerPosition == "a") "player_a_email" else "player_b_email"
+        val phoneField = if (playerPosition == "a") "player_a_phone" else "player_b_phone"
+        val paidField = if (playerPosition == "a") "player_a_paid" else "player_b_paid"
+
+        // Build patch body using JsonObject for proper null handling
+        val patchBody = buildJsonObject {
+            if (newPlayerUid != null) {
+                // Registered CourtBit user - set UID, clear manual fields, reset payment
+                put(uidField, newPlayerUid)
+                put(nameField, kotlinx.serialization.json.JsonNull)
+                put(emailField, kotlinx.serialization.json.JsonNull)
+                put(phoneField, kotlinx.serialization.json.JsonNull)
+            } else {
+                // Manual player - set manual fields, clear UID, reset payment
+                put(uidField, kotlinx.serialization.json.JsonNull)
+                put(nameField, newPlayerName)
+                put(emailField, newPlayerEmail)
+                put(phoneField, newPlayerPhone)
+            }
+            put(paidField, false)
+        }
+
+        val response = client.patch("$apiUrl/teams?id=eq.$teamId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(patchBody.toString())
+        }
+
+        return response.status.isSuccess()
+    }
 }
 
 /**

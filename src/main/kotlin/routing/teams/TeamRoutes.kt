@@ -20,6 +20,7 @@ import models.teams.CheckTeamResponse
 import models.teams.MarkPaymentRequest
 import models.teams.RegisterTeamRequest
 import models.teams.RegisteredInTournamentResponse
+import models.teams.ReplacePlayerRequest
 import models.teams.ReportRequest
 import models.teams.TeamResultStatusResponse
 import models.teams.UpdateTeamCategoryRequest
@@ -252,6 +253,55 @@ fun Route.teamRoutes(
                     call.respond(HttpStatusCode.OK, mapOf("success" to true))
                 } else {
                     call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo cambiar la categoría"))
+                }
+            }
+
+            patch("{teamId}/replace-player") {
+                call.requireOrganizer() ?: return@patch
+
+                val teamId = call.parameters["teamId"]
+                if (teamId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "teamId requerido"))
+                    return@patch
+                }
+
+                val request = try {
+                    call.receive<ReplacePlayerRequest>()
+                } catch (e: Exception) {
+                    call.respond(
+                        status = HttpStatusCode.BadRequest,
+                        message = mapOf("error" to "Formato de solicitud inválido: ${e.localizedMessage}")
+                    )
+                    return@patch
+                }
+
+                // Validate player position
+                if (request.playerPosition != "a" && request.playerPosition != "b") {
+                    call.respond(
+                        status = HttpStatusCode.BadRequest,
+                        message = mapOf("error" to "playerPosition debe ser 'a' o 'b'")
+                    )
+                    return@patch
+                }
+
+                // Validate new player has identity
+                val hasIdentity = request.newPlayerUid != null || !request.newPlayerName.isNullOrBlank()
+                if (!hasIdentity) {
+                    call.respond(
+                        status = HttpStatusCode.BadRequest,
+                        message = mapOf("error" to "El nuevo jugador debe tener uid o nombre")
+                    )
+                    return@patch
+                }
+
+                val success = teamService.replacePlayer(request.copy(teamId = teamId))
+                if (success) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "No se pudo reemplazar el jugador. Verifica que el jugador no esté duplicado en el equipo.")
+                    )
                 }
             }
 
