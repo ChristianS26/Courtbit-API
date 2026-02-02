@@ -164,10 +164,8 @@ fun Route.teamRoutes(
                     call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournamentId requerido"))
                     return@patch
                 }
-                if (req.playerUid.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "playerUid requerido"))
-                    return@patch
-                }
+                // Note: playerUid can be null for manual players (not linked to a CourtBit account)
+                // The team is identified by teamId and player slot by paidBy (player_a/player_b)
 
                 val ok = teamService.markPaymentManual(req, adminUid)
                 if (ok) {
