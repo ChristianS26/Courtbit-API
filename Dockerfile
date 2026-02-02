@@ -1,6 +1,5 @@
 # Etapa 1: Build con Gradle
-FROM gradle:8.10.2-jdk17-jammy AS builder
-# puedes usar otra versión 8.x reciente si prefieres
+FROM gradle:8.4-jdk17-jammy AS builder
 
 WORKDIR /app
 COPY . /app
