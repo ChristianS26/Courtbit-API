@@ -1,11 +1,10 @@
 -- Migration: Add tournament_type and organizer_name to user registrations RPC functions
--- This allows the iOS app to display tournament type and organizer in My Tournaments view
+-- Also fixes: tournaments.status computed from dates, organizers.name instead of display_name
 
--- Drop existing functions first to change return type
 DROP FUNCTION IF EXISTS get_user_registrations(TEXT, TEXT, INT, INT);
 DROP FUNCTION IF EXISTS get_user_registrations_in_tournament(TEXT, UUID);
 
--- Recreate get_user_registrations function with tournament_type and organizer_name
+-- Recreate get_user_registrations with tournament_type, organizer_name, and computed status
 CREATE OR REPLACE FUNCTION get_user_registrations(
     p_user_uid TEXT,
     p_status TEXT DEFAULT NULL,
@@ -44,9 +43,13 @@ BEGIN
         tr.name AS tournament_name,
         tr.start_date AS tournament_start,
         tr.end_date AS tournament_end,
-        tr.status AS tournament_status,
+        CASE
+            WHEN tr.end_date < CURRENT_DATE THEN 'past'
+            WHEN tr.start_date <= CURRENT_DATE AND tr.end_date >= CURRENT_DATE THEN 'active'
+            ELSE 'upcoming'
+        END AS tournament_status,
         tr.type AS tournament_type,
-        o.display_name AS organizer_name,
+        o.name AS organizer_name,
         t.category_id,
         c.name AS category_name,
         (t.player_a_uid = p_user_uid) AS i_am_player_a,
@@ -58,7 +61,6 @@ BEGIN
             WHEN t.player_a_uid = p_user_uid THEN t.player_b_paid
             ELSE t.player_a_paid
         END AS paid_by_partner,
-        -- Partner info (the other player)
         CASE
             WHEN t.player_a_uid = p_user_uid THEN t.player_b_uid
             ELSE t.player_a_uid
@@ -90,14 +92,19 @@ BEGIN
     LEFT JOIN users ua ON ua.uid = t.player_a_uid
     LEFT JOIN users ub ON ub.uid = t.player_b_uid
     WHERE (t.player_a_uid = p_user_uid OR t.player_b_uid = p_user_uid)
-    AND (p_status IS NULL OR tr.status = p_status)
+    AND (p_status IS NULL OR
+        CASE
+            WHEN tr.end_date < CURRENT_DATE THEN 'past'
+            WHEN tr.start_date <= CURRENT_DATE AND tr.end_date >= CURRENT_DATE THEN 'active'
+            ELSE 'upcoming'
+        END = p_status)
     ORDER BY tr.start_date DESC
     LIMIT p_limit
     OFFSET p_offset;
 END;
 $$;
 
--- Update get_user_registrations_in_tournament function to include tournament_type and organizer_name
+-- Recreate get_user_registrations_in_tournament with tournament_type, organizer_name, and computed status
 CREATE OR REPLACE FUNCTION get_user_registrations_in_tournament(
     p_user_uid TEXT,
     p_tournament_id UUID
@@ -134,9 +141,13 @@ BEGIN
         tr.name AS tournament_name,
         tr.start_date AS tournament_start,
         tr.end_date AS tournament_end,
-        tr.status AS tournament_status,
+        CASE
+            WHEN tr.end_date < CURRENT_DATE THEN 'past'
+            WHEN tr.start_date <= CURRENT_DATE AND tr.end_date >= CURRENT_DATE THEN 'active'
+            ELSE 'upcoming'
+        END AS tournament_status,
         tr.type AS tournament_type,
-        o.display_name AS organizer_name,
+        o.name AS organizer_name,
         t.category_id,
         c.name AS category_name,
         (t.player_a_uid = p_user_uid) AS i_am_player_a,
@@ -148,7 +159,6 @@ BEGIN
             WHEN t.player_a_uid = p_user_uid THEN t.player_b_paid
             ELSE t.player_a_paid
         END AS paid_by_partner,
-        -- Partner info (the other player)
         CASE
             WHEN t.player_a_uid = p_user_uid THEN t.player_b_uid
             ELSE t.player_a_uid
