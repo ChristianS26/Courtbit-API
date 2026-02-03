@@ -35,6 +35,9 @@ fun Route.authRoutes(authService: AuthService, emailService: EmailService) {
 
                 val response = authService.register(request)
                 call.respond(HttpStatusCode.OK, response)
+            } catch (e: io.ktor.server.plugins.BadRequestException) {
+                call.application.environment.log.warn("BadRequest (deserialization) on /auth/register: ${e.message}")
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid request format: ${e.cause?.message ?: e.message}"))
             } catch (e: ValidationException) {
                 call.application.environment.log.warn("Validation error on /auth/register: ${e.errors}")
                 call.respond(HttpStatusCode.BadRequest, mapOf("errors" to e.errors))
