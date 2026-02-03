@@ -2,6 +2,16 @@ package models.league
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import models.teams.PendingTournamentPlayerLinkResponse
+
+/**
+ * Combined response for all pending player links (leagues and tournaments)
+ */
+@Serializable
+data class PendingLinksResponse(
+    @SerialName("league_links") val leagueLinks: List<PendingPlayerLinkResponse>,
+    @SerialName("tournament_links") val tournamentLinks: List<PendingTournamentPlayerLinkResponse>
+)
 
 /**
  * Response for pending player links

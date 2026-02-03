@@ -13,6 +13,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.league.LinkPlayerRequest
+import models.league.PendingLinksResponse
 import models.teams.LinkTournamentPlayerRequest
 import models.teams.LinkTournamentPlayerResponse
 import repositories.league.LeaguePlayerRepository
@@ -52,9 +53,9 @@ fun Route.playerLinkRoutes(
                     phone = user.phone
                 )
 
-                call.respond(HttpStatusCode.OK, mapOf(
-                    "league_links" to leagueLinks,
-                    "tournament_links" to tournamentLinks
+                call.respond(HttpStatusCode.OK, PendingLinksResponse(
+                    leagueLinks = leagueLinks,
+                    tournamentLinks = tournamentLinks
                 ))
             }
 
