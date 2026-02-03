@@ -481,25 +481,22 @@ class TeamRepositoryImpl(
         val emailField = if (playerPosition == "a") "player_a_email" else "player_b_email"
         val phoneField = if (playerPosition == "a") "player_a_phone" else "player_b_phone"
 
-        // Update: set UID and clear manual fields
-        val patchBody = mapOf(
-            uidField to userUid,
-            nameField to null,
-            emailField to null,
-            phoneField to null
-        )
+        // Update: set UID and clear manual fields using JsonNull for proper serialization
+        val patchBody = buildJsonObject {
+            put(uidField, userUid)
+            put(nameField, kotlinx.serialization.json.JsonNull)
+            put(emailField, kotlinx.serialization.json.JsonNull)
+            put(phoneField, kotlinx.serialization.json.JsonNull)
+        }
 
         val response = client.patch("$apiUrl/teams?id=eq.$teamId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             contentType(ContentType.Application.Json)
-            setBody(patchBody)
+            setBody(patchBody.toString())
         }
 
         val success = response.status.isSuccess()
-        if (success) {
-        } else {
-        }
         return success
     }
 
