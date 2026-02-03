@@ -9,7 +9,8 @@ data class CourtConfig(
     val name: String,
     val number: Int,
     @SerialName("available_from") val availableFrom: String, // "09:00"
-    @SerialName("available_to") val availableTo: String // "22:00"
+    @SerialName("available_to") val availableTo: String, // "22:00"
+    @SerialName("is_active") val isActive: Boolean = true // Whether court is shown in calendar
 )
 
 @Serializable
