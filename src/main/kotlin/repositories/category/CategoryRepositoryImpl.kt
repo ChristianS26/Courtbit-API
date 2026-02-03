@@ -114,48 +114,37 @@ class CategoryRepositoryImpl(
         tournamentType: String
     ): List<CategoryPriceResponse> {
 
-        // Obtener IDs de categoría asociadas al torneo
-        val categoryIdsResponse = client.get("${config.apiUrl}/tournament_categories?select=category_id&tournament_id=eq.$tournamentId") {
+        // Obtener categorías asociadas al torneo con información de la categoría
+        val response = client.get("${config.apiUrl}/tournament_categories") {
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
+            parameter("tournament_id", "eq.$tournamentId")
+            parameter("select", "category_id,categories(id,name,position)")
+            parameter("order", "categories(position)")
         }
 
-        val body = categoryIdsResponse.bodyAsText()
-        // Cambia a Map<String, Int>
-        val categoryIdMaps = json.decodeFromString<List<Map<String, Int>>>(body)
-        val categoryIds = categoryIdMaps.mapNotNull { it["category_id"] }
-
-
-        if (categoryIds.isEmpty()) return emptyList()
-
-        // Armar el IN sin comillas
-        val idsInClause = categoryIds.joinToString(",") { it.toString() }
-
-        // Obtener precios por categoría
-        val pricesResponse = client.get("${config.apiUrl}/category_prices?category_id=in.($idsInClause)&tournament_type=ilike.$tournamentType") {
-            header("apikey", config.apiKey)
-            header("Authorization", "Bearer ${config.apiKey}")
-        }
-        val pricesJson = pricesResponse.bodyAsText()
-        val prices = json.decodeFromString<List<CategoryPriceResponse>>(pricesJson)
-
-        // Obtener posiciones
-        val positionsResponse = client.get("${config.apiUrl}/categories?select=id,position&id=in.($idsInClause)") {
-            header("apikey", config.apiKey)
-            header("Authorization", "Bearer ${config.apiKey}")
-        }
-        val positionsJson = positionsResponse.bodyAsText()
-        val positions = json.decodeFromString<List<CategoryPosition>>(positionsJson)
-
-        // Mapear y ordenar
-        val positionMap = positions.associateBy { it.id }
-
-        val sorted = prices.sortedBy { price ->
-            positionMap[price.categoryId.toString()]?.position ?: Int.MAX_VALUE
+        if (!response.status.isSuccess()) {
+            return emptyList()
         }
 
+        val body = response.bodyAsText()
+        val rawList = json.decodeFromString<List<JsonObject>>(body)
 
-        return sorted
+        // Mapear a CategoryPriceResponse con precio 0 (inscripciones gratuitas)
+        return rawList.mapNotNull { obj ->
+            val categoryId = obj["category_id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+            val categoryObj = obj["categories"]?.jsonObject ?: return@mapNotNull null
+            val name = categoryObj["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val position = categoryObj["position"]?.jsonPrimitive?.intOrNull ?: Int.MAX_VALUE
+
+            CategoryPriceResponse(
+                id = null,
+                tournamentType = tournamentType,
+                categoryId = categoryId,
+                price = 0, // Inscripciones gratuitas
+                categoryName = name
+            )
+        }.sortedBy { it.categoryId }
     }
 
 
