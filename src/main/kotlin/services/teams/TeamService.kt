@@ -397,7 +397,9 @@ class TeamService(
                     name = r.tournament_name,
                     startDate = r.tournament_start,
                     endDate = r.tournament_end,
-                    status = r.tournament_status
+                    status = r.tournament_status,
+                    type = r.tournament_type,
+                    organizerName = r.organizer_name
                 ),
                 category = CategoryResponseDto(
                     id = r.category_id,
@@ -456,7 +458,9 @@ class TeamService(
                     name = r.tournament_name,
                     startDate = r.tournament_start,
                     endDate = r.tournament_end,
-                    status = r.tournament_status
+                    status = r.tournament_status,
+                    type = r.tournament_type,
+                    organizerName = r.organizer_name
                 ),
                 category = CategoryResponseDto(
                     id = r.category_id,

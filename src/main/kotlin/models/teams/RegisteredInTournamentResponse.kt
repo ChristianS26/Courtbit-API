@@ -17,6 +17,8 @@ data class RegistrationTournamentDto(
     @SerialName("start_date") val startDate: String? = null,
     @SerialName("end_date") val endDate: String? = null,
     @SerialName("status") val status: String? = null, // "active" | "upcoming" | "past"
+    @SerialName("type") val type: String? = null,
+    @SerialName("organizer_name") val organizerName: String? = null,
 )
 
 /** Partner ahora es un TeamPlayerDto completo (snake_case). */

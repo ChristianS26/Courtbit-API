@@ -10,6 +10,8 @@ data class RpcRegistrationRowDto(
     val tournament_start: String? = null,   // ISO-8601 como String
     val tournament_end: String? = null,
     val tournament_status: String? = null,  // "active" | "upcoming" | "past"
+    val tournament_type: String? = null,    // "singles" | "doubles"
+    val organizer_name: String? = null,     // Organizer display name
 
     val category_id: Int,
     val category_name: String,
