@@ -29,4 +29,8 @@ class CategoryService(
     suspend fun getCategoryNamesByIds(ids: List<Int>): List<String> {
         return repository.getCategoriesByIds(ids).map { it.name }
     }
+
+    suspend fun updateCategoryMaxTeams(tournamentId: String, categoryId: Int, maxTeams: Int?): Boolean {
+        return repository.updateCategoryMaxTeams(tournamentId, categoryId, maxTeams)
+    }
 }

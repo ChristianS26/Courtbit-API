@@ -329,6 +329,38 @@ fun Route.tournamentRoutes(
                 }
             }
 
+            // PATCH /tournaments/{id}/categories/{categoryId}/max-teams - Update max teams for a category
+            patch("{id}/categories/{categoryId}/max-teams") {
+                val id = call.validateOrganizerAndId() ?: return@patch
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "categoryId inválido"))
+                    return@patch
+                }
+
+                val payload = try {
+                    call.receive<Map<String, Int?>>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato inválido"))
+                    return@patch
+                }
+
+                // maxTeams can be null (unlimited) or a positive integer
+                val maxTeams = payload["maxTeams"]
+                if (maxTeams != null && maxTeams <= 0) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "maxTeams debe ser mayor a 0 o null"))
+                    return@patch
+                }
+
+                val updated = categoryService.updateCategoryMaxTeams(id, categoryId, maxTeams)
+                if (updated) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo actualizar maxTeams"))
+                }
+            }
+
             // POST /tournaments/{id}/inherit-courts - Copy courts from associated club
             post("{id}/inherit-courts") {
                 val id = call.validateOrganizerAndId() ?: return@post

@@ -7,5 +7,6 @@ data class TournamentCategoryDto(
     val id: String,
     val name: String,
     val position: Int,
-    val color: String? = null  // Hex color like "#3B82F6"
+    val color: String? = null,  // Hex color like "#3B82F6"
+    val maxTeams: Int? = null   // Maximum teams allowed for this category
 )

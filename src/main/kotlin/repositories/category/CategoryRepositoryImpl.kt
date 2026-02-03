@@ -43,14 +43,15 @@ class CategoryRepositoryImpl(
     }
 
     override suspend fun assignCategoriesToTournament(request: TournamentCategoryRequest): Boolean {
-        // Support both formats: simple categoryIds list or categories with colors
+        // Support both formats: simple categoryIds list or categories with colors/maxTeams
         val payload = if (request.categories != null) {
-            // New format with colors
+            // New format with colors and maxTeams
             request.categories.map { cat ->
                 TournamentCategoryPair(
                     tournament_id = request.tournamentId,
                     category_id = cat.categoryId,
-                    color = cat.color
+                    color = cat.color,
+                    max_teams = cat.maxTeams
                 )
             }
         } else {
@@ -59,7 +60,8 @@ class CategoryRepositoryImpl(
                 TournamentCategoryPair(
                     tournament_id = request.tournamentId,
                     category_id = categoryId,
-                    color = null
+                    color = null,
+                    max_teams = null
                 )
             } ?: emptyList()
         }
@@ -87,7 +89,7 @@ class CategoryRepositoryImpl(
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
             parameter("tournament_id", "eq.$tournamentId")
-            parameter("select", "category_id,color,categories(name,position)")
+            parameter("select", "category_id,color,max_teams,categories(name,position)")
             parameter("order", "categories(position)")
         }
 
@@ -101,7 +103,8 @@ class CategoryRepositoryImpl(
                     id = it["category_id"]?.jsonPrimitive?.content ?: "",
                     name = it["categories"]?.jsonObject?.get("name")?.jsonPrimitive?.content ?: "",
                     position = it["categories"]?.jsonObject?.get("position")?.jsonPrimitive?.intOrNull ?: Int.MAX_VALUE,
-                    color = it["color"]?.jsonPrimitive?.content
+                    color = it["color"]?.jsonPrimitive?.content,
+                    maxTeams = it["max_teams"]?.jsonPrimitive?.intOrNull
                 )
             }.sortedBy { it.position }
         } else {
@@ -161,6 +164,25 @@ class CategoryRepositoryImpl(
         } else {
             emptyList()
         }
+    }
+
+    override suspend fun updateCategoryMaxTeams(tournamentId: String, categoryId: Int, maxTeams: Int?): Boolean {
+        val body = if (maxTeams != null) {
+            json.encodeToString(MapSerializer(String.serializer(), Int.serializer()), mapOf("max_teams" to maxTeams))
+        } else {
+            """{"max_teams": null}"""
+        }
+
+        val response = client.patch("${config.apiUrl}/tournament_categories") {
+            header("apikey", config.apiKey)
+            header("Authorization", "Bearer ${config.apiKey}")
+            contentType(ContentType.Application.Json)
+            parameter("tournament_id", "eq.$tournamentId")
+            parameter("category_id", "eq.$categoryId")
+            setBody(body)
+        }
+
+        return response.status.isSuccess()
     }
 
 }

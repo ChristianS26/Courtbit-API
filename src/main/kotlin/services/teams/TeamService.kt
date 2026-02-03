@@ -22,6 +22,7 @@ import models.teams.TeamRequest
 import models.teams.TeamWithPlayerDto
 import models.teams.createManualPlayerDto
 import models.teams.toTeamPlayerDto
+import repositories.category.CategoryRepository
 import repositories.registrationcode.RegistrationCodeRepository
 import services.ranking.RankingService
 
@@ -29,6 +30,7 @@ class TeamService(
     private val teamRepository: TeamRepository,
     private val registrationCodeRepository: RegistrationCodeRepository,
     private val rankingService: RankingService,
+    private val categoryRepository: CategoryRepository,
 ) {
     enum class PlayerType(val fieldName: String) {
         PLAYER_A("player_a_paid"),
@@ -63,7 +65,21 @@ class TeamService(
         tournamentId: String
     ): List<TeamGroupByCategoryFullResponse> {
         val teams = teamRepository.findTeamsByTournament(tournamentId)
-        if (teams.isEmpty()) return emptyList()
+
+        // Fetch tournament categories with maxTeams (even if no teams yet)
+        val tournamentCategories = categoryRepository.getCategoriesByTournamentId(tournamentId)
+        val maxTeamsByCategoryId = tournamentCategories.associate { it.id.toIntOrNull() to it.maxTeams }
+
+        if (teams.isEmpty()) {
+            // Return categories with maxTeams even when no teams registered
+            return tournamentCategories.map { cat ->
+                TeamGroupByCategoryFullResponse(
+                    categoryName = cat.name,
+                    teams = emptyList(),
+                    maxTeams = cat.maxTeams
+                )
+            }
+        }
 
         // Only fetch users for linked players (non-null UIDs)
         val allPlayerUids = teams.flatMap { listOfNotNull(it.playerAUid, it.playerBUid) }.distinct()
@@ -117,7 +133,8 @@ class TeamService(
                         hasResult = teamIdsWithResult.contains(team.id),
                         restriction = team.restriction
                     )
-                }
+                },
+                maxTeams = maxTeamsByCategoryId[cat.id]
             )
         }
     }
