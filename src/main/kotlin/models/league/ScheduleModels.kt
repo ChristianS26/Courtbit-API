@@ -59,9 +59,9 @@ data class UpdateMatchdayScheduleOverrideRequest(
 // Update DayGroup Assignment
 @Serializable
 data class UpdateDayGroupAssignmentRequest(
-    @SerialName("match_date") val matchDate: String?,
-    @SerialName("time_slot") val timeSlot: String?,
-    @SerialName("court_index") val courtIndex: Int?,
+    @SerialName("match_date") val matchDate: String? = null,
+    @SerialName("time_slot") val timeSlot: String? = null,
+    @SerialName("court_index") val courtIndex: Int? = null,
     @SerialName("court_id") val courtId: String? = null
 )
 
