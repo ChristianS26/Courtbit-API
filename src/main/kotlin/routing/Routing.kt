@@ -47,6 +47,7 @@ import routing.notifications.pushRoutes
 import routing.organization.organizationTeamRoutes
 import routing.organizer.organizerRoutes
 import routing.payments.PaymentRoutes
+import routing.ranking.PointsConfigRoutes
 import routing.ranking.RankingRoutes
 import routing.remoteconfig.remoteConfigRoutes
 import routing.shirtSizeRoutes
@@ -122,6 +123,9 @@ fun Application.configureRouting() {
 
             // Ranking
             get<RankingRoutes>().register(this)
+
+            // Points Config
+            get<PointsConfigRoutes>().register(this)
 
             // Remote Config
             remoteConfigRoutes(get<RemoteConfigService>())

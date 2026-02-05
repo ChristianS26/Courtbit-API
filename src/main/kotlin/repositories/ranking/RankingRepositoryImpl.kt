@@ -39,7 +39,7 @@ class RankingRepositoryImpl(
         return response.bodyAsText().replace("\"", "")
     }
 
-    override suspend fun getRanking(season: String?, categoryId: Int?): List<RankingItemResponse> {
+    override suspend fun getRanking(season: String?, categoryId: Int?, organizerId: String?): List<RankingItemResponse> {
         return try {
             val response = client.get("$apiUrl/ranking") {
                 header("apikey", apiKey)
@@ -50,6 +50,7 @@ class RankingRepositoryImpl(
                 )
                 if (season != null) parameter("season", "eq.$season")
                 if (categoryId != null) parameter("category_id", "eq.$categoryId")
+                if (organizerId != null) parameter("organizer_id", "eq.$organizerId")
             }
             json.decodeFromString(ListSerializer(RankingItemResponse.serializer()), response.bodyAsText())
         } catch (e: Exception) {

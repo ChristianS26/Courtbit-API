@@ -2,6 +2,7 @@ package services.ranking
 
 import com.incodap.repositories.ranking.RankingRepository
 import models.ranking.AddRankingEventRequest
+import models.ranking.BatchRankingRequest
 import models.ranking.PlayerProfileResponse
 import models.ranking.PublicUser
 import models.ranking.Ranking
@@ -13,20 +14,36 @@ class RankingService(
     private val repository: RankingRepository,
 ) {
 
-    suspend fun addRankingEvent(request: AddRankingEventRequest) {
-        repository.addRankingEvent(request)
+    suspend fun addRankingEvent(request: AddRankingEventRequest): String {
+        return repository.addRankingEvent(request)
+    }
+
+    suspend fun batchAddRankingEvents(request: BatchRankingRequest): List<String> {
+        return request.entries.map { entry ->
+            repository.addRankingEvent(
+                AddRankingEventRequest(
+                    userId = entry.userId,
+                    season = request.season,
+                    categoryId = request.categoryId,
+                    points = entry.points,
+                    tournamentId = request.tournamentId,
+                    position = entry.position
+                )
+            )
+        }
     }
 
     suspend fun getRanking(
         season: String?,
-        categoryId: Int?
+        categoryId: Int?,
+        organizerId: String? = null
     ): List<RankingItemResponse> {
         // Collator en español para ordenar nombres ignorando mayúsculas/acentos
         val collator = Collator.getInstance(Locale("es", "ES")).apply {
             strength = Collator.PRIMARY
         }
 
-        val sorted = repository.getRanking(season, categoryId)
+        val sorted = repository.getRanking(season, categoryId, organizerId)
             .sortedWith(
                 compareByDescending<RankingItemResponse> { it.totalPoints }
                     .thenComparator { a, b ->

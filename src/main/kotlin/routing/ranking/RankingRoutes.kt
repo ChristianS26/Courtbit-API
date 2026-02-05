@@ -12,6 +12,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.ranking.AddRankingEventRequest
+import models.ranking.BatchRankingRequest
 import services.ranking.RankingService
 
 class RankingRoutes(
@@ -24,7 +25,8 @@ class RankingRoutes(
             get {
                 val season = call.request.queryParameters["season"]
                 val categoryId = call.request.queryParameters["category_id"]?.toIntOrNull()
-                val ranking = service.getRanking(season, categoryId)
+                val organizerId = call.request.queryParameters["organizer_id"]
+                val ranking = service.getRanking(season, categoryId, organizerId)
                 call.respond(ranking)
             }
 
@@ -71,6 +73,29 @@ class RankingRoutes(
                         HttpStatusCode.Created,
                         mapOf("message" to "Ranking event added", "eventId" to resultId)
                     )
+                }
+
+                // POST /api/ranking/batch — batch assign ranking points
+                post("/batch") {
+                    call.requireOrganizer() ?: return@post
+
+                    val request = call.receive<BatchRankingRequest>()
+                    try {
+                        val eventIds = service.batchAddRankingEvents(request)
+                        call.respond(
+                            HttpStatusCode.Created,
+                            mapOf(
+                                "message" to "Batch ranking events added",
+                                "count" to eventIds.size,
+                                "eventIds" to eventIds
+                            )
+                        )
+                    } catch (e: Exception) {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to (e.message ?: "Error adding batch ranking events"))
+                        )
+                    }
                 }
             }
         }
