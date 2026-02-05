@@ -88,7 +88,7 @@ class CategoryRepositoryImpl(
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
             parameter("tournament_id", "eq.$tournamentId")
-            parameter("select", "category_id,color,max_teams,categories(name,category_type,level)")
+            parameter("select", "category_id,color,max_teams,price,categories(name,category_type,level)")
             parameter("order", "categories(category_type),categories(level)")
         }
 
@@ -102,7 +102,8 @@ class CategoryRepositoryImpl(
                     id = it["category_id"]?.jsonPrimitive?.content ?: "",
                     name = it["categories"]?.jsonObject?.get("name")?.jsonPrimitive?.content ?: "",
                     color = it["color"]?.jsonPrimitive?.content,
-                    maxTeams = it["max_teams"]?.jsonPrimitive?.intOrNull
+                    maxTeams = it["max_teams"]?.jsonPrimitive?.intOrNull,
+                    price = it["price"]?.jsonPrimitive?.intOrNull
                 )
             }
         } else {
@@ -120,7 +121,7 @@ class CategoryRepositoryImpl(
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
             parameter("tournament_id", "eq.$tournamentId")
-            parameter("select", "category_id,categories(id,name,category_type,level)")
+            parameter("select", "category_id,price,categories(id,name,category_type,level)")
             parameter("order", "categories(category_type),categories(level)")
         }
 
@@ -131,17 +132,17 @@ class CategoryRepositoryImpl(
         val body = response.bodyAsText()
         val rawList = json.decodeFromString<List<JsonObject>>(body)
 
-        // Mapear a CategoryPriceResponse con precio 0 (inscripciones gratuitas)
         return rawList.mapNotNull { obj ->
             val categoryId = obj["category_id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
             val categoryObj = obj["categories"]?.jsonObject ?: return@mapNotNull null
             val name = categoryObj["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val price = obj["price"]?.jsonPrimitive?.intOrNull ?: 0
 
             CategoryPriceResponse(
                 id = null,
                 tournamentType = tournamentType,
                 categoryId = categoryId,
-                price = 0, // Inscripciones gratuitas
+                price = price,
                 categoryName = name
             )
         }.sortedBy { it.categoryId }
