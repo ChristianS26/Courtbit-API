@@ -16,6 +16,5 @@ data class DrawResponse(
 @Serializable
 data class CategoryResponse(
     val id: Int,
-    val name: String,
-    val position: Int
+    val name: String
 )

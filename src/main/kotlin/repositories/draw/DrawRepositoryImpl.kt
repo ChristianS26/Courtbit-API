@@ -25,7 +25,7 @@ class DrawRepositoryImpl(
             header("Authorization", "Bearer $apiKey")
             parameter(
                 "select",
-                "id,tournament_id,pdf_url,category:category_id(id,name,position)"
+                "id,tournament_id,pdf_url,category:category_id(id,name)"
             ) // Join de category usando alias
             parameter("tournament_id", "eq.$tournamentId")
         }

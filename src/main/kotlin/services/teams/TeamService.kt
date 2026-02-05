@@ -105,7 +105,7 @@ class TeamService(
         val categoriesOrdered = teams
             .map { it.category }
             .distinctBy { it.id }
-            .sortedWith(compareBy({ it.position }, { it.name }))
+            .sortedWith(compareBy({ it.name }))
 
         return categoriesOrdered.map { cat ->
             val teamsInCategory = teamsByCategoryId[cat.id].orEmpty()
@@ -404,7 +404,6 @@ class TeamService(
                 category = CategoryResponseDto(
                     id = r.category_id,
                     name = r.category_name,
-                    position = 0
                 ),
                 partner = r.partner_uid?.let {
                     TeamPlayerDto(
@@ -465,7 +464,6 @@ class TeamService(
                 category = CategoryResponseDto(
                     id = r.category_id,
                     name = r.category_name,
-                    position = 0
                 ),
                 partner = r.partner_uid?.let {
                     TeamPlayerDto(

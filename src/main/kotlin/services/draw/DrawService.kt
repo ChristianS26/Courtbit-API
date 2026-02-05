@@ -9,8 +9,7 @@ class DrawService(private val drawRepository: DrawRepository) {
     suspend fun getDrawsByTournament(tournamentId: String): List<DrawResponse> {
         return drawRepository.getDrawsByTournament(tournamentId)
             .sortedWith(
-                compareBy<DrawResponse> { it.category.position }
-                    .thenBy { it.category.name.lowercase() }
+                compareBy<DrawResponse> { it.category.name.lowercase() }
             )
     }
 
