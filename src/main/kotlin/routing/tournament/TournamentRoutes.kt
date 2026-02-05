@@ -104,7 +104,9 @@ fun Route.tournamentRoutes(
                     tournamentService.updateTournament(
                         id = id,
                         tournament = request.tournament,
-                        categoryIds = request.categoryIds
+                        categoryIds = request.categoryIds,
+                        categoryPrices = request.categoryPrices,
+                        categoryColors = request.categoryColors
                     )
                     call.respond(HttpStatusCode.OK, mapOf("success" to true))
 

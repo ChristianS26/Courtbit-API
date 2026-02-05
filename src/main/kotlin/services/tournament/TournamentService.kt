@@ -91,7 +91,9 @@ class TournamentService(
     suspend fun updateTournament(
         id: String,
         tournament: UpdateTournamentRequest,
-        categoryIds: List<Int>
+        categoryIds: List<Int>,
+        categoryPrices: List<CategoryPriceRequest>? = null,
+        categoryColors: List<CategoryColorRequest>? = null
     ) {
         // 1) validación de negocio (equipos)
         val existingCategoryIds = categoryService.getCategoryIdsByTournament(id).mapNotNull { it.toIntOrNull() }
@@ -110,6 +112,20 @@ class TournamentService(
         val rpc = repository.setTournamentCategories(id, categoryIds)
         rpc.getOrElse { err ->
             throw IllegalStateException("No se pudieron actualizar las categorías: ${err.message}")
+        }
+
+        // 4) Update category prices if provided
+        if (!categoryPrices.isNullOrEmpty()) {
+            val priceMap = categoryPrices.associate { it.categoryId to it.price }
+            repository.setCategoryPrices(id, priceMap)
+        }
+
+        // 5) Update category colors if provided
+        if (!categoryColors.isNullOrEmpty()) {
+            val colorMap = categoryColors.filter { it.color != null }.associate { it.categoryId to it.color!! }
+            if (colorMap.isNotEmpty()) {
+                repository.setCategoryColors(id, colorMap)
+            }
         }
     }
 

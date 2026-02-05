@@ -69,6 +69,7 @@ class TeamService(
         // Fetch tournament categories with maxTeams (even if no teams yet)
         val tournamentCategories = categoryRepository.getCategoriesByTournamentId(tournamentId)
         val maxTeamsByCategoryId = tournamentCategories.associate { it.id.toIntOrNull() to it.maxTeams }
+        val colorByCategoryId = tournamentCategories.associate { it.id.toIntOrNull() to it.color }
 
         if (teams.isEmpty()) {
             // Return categories with maxTeams even when no teams registered
@@ -76,7 +77,8 @@ class TeamService(
                 TeamGroupByCategoryFullResponse(
                     categoryName = cat.name,
                     teams = emptyList(),
-                    maxTeams = cat.maxTeams
+                    maxTeams = cat.maxTeams,
+                    color = cat.color
                 )
             }
         }
@@ -134,7 +136,8 @@ class TeamService(
                         restriction = team.restriction
                     )
                 },
-                maxTeams = maxTeamsByCategoryId[cat.id]
+                maxTeams = maxTeamsByCategoryId[cat.id],
+                color = colorByCategoryId[cat.id]
             )
         }
     }
