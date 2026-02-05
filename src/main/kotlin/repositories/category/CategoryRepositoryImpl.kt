@@ -13,7 +13,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import models.category.CategoryPosition
 import models.category.CategoryPriceResponse
 import models.category.CategoryResponseDto
 import models.category.TournamentCategoryDto
@@ -31,7 +30,7 @@ class CategoryRepositoryImpl(
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
             parameter("select", "*")
-            parameter("order", "position.asc")
+            parameter("order", "category_type.asc,level.asc")
         }
 
         return if (response.status.isSuccess()) {
@@ -89,8 +88,8 @@ class CategoryRepositoryImpl(
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
             parameter("tournament_id", "eq.$tournamentId")
-            parameter("select", "category_id,color,max_teams,categories(name,position)")
-            parameter("order", "categories(position)")
+            parameter("select", "category_id,color,max_teams,categories(name,category_type,level)")
+            parameter("order", "categories(category_type),categories(level)")
         }
 
         return if (response.status.isSuccess()) {
@@ -102,11 +101,10 @@ class CategoryRepositoryImpl(
                 TournamentCategoryDto(
                     id = it["category_id"]?.jsonPrimitive?.content ?: "",
                     name = it["categories"]?.jsonObject?.get("name")?.jsonPrimitive?.content ?: "",
-                    position = it["categories"]?.jsonObject?.get("position")?.jsonPrimitive?.intOrNull ?: Int.MAX_VALUE,
                     color = it["color"]?.jsonPrimitive?.content,
                     maxTeams = it["max_teams"]?.jsonPrimitive?.intOrNull
                 )
-            }.sortedBy { it.position }
+            }
         } else {
             emptyList()
         }
@@ -122,8 +120,8 @@ class CategoryRepositoryImpl(
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
             parameter("tournament_id", "eq.$tournamentId")
-            parameter("select", "category_id,categories(id,name,position)")
-            parameter("order", "categories(position)")
+            parameter("select", "category_id,categories(id,name,category_type,level)")
+            parameter("order", "categories(category_type),categories(level)")
         }
 
         if (!response.status.isSuccess()) {
@@ -138,7 +136,6 @@ class CategoryRepositoryImpl(
             val categoryId = obj["category_id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
             val categoryObj = obj["categories"]?.jsonObject ?: return@mapNotNull null
             val name = categoryObj["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
-            val position = categoryObj["position"]?.jsonPrimitive?.intOrNull ?: Int.MAX_VALUE
 
             CategoryPriceResponse(
                 id = null,
