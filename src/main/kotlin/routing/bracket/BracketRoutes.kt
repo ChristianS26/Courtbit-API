@@ -112,6 +112,40 @@ fun Route.bracketRoutes(bracketService: BracketService) {
             )
         }
 
+        // GET /api/brackets/{categoryId}/groups?tournament_id=xxx
+        // Public - anyone can view groups state
+        get("/{categoryId}/groups") {
+            val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+            if (categoryId == null) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                return@get
+            }
+
+            val tournamentId = call.request.queryParameters["tournament_id"]
+            if (tournamentId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                return@get
+            }
+
+            val result = bracketService.getGroupsState(tournamentId, categoryId)
+
+            result.fold(
+                onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                onFailure = { e ->
+                    when (e) {
+                        is IllegalArgumentException -> call.respond(
+                            HttpStatusCode.NotFound,
+                            mapOf("error" to (e.message ?: "Groups not found"))
+                        )
+                        else -> call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to (e.message ?: "Failed to get groups"))
+                        )
+                    }
+                }
+            )
+        }
+
         authenticate("auth-jwt") {
 
             // POST /api/brackets/{categoryId}?tournament_id=xxx
@@ -415,40 +449,6 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                             else -> call.respond(
                                 HttpStatusCode.InternalServerError,
                                 mapOf("error" to (e.message ?: "Group generation failed"))
-                            )
-                        }
-                    }
-                )
-            }
-
-            // GET /api/brackets/{categoryId}/groups?tournament_id=xxx
-            // Get current state of all groups
-            get("/{categoryId}/groups") {
-                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
-                if (categoryId == null) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
-                    return@get
-                }
-
-                val tournamentId = call.request.queryParameters["tournament_id"]
-                if (tournamentId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
-                    return@get
-                }
-
-                val result = bracketService.getGroupsState(tournamentId, categoryId)
-
-                result.fold(
-                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
-                    onFailure = { e ->
-                        when (e) {
-                            is IllegalArgumentException -> call.respond(
-                                HttpStatusCode.NotFound,
-                                mapOf("error" to (e.message ?: "Groups not found"))
-                            )
-                            else -> call.respond(
-                                HttpStatusCode.InternalServerError,
-                                mapOf("error" to (e.message ?: "Failed to get groups"))
                             )
                         }
                     }
