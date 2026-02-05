@@ -404,7 +404,7 @@ class BracketService(
             winnerTeam = validResult.winner
         )
 
-        // If score update succeeded, recalculate standings
+        // If score update succeeded, recalculate standings and advance winner
         if (updateResult.isSuccess) {
             val updatedMatch = updateResult.getOrNull()
             if (updatedMatch != null) {
@@ -421,7 +421,15 @@ class BracketService(
                             // Recalculate standings for round robin
                             calculateStandings(bracket.tournamentId, bracket.categoryId)
                         }
-                        // knockout format doesn't need standings recalculation
+                    }
+
+                    // Auto-advance winner for knockout matches
+                    if (bracket.format == "knockout" || bracket.format == "groups_knockout") {
+                        try {
+                            advanceWinner(matchId)
+                        } catch (_: Exception) {
+                            // Non-critical: advance may fail if no next match exists (e.g. final)
+                        }
                     }
                 }
             }
