@@ -26,12 +26,22 @@ class PointsConfigService(
     }
 
     suspend fun create(organizerId: String, request: CreatePointsConfigRequest): PointsConfigResponse {
+        // Check if there's already an active config for this type/stage
+        val existing = repository.getEffective(
+            organizerId,
+            request.tournamentId,
+            request.tournamentType,
+            request.stage
+        )
+        val shouldActivate = existing == null
+
         val body = buildJsonObject {
             put("organizer_id", organizerId)
             if (request.tournamentId != null) put("tournament_id", request.tournamentId)
             put("name", request.name)
             put("tournament_type", request.tournamentType)
             put("stage", request.stage)
+            put("is_active", shouldActivate)
             put("distribution", json.encodeToJsonElement(
                 kotlinx.serialization.builtins.ListSerializer(PointDistributionItem.serializer()),
                 request.distribution
@@ -58,5 +68,20 @@ class PointsConfigService(
 
     suspend fun delete(id: String): Boolean {
         return repository.delete(id)
+    }
+
+    suspend fun activate(organizerId: String, id: String): Boolean {
+        // Get the config to find its type/stage
+        val config = repository.getById(id)
+            ?: return false
+
+        // Verify it belongs to this organizer
+        if (config.organizerId != organizerId) return false
+
+        // Deactivate all configs of this type/stage for this organizer
+        repository.deactivateByType(organizerId, config.tournamentType, config.stage)
+
+        // Activate the target config
+        return repository.activate(id)
     }
 }
