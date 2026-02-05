@@ -159,4 +159,28 @@ interface BracketRepository {
      * Pass null values to clear the schedule
      */
     suspend fun updateMatchSchedule(matchId: String, courtNumber: Int?, scheduledTime: String?): MatchResponse
+
+    // ============ Player Score Submission ============
+
+    /**
+     * Get player UIDs for a team (player_a_uid, player_b_uid)
+     */
+    suspend fun getTeamPlayerUids(teamId: String): List<String>
+
+    /**
+     * Check if a tournament allows player score submission
+     */
+    suspend fun getTournamentAllowPlayerScores(tournamentId: String): Boolean
+
+    /**
+     * Update match score with audit trail (submitted_by_user_id, submitted_at)
+     */
+    suspend fun updateMatchScoreWithAudit(
+        matchId: String,
+        scoreTeam1: Int,
+        scoreTeam2: Int,
+        setScores: List<SetScore>,
+        winnerTeam: Int,
+        submittedByUserId: String
+    ): Result<MatchResponse>
 }

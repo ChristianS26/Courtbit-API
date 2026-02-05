@@ -471,6 +471,92 @@ class BracketService(
             ?: Result.failure(IllegalStateException("Match not found after advancement"))
     }
 
+    // ============ Player Score Submission ============
+
+    /**
+     * Submit a score as a player (not organizer).
+     * Validates that the player is in the match and the tournament allows player scores.
+     */
+    suspend fun submitPlayerScore(
+        matchId: String,
+        userId: String,
+        setScores: List<SetScore>
+    ): Result<MatchResponse> {
+        // Get match
+        val match = repository.getMatch(matchId)
+            ?: return Result.failure(IllegalArgumentException("Match not found"))
+
+        // Check match is not already completed
+        if (match.status == "completed" || match.status == "forfeit") {
+            return Result.failure(IllegalArgumentException("Match is already completed"))
+        }
+
+        // Get bracket to find tournament
+        val bracket = repository.getBracketById(match.bracketId)
+            ?: return Result.failure(IllegalArgumentException("Bracket not found"))
+
+        // Check tournament allows player scores
+        val allowPlayerScores = repository.getTournamentAllowPlayerScores(bracket.tournamentId)
+        if (!allowPlayerScores) {
+            return Result.failure(IllegalAccessException("Tournament does not allow player score submission"))
+        }
+
+        // Verify player is in the match
+        val team1Uids = match.team1Id?.let { repository.getTeamPlayerUids(it) } ?: emptyList()
+        val team2Uids = match.team2Id?.let { repository.getTeamPlayerUids(it) } ?: emptyList()
+        val allPlayerUids = team1Uids + team2Uids
+        if (userId !in allPlayerUids) {
+            return Result.failure(IllegalAccessException("User is not a player in this match"))
+        }
+
+        // Parse match format from bracket config
+        val matchFormat = bracket.config?.let {
+            try {
+                val config = json.decodeFromString<GroupsKnockoutConfig>(it.toString())
+                config.matchFormat
+            } catch (e: Exception) { null }
+        }
+
+        // Validate score
+        val validation = if (matchFormat?.pointsPerSet != null) {
+            PadelScoreValidator.validateExpressScore(setScores, matchFormat.pointsPerSet, matchFormat.sets)
+        } else {
+            PadelScoreValidator.validateMatchScore(setScores)
+        }
+
+        if (validation is ScoreValidationResult.Invalid) {
+            return Result.failure(IllegalArgumentException(validation.message))
+        }
+
+        val validResult = validation as ScoreValidationResult.Valid
+        val setsWonTeam1 = validResult.setsWon.first
+        val setsWonTeam2 = validResult.setsWon.second
+
+        // Update with audit trail
+        val updateResult = repository.updateMatchScoreWithAudit(
+            matchId = matchId,
+            scoreTeam1 = setsWonTeam1,
+            scoreTeam2 = setsWonTeam2,
+            setScores = setScores,
+            winnerTeam = validResult.winner,
+            submittedByUserId = userId
+        )
+
+        // Recalculate standings and auto-advance
+        if (updateResult.isSuccess) {
+            when (bracket.format) {
+                "groups_knockout" -> calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
+                "round_robin" -> calculateStandings(bracket.tournamentId, bracket.categoryId)
+            }
+
+            if (bracket.format == "knockout" || bracket.format == "groups_knockout") {
+                try { advanceWinner(matchId) } catch (_: Exception) {}
+            }
+        }
+
+        return updateResult
+    }
+
     // ============ Standings ============
 
     /**

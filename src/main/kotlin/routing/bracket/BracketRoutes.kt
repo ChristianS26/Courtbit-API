@@ -1,6 +1,7 @@
 package routing.bracket
 
 import com.incodap.security.getOrganizerId
+import com.incodap.security.requireUserUid
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
@@ -631,6 +632,47 @@ fun Route.bracketRoutes(bracketService: BracketService) {
 
     route("/matches") {
         authenticate("auth-jwt") {
+
+            // PATCH /api/matches/{id}/player-score
+            // Submit score as a player (not organizer)
+            patch("/{id}/player-score") {
+                val userId = call.requireUserUid() ?: return@patch
+
+                val matchId = call.parameters["id"]
+                if (matchId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Match ID required"))
+                    return@patch
+                }
+
+                val request = try {
+                    call.receive<UpdateScoreRequest>()
+                } catch (e: Exception) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "Invalid request format: ${e.localizedMessage}")
+                    )
+                    return@patch
+                }
+
+                val result = bracketService.submitPlayerScore(matchId, userId, request.sets)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        val message = e.message ?: "Update failed"
+                        when {
+                            e is IllegalAccessException ->
+                                call.respond(HttpStatusCode.Forbidden, mapOf("error" to message))
+                            e is IllegalArgumentException && message.contains("not found", ignoreCase = true) ->
+                                call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
+                            e is IllegalArgumentException ->
+                                call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
+                            else ->
+                                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
+                        }
+                    }
+                )
+            }
 
             // PATCH /api/matches/{id}/score
             // Update match score with padel validation

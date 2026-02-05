@@ -24,4 +24,5 @@ data class TournamentResponse(
     @SerialName("organizer_logo_url") val organizerLogoUrl: String? = null,
     @SerialName("city_id") val cityId: Int? = null,
     @SerialName("padel_club_id") val padelClubId: Int? = null,
+    @SerialName("allow_player_scores") val allowPlayerScores: Boolean = false,
 )

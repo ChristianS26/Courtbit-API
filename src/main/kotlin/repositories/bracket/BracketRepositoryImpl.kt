@@ -671,4 +671,79 @@ class BracketRepositoryImpl(
         return matches.firstOrNull()
             ?: throw IllegalStateException("Match not found after update")
     }
+
+    // ============ Player Score Submission ============
+
+    override suspend fun getTeamPlayerUids(teamId: String): List<String> {
+        val response = client.get("$apiUrl/teams") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("id", "eq.$teamId")
+            parameter("select", "player_a_uid,player_b_uid")
+        }
+
+        if (!response.status.isSuccess()) return emptyList()
+
+        val teams = json.decodeFromString<List<TeamDto>>(response.bodyAsText())
+        val team = teams.firstOrNull() ?: return emptyList()
+        return listOfNotNull(team.playerAUid, team.playerBUid)
+    }
+
+    override suspend fun getTournamentAllowPlayerScores(tournamentId: String): Boolean {
+        val response = client.get("$apiUrl/tournaments") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("id", "eq.$tournamentId")
+            parameter("select", "allow_player_scores")
+        }
+
+        if (!response.status.isSuccess()) return false
+
+        @Serializable
+        data class AllowPlayerScoresRow(
+            @SerialName("allow_player_scores") val allowPlayerScores: Boolean = false
+        )
+
+        val rows = json.decodeFromString<List<AllowPlayerScoresRow>>(response.bodyAsText())
+        return rows.firstOrNull()?.allowPlayerScores ?: false
+    }
+
+    override suspend fun updateMatchScoreWithAudit(
+        matchId: String,
+        scoreTeam1: Int,
+        scoreTeam2: Int,
+        setScores: List<SetScore>,
+        winnerTeam: Int,
+        submittedByUserId: String
+    ): Result<MatchResponse> {
+        val setScoresJson = json.encodeToString(setScores)
+        val now = java.time.Instant.now().toString()
+        val bodyJson = """
+            {
+                "score_team1": $scoreTeam1,
+                "score_team2": $scoreTeam2,
+                "set_scores": $setScoresJson,
+                "winner_team": $winnerTeam,
+                "status": "completed",
+                "submitted_by_user_id": "$submittedByUserId",
+                "submitted_at": "$now"
+            }
+        """.trimIndent()
+
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            setBody(bodyJson)
+        }
+
+        return if (response.status.isSuccess()) {
+            val matches = json.decodeFromString<List<MatchResponse>>(response.bodyAsText())
+            matches.firstOrNull()?.let { Result.success(it) }
+                ?: Result.failure(IllegalStateException("Match not found after update"))
+        } else {
+            Result.failure(IllegalStateException("Failed to update match score: ${response.status.value}"))
+        }
+    }
 }
