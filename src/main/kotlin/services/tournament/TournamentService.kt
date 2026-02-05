@@ -119,6 +119,9 @@ class TournamentService(
     suspend fun updateRegistrationOpen(id: String, registrationOpen: Boolean): Boolean =
         repository.patchField(id, mapOf("registration_open" to registrationOpen), "registration")
 
+    suspend fun updateAllowPlayerScores(id: String, allowPlayerScores: Boolean): Boolean =
+        repository.patchField(id, mapOf("allow_player_scores" to allowPlayerScores), "allow_player_scores")
+
     // Nuevo: resultado tipado con manejo de pagos
     suspend fun deleteTournament(id: String): DeleteTournamentResult {
 

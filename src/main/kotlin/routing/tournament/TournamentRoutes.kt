@@ -165,6 +165,28 @@ fun Route.tournamentRoutes(
                 }
             }
 
+            patch("{id}/allow-player-scores") {
+                val id = call.validateOrganizerAndId() ?: return@patch
+                val payload = try { call.receive<Map<String, Boolean>>() }
+                catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato inválido"))
+                    return@patch
+                }
+
+                val allowPlayerScores = payload["allow_player_scores"]
+                if (allowPlayerScores == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "El campo 'allow_player_scores' es requerido"))
+                    return@patch
+                }
+
+                val updated = tournamentService.updateAllowPlayerScores(id, allowPlayerScores)
+                if (updated) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo actualizar 'allow_player_scores'"))
+                }
+            }
+
             delete("{id}") {
                 val id = call.validateOrganizerAndId() ?: return@delete
 
