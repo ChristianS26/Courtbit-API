@@ -109,7 +109,7 @@ class TeamService(
             .distinctBy { it.id }
             .sortedWith(compareBy({ it.name }))
 
-        return categoriesOrdered.map { cat ->
+        val categoriesWithTeams = categoriesOrdered.map { cat ->
             val teamsInCategory = teamsByCategoryId[cat.id].orEmpty()
 
             val sortedTeams = teamsInCategory
@@ -140,6 +140,21 @@ class TeamService(
                 color = colorByCategoryId[cat.id]
             )
         }
+
+        // Include tournament categories that have no teams yet
+        val categoryIdsWithTeams = categoriesOrdered.map { it.id }.toSet()
+        val emptyCategories = tournamentCategories
+            .filter { it.id.toIntOrNull() !in categoryIdsWithTeams }
+            .map { cat ->
+                TeamGroupByCategoryFullResponse(
+                    categoryName = cat.name,
+                    teams = emptyList(),
+                    maxTeams = cat.maxTeams,
+                    color = cat.color
+                )
+            }
+
+        return categoriesWithTeams + emptyCategories
     }
 
     /**
