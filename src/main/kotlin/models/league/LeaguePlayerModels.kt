@@ -113,7 +113,8 @@ data class MyLeagueRegistrationResponse(
         val id: String,
         val name: String,
         val level: String,
-        @SerialName("color_hex") val colorHex: String
+        @SerialName("color_hex") val colorHex: String,
+        @SerialName("global_category_name") val globalCategoryName: String? = null
     )
 }
 

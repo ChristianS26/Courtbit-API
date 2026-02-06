@@ -333,7 +333,8 @@ class LeaguePlayerRepositoryImpl(
                     id = category.id,
                     name = category.name,
                     level = category.level,
-                    colorHex = category.colorHex
+                    colorHex = category.colorHex,
+                    globalCategoryName = category.globalCategoryName
                 )
             )
         }
