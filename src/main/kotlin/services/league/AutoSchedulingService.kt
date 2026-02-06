@@ -168,6 +168,10 @@ class AutoSchedulingService(
         // 4.6. Process each date separately
         for ((matchDate, categoryIdsForDate) in categoriesByDate) {
             // Build available slots for this date using actual court records
+            // NOTE: court.courtNumber is stored as court_index in day_groups.
+            // This assumes court numbers are sequential (1, 2, 3...). If courts
+            // ever have non-sequential numbering (e.g., 1, 3, 5 after deletions),
+            // the iOS grid display will break since it uses 1..N range.
             val availableSlots = mutableSetOf<Slot>()
             for (court in seasonCourts) {
                 for (timeSlot in timeSlots) {
