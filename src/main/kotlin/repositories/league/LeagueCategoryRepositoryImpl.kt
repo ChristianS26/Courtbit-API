@@ -7,6 +7,10 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import models.league.CategoryPlayoffConfigResponse
 import models.league.CreateLeagueCategoryRequest
 import models.league.LeagueCategoryResponse
@@ -22,16 +26,36 @@ class LeagueCategoryRepositoryImpl(
     private val apiUrl = config.apiUrl
     private val apiKey = config.apiKey
 
+    // Select clause that joins the global categories table to get the name
+    private val selectWithCategoryName = "*,categories(name)"
+
+    /**
+     * Parse raw JSON array from Supabase (with nested categories join) into LeagueCategoryResponse list.
+     * Extracts the nested categories.name into globalCategoryName.
+     */
+    private fun parseWithCategoryName(bodyText: String): List<LeagueCategoryResponse> {
+        val rawList = json.decodeFromString<List<JsonObject>>(bodyText)
+        return rawList.map { obj ->
+            val categoryName = obj["categories"]
+                ?.jsonObject
+                ?.get("name")
+                ?.jsonPrimitive
+                ?.contentOrNull
+            val base = json.decodeFromJsonElement(LeagueCategoryResponse.serializer(), obj)
+            base.copy(globalCategoryName = categoryName)
+        }
+    }
+
     override suspend fun getAll(): List<LeagueCategoryResponse> {
         val response = client.get("$apiUrl/league_categories") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
+            parameter("select", selectWithCategoryName)
             parameter("order", "created_at.desc")
         }
 
         return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            json.decodeFromString<List<LeagueCategoryResponse>>(bodyText)
+            parseWithCategoryName(response.bodyAsText())
         } else {
             emptyList()
         }
@@ -41,13 +65,13 @@ class LeagueCategoryRepositoryImpl(
         val response = client.get("$apiUrl/league_categories") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
+            parameter("select", selectWithCategoryName)
             parameter("season_id", "eq.$seasonId")
             parameter("order", "created_at.desc")
         }
 
         return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            json.decodeFromString<List<LeagueCategoryResponse>>(bodyText)
+            parseWithCategoryName(response.bodyAsText())
         } else {
             emptyList()
         }
@@ -57,13 +81,12 @@ class LeagueCategoryRepositoryImpl(
         val response = client.get("$apiUrl/league_categories") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
+            parameter("select", selectWithCategoryName)
             parameter("id", "eq.$id")
         }
 
         return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            val list = json.decodeFromString<List<LeagueCategoryResponse>>(bodyText)
-            list.firstOrNull()
+            parseWithCategoryName(response.bodyAsText()).firstOrNull()
         } else {
             null
         }

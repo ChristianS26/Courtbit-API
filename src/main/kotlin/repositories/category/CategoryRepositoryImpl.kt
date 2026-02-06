@@ -164,6 +164,25 @@ class CategoryRepositoryImpl(
         }
     }
 
+    override suspend fun getNaturalCategories(gender: String?): List<CategoryResponseDto> {
+        val response = client.get("${config.apiUrl}/categories") {
+            header("apikey", config.apiKey)
+            header("Authorization", "Bearer ${config.apiKey}")
+            parameter("category_type", "eq.natural")
+            if (gender != null) {
+                parameter("gender", "eq.$gender")
+            }
+            parameter("order", "gender.asc,level.asc")
+        }
+
+        return if (response.status.isSuccess()) {
+            json.decodeFromString(
+                ListSerializer(CategoryResponseDto.serializer()),
+                response.bodyAsText()
+            )
+        } else emptyList()
+    }
+
     override suspend fun updateCategoryMaxTeams(tournamentId: String, categoryId: Int, maxTeams: Int?): Boolean {
         val body = if (maxTeams != null) {
             json.encodeToString(MapSerializer(String.serializer(), Int.serializer()), mapOf("max_teams" to maxTeams))

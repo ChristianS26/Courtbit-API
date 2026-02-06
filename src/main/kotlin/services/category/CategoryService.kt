@@ -33,4 +33,8 @@ class CategoryService(
     suspend fun updateCategoryMaxTeams(tournamentId: String, categoryId: Int, maxTeams: Int?): Boolean {
         return repository.updateCategoryMaxTeams(tournamentId, categoryId, maxTeams)
     }
+
+    suspend fun getNaturalCategories(gender: String? = null): List<CategoryResponseDto> {
+        return repository.getNaturalCategories(gender)
+    }
 }

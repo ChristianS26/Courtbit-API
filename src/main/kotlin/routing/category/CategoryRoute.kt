@@ -30,6 +30,12 @@ fun Route.categoryRoutes(
                 }
             }
 
+            get("/natural") {
+                val gender = call.request.queryParameters["gender"]
+                val categories = categoryService.getNaturalCategories(gender)
+                call.respond(categories)
+            }
+
             post("/assign") {
                // if (!call.requireAdmin()) return@post
 

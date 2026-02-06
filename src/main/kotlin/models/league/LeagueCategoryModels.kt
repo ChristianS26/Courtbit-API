@@ -25,7 +25,11 @@ data class LeagueCategoryResponse(
     // Registration fee override (null = use season default)
     @SerialName("registration_fee") val registrationFee: Long? = null,
     // Ranking criteria order (null = use season default)
-    @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null
+    @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null,
+    // Link to global categories table (natural categories only)
+    @SerialName("category_id") val categoryId: Int? = null,
+    // Resolved name from the global categories table (populated via JOIN)
+    @SerialName("global_category_name") val globalCategoryName: String? = null
 )
 
 @Serializable
@@ -40,7 +44,9 @@ data class CreateLeagueCategoryRequest(
     // Registration fee override (optional, null = use season default)
     @SerialName("registration_fee") val registrationFee: Long? = null,
     // Ranking criteria order (optional, null = use season default)
-    @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null
+    @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null,
+    // Link to global categories table (nullable during transition)
+    @SerialName("category_id") val categoryId: Int? = null
 )
 
 @Serializable
@@ -56,7 +62,9 @@ data class UpdateLeagueCategoryRequest(
     // Registration fee override (optional, null = keep current value)
     @SerialName("registration_fee") val registrationFee: Long? = null,
     // Ranking criteria order (optional, null = keep current value)
-    @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null
+    @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null,
+    // Link to global categories table (optional, null = keep current value)
+    @SerialName("category_id") val categoryId: Int? = null
 )
 
 // Request to update max players and recalculate waiting list
