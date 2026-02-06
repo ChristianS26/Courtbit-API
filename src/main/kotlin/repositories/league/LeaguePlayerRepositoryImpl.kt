@@ -8,7 +8,6 @@ import io.ktor.http.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import models.league.CanDeletePlayerResponse
@@ -372,148 +371,37 @@ class LeaguePlayerRepositoryImpl(
     // MARK: - Replace Player
 
     override suspend fun replacePlayer(oldPlayerId: String, request: ReplacePlayerRequest): Result<ReplacePlayerResponse> {
-        // 1. Get the old player to verify it exists and get categoryId
-        val oldPlayer = getById(oldPlayerId)
-            ?: return Result.failure(IllegalArgumentException("Player not found"))
-
-        // 2. Create the new player - force is_waiting_list = false since replacing an active player
-        val newPlayerPayload = buildJsonObject {
-            put("category_id", JsonPrimitive(oldPlayer.categoryId))
-            put("name", JsonPrimitive(request.name))
-            request.userUid?.let { put("user_uid", JsonPrimitive(it)) }
-            request.email?.let { put("email", JsonPrimitive(it)) }
-            request.phoneNumber?.let { put("phone_number", JsonPrimitive(it)) }
-            request.shirtSize?.let { put("shirt_size", JsonPrimitive(it)) }
-            request.shirtName?.let { put("shirt_name", JsonPrimitive(it)) }
-            put("is_waiting_list", JsonPrimitive(false))
+        val payload = buildJsonObject {
+            put("p_old_player_id", JsonPrimitive(oldPlayerId))
+            put("p_name", JsonPrimitive(request.name))
+            request.userUid?.let { put("p_user_uid", JsonPrimitive(it)) }
+            request.email?.let { put("p_email", JsonPrimitive(it)) }
+            request.phoneNumber?.let { put("p_phone_number", JsonPrimitive(it)) }
+            request.shirtSize?.let { put("p_shirt_size", JsonPrimitive(it)) }
+            request.shirtName?.let { put("p_shirt_name", JsonPrimitive(it)) }
         }
 
-        val createResponse = client.post("$apiUrl/league_players") {
+        val response = client.post("$apiUrl/rpc/replace_league_player") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            header("Prefer", "return=representation")
             contentType(ContentType.Application.Json)
-            setBody(listOf(newPlayerPayload))
+            setBody(payload.toString())
         }
 
-        if (!createResponse.status.isSuccess()) {
-            return Result.failure(IllegalStateException("Failed to create new player: ${createResponse.status}"))
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            return Result.failure(IllegalStateException("Failed to replace player: $errorBody"))
         }
 
-        val newPlayer = try {
-            json.decodeFromString<List<LeaguePlayerResponse>>(createResponse.bodyAsText()).firstOrNull()
-        } catch (e: Exception) {
-            return Result.failure(IllegalStateException("Failed to parse new player response: ${e.message}"))
-        } ?: return Result.failure(IllegalStateException("Empty response when creating new player"))
-
-        // 3. Update all day_groups where old player exists in player_ids array
-        val affectedDayGroups = updateDayGroupsPlayerIds(oldPlayerId, newPlayer.id)
-
-        // 4. Update all doubles_matches where old player exists
-        val affectedMatches = updateDoublesMatchesPlayerIds(oldPlayerId, newPlayer.id)
-
-        // 5. Delete the old player
-        val deleteSuccess = delete(oldPlayerId)
-        if (!deleteSuccess) {
-        }
+        val rpcResult = json.decodeFromString<RpcReplaceResult>(response.bodyAsText())
+        val newPlayer = getById(rpcResult.newPlayerId)
+            ?: return Result.failure(IllegalStateException("New player created but not found"))
 
         return Result.success(ReplacePlayerResponse(
             newPlayer = newPlayer,
-            affectedDayGroups = affectedDayGroups,
-            affectedMatches = affectedMatches
+            affectedDayGroups = rpcResult.affectedDayGroups,
+            affectedMatches = rpcResult.affectedMatches
         ))
-    }
-
-    private suspend fun updateDayGroupsPlayerIds(oldPlayerId: String, newPlayerId: String): Int {
-        // Get all day_groups containing the old player ID
-        val dayGroupsResponse = client.get("$apiUrl/day_groups") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("select", "id,player_ids")
-            parameter("player_ids", "cs.{$oldPlayerId}") // contains
-        }
-
-        if (!dayGroupsResponse.status.isSuccess()) {
-            return 0
-        }
-
-        val dayGroups = try {
-            json.decodeFromString<List<DayGroupPlayerIds>>(dayGroupsResponse.bodyAsText())
-        } catch (e: Exception) {
-            return 0
-        }
-
-        var updatedCount = 0
-
-        for (dayGroup in dayGroups) {
-            // Replace old player ID with new player ID in the array
-            val updatedPlayerIds = dayGroup.playerIds.map {
-                if (it == oldPlayerId) newPlayerId else it
-            }
-
-            val updatePayload = buildJsonObject {
-                put("player_ids", JsonArray(updatedPlayerIds.map { JsonPrimitive(it) }))
-            }
-
-            val updateResponse = client.patch("$apiUrl/day_groups?id=eq.${dayGroup.id}") {
-                header("apikey", apiKey)
-                header("Authorization", "Bearer $apiKey")
-                contentType(ContentType.Application.Json)
-                setBody(updatePayload.toString())
-            }
-
-            if (updateResponse.status.isSuccess()) {
-                updatedCount++
-            } else {
-            }
-        }
-
-        return updatedCount
-    }
-
-    private suspend fun updateDoublesMatchesPlayerIds(oldPlayerId: String, newPlayerId: String): Int {
-        // Find all matches with the old player in any position
-        val matchesResponse = client.get("$apiUrl/doubles_matches") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("select", "id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id")
-            parameter("or", "(team1_player1_id.eq.$oldPlayerId,team1_player2_id.eq.$oldPlayerId,team2_player1_id.eq.$oldPlayerId,team2_player2_id.eq.$oldPlayerId)")
-        }
-
-        if (!matchesResponse.status.isSuccess()) {
-            return 0
-        }
-
-        val matches = try {
-            json.decodeFromString<List<MatchPlayerIds>>(matchesResponse.bodyAsText())
-        } catch (e: Exception) {
-            return 0
-        }
-
-        var updatedCount = 0
-
-        for (match in matches) {
-            val updatePayload = buildJsonObject {
-                if (match.team1Player1Id == oldPlayerId) put("team1_player1_id", JsonPrimitive(newPlayerId))
-                if (match.team1Player2Id == oldPlayerId) put("team1_player2_id", JsonPrimitive(newPlayerId))
-                if (match.team2Player1Id == oldPlayerId) put("team2_player1_id", JsonPrimitive(newPlayerId))
-                if (match.team2Player2Id == oldPlayerId) put("team2_player2_id", JsonPrimitive(newPlayerId))
-            }
-
-            val updateResponse = client.patch("$apiUrl/doubles_matches?id=eq.${match.id}") {
-                header("apikey", apiKey)
-                header("Authorization", "Bearer $apiKey")
-                contentType(ContentType.Application.Json)
-                setBody(updatePayload.toString())
-            }
-
-            if (updateResponse.status.isSuccess()) {
-                updatedCount++
-            } else {
-            }
-        }
-
-        return updatedCount
     }
 
     // MARK: - Player Linking
@@ -624,18 +512,10 @@ class LeaguePlayerRepositoryImpl(
 private data class MatchIdOnly(val id: String)
 
 @Serializable
-private data class DayGroupPlayerIds(
-    val id: String,
-    @SerialName("player_ids") val playerIds: List<String>
-)
-
-@Serializable
-private data class MatchPlayerIds(
-    val id: String,
-    @SerialName("team1_player1_id") val team1Player1Id: String?,
-    @SerialName("team1_player2_id") val team1Player2Id: String?,
-    @SerialName("team2_player1_id") val team2Player1Id: String?,
-    @SerialName("team2_player2_id") val team2Player2Id: String?
+private data class RpcReplaceResult(
+    @SerialName("new_player_id") val newPlayerId: String,
+    @SerialName("affected_day_groups") val affectedDayGroups: Int,
+    @SerialName("affected_matches") val affectedMatches: Int
 )
 
 // Helper data classes for pending player links parsing
