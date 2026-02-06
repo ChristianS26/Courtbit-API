@@ -695,7 +695,7 @@ class AutoSchedulingService(
         val response = client.get("$apiUrl/match_days") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "id,match_number,day_groups(player_ids,time_slot)")
+            parameter("select", "*,day_groups(*)")
             parameter("category_id", "in.(${categoryIds.joinToString(",")})")
             parameter("match_number", "lt.$currentMatchdayNumber")
         }
