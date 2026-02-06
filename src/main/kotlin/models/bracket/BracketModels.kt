@@ -1,8 +1,10 @@
 package models.bracket
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNames
 
 // ============ Request DTOs ============
 
@@ -326,7 +328,9 @@ data class MatchFormatConfig(
     @SerialName("games_per_set") val gamesPerSet: Int? = null,      // For classic format (6 games)
     @SerialName("tie_break_at") val tieBreakAt: Int? = null,        // Tie-break at X games
     @SerialName("golden_point") val goldenPoint: Boolean? = null,   // Golden point on deuce
-    @SerialName("super_tie_break") val superTieBreak: Boolean? = null,  // Super tie-break in decisive set
+    @OptIn(ExperimentalSerializationApi::class)
+    @JsonNames("super_tie_break")
+    @SerialName("tie_break") val tieBreak: Boolean? = null,  // Permite tie-break por set
     val description: String? = null                                  // Human readable description
 )
 
