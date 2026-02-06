@@ -81,10 +81,11 @@ class MasterScheduleService(
             )
         }
 
-        // Compute hasCalendar for each category by checking if match days exist
+        // Batch check hasCalendar: 1 query for all categories instead of N
+        val categoryIds = categories.map { it.id }
+        val categoryIdsWithCalendar = fetchCategoryIdsWithCalendar(categoryIds)
         val categoriesWithCalendarStatus = categories.map { category ->
-            val hasCalendar = matchDayRepository.getByCategoryId(category.id).isNotEmpty()
-            category.copy(hasCalendar = hasCalendar)
+            category.copy(hasCalendar = category.id in categoryIdsWithCalendar)
         }
 
         return BulkScheduleResponse(
@@ -144,6 +145,30 @@ class MasterScheduleService(
         return players.map { player ->
             player.toResponse(hasPaid = paidPlayerIds.contains(player.id))
         }
+    }
+
+    /**
+     * Batch check which categories have at least one match_day.
+     * 1 query instead of N calls to matchDayRepository.getByCategoryId().
+     */
+    private suspend fun fetchCategoryIdsWithCalendar(categoryIds: List<String>): Set<String> {
+        if (categoryIds.isEmpty()) return emptySet()
+
+        val response = client.get("$apiUrl/match_days") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "category_id")
+            parameter("category_id", "in.(${categoryIds.joinToString(",")})")
+        }
+
+        if (!response.status.isSuccess()) return emptySet()
+
+        @Serializable
+        data class CategoryIdOnly(@SerialName("category_id") val categoryId: String)
+
+        return json.decodeFromString<List<CategoryIdOnly>>(response.bodyAsText())
+            .map { it.categoryId }
+            .toSet()
     }
 
     /**

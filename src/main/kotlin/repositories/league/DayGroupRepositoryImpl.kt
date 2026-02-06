@@ -35,89 +35,96 @@ class DayGroupRepositoryImpl(
     private val logger = LoggerFactory.getLogger(DayGroupRepositoryImpl::class.java)
 
     override suspend fun getByMatchDayId(matchDayId: String): List<DayGroupResponse> {
+        // 1 query: fetch day_groups with embedded court data via FK
         val response = client.get("$apiUrl/day_groups") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "*")
+            parameter("select", "*,season_courts(id,name,court_number)")
             parameter("match_day_id", "eq.$matchDayId")
             parameter("order", "group_number.asc")
         }
 
-        return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            val rawList = json.decodeFromString<List<DayGroupRaw>>(bodyText)
+        if (!response.status.isSuccess()) return emptyList()
 
-            // Enrich with players and court info
-            rawList.map { raw ->
-                val players = raw.playerIds.mapNotNull { playerId ->
-                    fetchPlayerById(playerId)
-                }
-                val courtInfo = raw.courtId?.let { fetchCourtById(it) }
-                raw.toDayGroupResponse(players, courtInfo)
-            }
-        } else {
-            emptyList()
+        val rawList = json.decodeFromString<List<DayGroupRaw>>(response.bodyAsText())
+        if (rawList.isEmpty()) return emptyList()
+
+        // Collect all unique player IDs across all groups
+        val allPlayerIds = rawList.flatMap { it.playerIds }.distinct()
+
+        // 1 query: batch-fetch all players at once
+        val playerMap = fetchPlayersByIds(allPlayerIds)
+
+        // Enrich each group from the shared player map + embedded court
+        return rawList.map { raw ->
+            val players = raw.playerIds.mapNotNull { playerMap[it] }
+            raw.toDayGroupResponse(players)
         }
     }
 
     override suspend fun getById(id: String): DayGroupResponse? {
+        // 1 query: fetch day_group with embedded court data
         val response = client.get("$apiUrl/day_groups") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "*")
+            parameter("select", "*,season_courts(id,name,court_number)")
             parameter("id", "eq.$id")
             parameter("limit", "1")
         }
 
-        return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            val rawList = json.decodeFromString<List<DayGroupRaw>>(bodyText)
-            val raw = rawList.firstOrNull() ?: return null
+        if (!response.status.isSuccess()) return null
 
-            // Enrich with players and court info
-            val players = raw.playerIds.mapNotNull { playerId ->
-                fetchPlayerById(playerId)
-            }
-            val courtInfo = raw.courtId?.let { fetchCourtById(it) }
-            raw.toDayGroupResponse(players, courtInfo)
-        } else {
-            null
-        }
+        val rawList = json.decodeFromString<List<DayGroupRaw>>(response.bodyAsText())
+        val raw = rawList.firstOrNull() ?: return null
+
+        // 1 query: batch-fetch players for this group
+        val playerMap = fetchPlayersByIds(raw.playerIds)
+        val players = raw.playerIds.mapNotNull { playerMap[it] }
+        return raw.toDayGroupResponse(players)
     }
 
-    private suspend fun fetchPlayerById(playerId: String): LeaguePlayerResponse? {
+    override suspend fun findBySlot(matchDate: String, timeSlot: String, courtIndex: Int): DayGroupResponse? {
+        // 1 query: fetch day_group with embedded court data
+        val response = client.get("$apiUrl/day_groups") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "*,season_courts(id,name,court_number)")
+            parameter("match_date", "eq.$matchDate")
+            parameter("time_slot", "eq.$timeSlot")
+            parameter("court_index", "eq.$courtIndex")
+            parameter("limit", "1")
+        }
+
+        if (!response.status.isSuccess()) return null
+
+        val rawList = json.decodeFromString<List<DayGroupRaw>>(response.bodyAsText())
+        val raw = rawList.firstOrNull() ?: return null
+
+        // 1 query: batch-fetch players for this group
+        val playerMap = fetchPlayersByIds(raw.playerIds)
+        val players = raw.playerIds.mapNotNull { playerMap[it] }
+        return raw.toDayGroupResponse(players)
+    }
+
+    /**
+     * Batch-fetch players by a list of IDs in a single query.
+     * Uses Supabase `in` filter: ?id=in.(id1,id2,...)
+     */
+    private suspend fun fetchPlayersByIds(playerIds: List<String>): Map<String, LeaguePlayerResponse> {
+        if (playerIds.isEmpty()) return emptyMap()
+
         val response = client.get("$apiUrl/league_players") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("select", "*")
-            parameter("id", "eq.$playerId")
-            parameter("limit", "1")
+            parameter("id", "in.(${playerIds.joinToString(",")})")
         }
 
         return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            val rawList = json.decodeFromString<List<LeaguePlayerResponse>>(bodyText)
-            rawList.firstOrNull()
+            json.decodeFromString<List<LeaguePlayerResponse>>(response.bodyAsText())
+                .associateBy { it.id }
         } else {
-            null
-        }
-    }
-
-    private suspend fun fetchCourtById(courtId: String): CourtInfo? {
-        val response = client.get("$apiUrl/season_courts") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("select", "id,name,court_number")
-            parameter("id", "eq.$courtId")
-            parameter("limit", "1")
-        }
-
-        return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            val list = json.decodeFromString<List<CourtInfo>>(bodyText)
-            list.firstOrNull()
-        } else {
-            null
+            emptyMap()
         }
     }
 
@@ -140,33 +147,6 @@ class DayGroupRepositoryImpl(
         }
 
         return response.status.isSuccess()
-    }
-
-    override suspend fun findBySlot(matchDate: String, timeSlot: String, courtIndex: Int): DayGroupResponse? {
-        val response = client.get("$apiUrl/day_groups") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("select", "*")
-            parameter("match_date", "eq.$matchDate")
-            parameter("time_slot", "eq.$timeSlot")
-            parameter("court_index", "eq.$courtIndex")
-            parameter("limit", "1")
-        }
-
-        return if (response.status.isSuccess()) {
-            val bodyText = response.bodyAsText()
-            val rawList = json.decodeFromString<List<DayGroupRaw>>(bodyText)
-            val raw = rawList.firstOrNull() ?: return null
-
-            // Enrich with players and court info
-            val players = raw.playerIds.mapNotNull { playerId ->
-                fetchPlayerById(playerId)
-            }
-            val courtInfo = raw.courtId?.let { fetchCourtById(it) }
-            raw.toDayGroupResponse(players, courtInfo)
-        } else {
-            null
-        }
     }
 
     override suspend fun assignSlot(dayGroupId: String, request: UpdateDayGroupAssignmentRequest): Result<SlotAssignmentResult> {
@@ -212,7 +192,7 @@ class DayGroupRepositoryImpl(
     }
 
     override suspend fun regenerateRotations(dayGroupId: String): RegenerateResult {
-        logger.info("🔄 [DayGroupRepo] Regenerating rotations for dayGroupId=$dayGroupId")
+        logger.info("[DayGroupRepo] Regenerating rotations for dayGroupId=$dayGroupId")
 
         // 1. Get the day group to check player_ids
         val dayGroup = getById(dayGroupId)
@@ -220,14 +200,14 @@ class DayGroupRepositoryImpl(
 
         // 2. Check if we have exactly 4 players
         if (dayGroup.playerIds.size != 4) {
-            logger.warn("⚠️ [DayGroupRepo] Day group has ${dayGroup.playerIds.size} players, need exactly 4")
+            logger.warn("[DayGroupRepo] Day group has ${dayGroup.playerIds.size} players, need exactly 4")
             return RegenerateResult.NotEnoughPlayers
         }
 
         // 3. Check if rotations already exist
         val existingCount = getRotationCount(dayGroupId)
         if (existingCount > 0) {
-            logger.info("ℹ️ [DayGroupRepo] Day group already has $existingCount rotations")
+            logger.info("[DayGroupRepo] Day group already has $existingCount rotations")
             return RegenerateResult.AlreadyExists
         }
 
@@ -259,7 +239,7 @@ class DayGroupRepositoryImpl(
             }
 
             if (!rotationResponse.status.isSuccess()) {
-                logger.error("❌ [DayGroupRepo] Failed to create rotation $rotationNumber: ${rotationResponse.status}")
+                logger.error("[DayGroupRepo] Failed to create rotation $rotationNumber: ${rotationResponse.status}")
                 return RegenerateResult.Error("Failed to create rotation $rotationNumber")
             }
 
@@ -287,123 +267,52 @@ class DayGroupRepositoryImpl(
             }
 
             if (!matchResponse.status.isSuccess()) {
-                logger.error("❌ [DayGroupRepo] Failed to create match for rotation $rotationNumber: ${matchResponse.status}")
+                logger.error("[DayGroupRepo] Failed to create match for rotation $rotationNumber: ${matchResponse.status}")
                 return RegenerateResult.Error("Failed to create match for rotation $rotationNumber")
             }
 
-            logger.info("✅ [DayGroupRepo] Created rotation $rotationNumber with match")
+            logger.info("[DayGroupRepo] Created rotation $rotationNumber with match")
         }
 
-        logger.info("✅ [DayGroupRepo] Successfully regenerated all rotations for dayGroupId=$dayGroupId")
+        logger.info("[DayGroupRepo] Successfully regenerated all rotations for dayGroupId=$dayGroupId")
         return RegenerateResult.Success
     }
 
     /**
-     * Phase 3.1: Clear all assignments for a matchday
-     * Clears all day_groups for a specific season and matchday number
+     * Clear all assignments for a matchday via single RPC call.
+     * Before: 2 + N + M queries. After: 1 RPC call.
      */
     override suspend fun clearMatchdayAssignments(seasonId: String, matchdayNumber: Int): Int {
-        logger.info("🧹 [DayGroupRepo] Clearing matchday assignments for seasonId=$seasonId, matchday=$matchdayNumber")
+        logger.info("[DayGroupRepo] Clearing matchday assignments for seasonId=$seasonId, matchday=$matchdayNumber")
 
-        // Step 1: Get all category IDs for this season
-        @Serializable
-        data class CategoryId(val id: String)
+        val payload = buildJsonObject {
+            put("p_season_id", JsonPrimitive(seasonId))
+            put("p_matchday_number", JsonPrimitive(matchdayNumber))
+        }
 
-        val categoriesResponse = client.get("$apiUrl/league_categories") {
+        val response = client.post("$apiUrl/rpc/clear_matchday_assignments") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            parameter("select", "id")
-            parameter("season_id", "eq.$seasonId")
+            contentType(ContentType.Application.Json)
+            setBody(payload.toString())
         }
 
-        if (!categoriesResponse.status.isSuccess()) {
-            logger.error("❌ [DayGroupRepo] Failed to get categories for season: ${categoriesResponse.status}")
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            logger.error("[DayGroupRepo] RPC clear_matchday_assignments failed: $errorBody")
             return 0
         }
 
-        val categoryIds = json.decodeFromString<List<CategoryId>>(categoriesResponse.bodyAsText())
-            .map { it.id }
-
-        if (categoryIds.isEmpty()) {
-            logger.info("ℹ️ [DayGroupRepo] No categories found for season $seasonId")
-            return 0
-        }
-
-        logger.info("📋 [DayGroupRepo] Found ${categoryIds.size} categories for season")
-
-        // Step 2: Get match_days for these categories with the specified matchday_number
-        @Serializable
-        data class MatchDayId(val id: String)
-
-        val categoryIdsFilter = categoryIds.joinToString(",") { "\"$it\"" }
-        val matchDaysResponse = client.get("$apiUrl/match_days") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            parameter("select", "id")
-            parameter("category_id", "in.($categoryIdsFilter)")
-            parameter("match_number", "eq.$matchdayNumber")
-        }
-
-        if (!matchDaysResponse.status.isSuccess()) {
-            logger.error("❌ [DayGroupRepo] Failed to get match days: ${matchDaysResponse.status}")
-            return 0
-        }
-
-        val matchDayIds = json.decodeFromString<List<MatchDayId>>(matchDaysResponse.bodyAsText())
-            .map { it.id }
-
-        if (matchDayIds.isEmpty()) {
-            logger.info("ℹ️ [DayGroupRepo] No match days found for matchday $matchdayNumber in this season")
-            return 0
-        }
-
-        logger.info("📅 [DayGroupRepo] Found ${matchDayIds.size} match days to clear")
-
-        // Step 3: Get and clear day_groups for these match_days
-        var totalCleared = 0
-
-        for (matchDayId in matchDayIds) {
-            // Get day_groups with assignments for this match_day
-            val dayGroupsResponse = client.get("$apiUrl/day_groups") {
-                header("apikey", apiKey)
-                header("Authorization", "Bearer $apiKey")
-                parameter("select", "id")
-                parameter("match_day_id", "eq.$matchDayId")
-                parameter("match_date", "not.is.null")
-            }
-
-            if (!dayGroupsResponse.status.isSuccess()) {
-                continue
-            }
-
-            @Serializable
-            data class DayGroupId(val id: String)
-
-            val dayGroupIds = json.decodeFromString<List<DayGroupId>>(dayGroupsResponse.bodyAsText())
-
-            // Clear each day_group's assignment
-            for (dayGroup in dayGroupIds) {
-                val clearResponse = client.patch("$apiUrl/day_groups?id=eq.${dayGroup.id}") {
-                    header("apikey", apiKey)
-                    header("Authorization", "Bearer $apiKey")
-                    contentType(ContentType.Application.Json)
-                    setBody(buildJsonObject {
-                        put("match_date", kotlinx.serialization.json.JsonNull)
-                        put("time_slot", kotlinx.serialization.json.JsonNull)
-                        put("court_index", kotlinx.serialization.json.JsonNull)
-                    }.toString())
-                }
-
-                if (clearResponse.status.isSuccess()) {
-                    totalCleared++
-                }
-            }
-        }
-
-        logger.info("✅ [DayGroupRepo] Cleared $totalCleared day_group assignments")
-        return totalCleared
+        val result = json.decodeFromString<ClearAssignmentsResult>(response.bodyAsText())
+        logger.info("[DayGroupRepo] Cleared ${result.clearedCount} day_group assignments")
+        return result.clearedCount
     }
 }
+
+@Serializable
+private data class ClearAssignmentsResult(
+    @SerialName("cleared_count") val clearedCount: Int
+)
 
 @Serializable
 private data class RotationCreated(
@@ -420,9 +329,10 @@ private data class DayGroupRaw(
     @SerialName("time_slot") val timeSlot: String? = null,
     @SerialName("court_index") val courtIndex: Int? = null,
     @SerialName("court_id") val courtId: String? = null,
+    @SerialName("season_courts") val seasonCourt: CourtInfo? = null,
     @SerialName("created_at") val createdAt: String
 ) {
-    fun toDayGroupResponse(players: List<LeaguePlayerResponse>, courtInfo: CourtInfo? = null) = DayGroupResponse(
+    fun toDayGroupResponse(players: List<LeaguePlayerResponse>) = DayGroupResponse(
         id = id,
         matchDayId = matchDayId,
         groupNumber = groupNumber,
@@ -431,8 +341,8 @@ private data class DayGroupRaw(
         timeSlot = timeSlot,
         courtIndex = courtIndex,
         courtId = courtId,
-        courtName = courtInfo?.name,
-        courtNumber = courtInfo?.courtNumber,
+        courtName = seasonCourt?.name,
+        courtNumber = seasonCourt?.courtNumber,
         createdAt = createdAt,
         players = players
     )

@@ -586,55 +586,54 @@ class AutoSchedulingService(
     /**
      * Fetch all day groups for a matchday, returning both unassigned groups and already-used slots.
      * This ensures we don't create overlapping assignments with existing ones.
+     * Batched: 1 query for categories + 1 query for all match days across all categories.
      */
     private suspend fun fetchGroupsAndUsedSlots(seasonId: String, matchdayNumber: Int): GroupsAndSlots {
-        // First get all categories for this season
+        // 1 query: get all categories for this season
         val categories = categoryRepository.getBySeasonId(seasonId)
+        if (categories.isEmpty()) return GroupsAndSlots(emptyList(), emptyMap())
+
+        val categoryIds = categories.map { it.id }
+        val categoryMap = categories.associateBy { it.id }
+
+        // 1 query: fetch all match days for all categories in a single batch
+        val response = client.get("$apiUrl/match_days") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "*,day_groups(*,season_courts(id,name,court_number))")
+            parameter("category_id", "in.(${categoryIds.joinToString(",")})")
+            parameter("match_number", "eq.$matchdayNumber")
+        }
+
+        if (!response.status.isSuccess()) return GroupsAndSlots(emptyList(), emptyMap())
+
+        val matchDays = json.decodeFromString<List<AutoScheduleMatchDayRaw>>(response.bodyAsText())
 
         val unassignedGroups = mutableListOf<UnassignedGroup>()
-        val usedSlots = mutableMapOf<String, MutableSet<Slot>>() // date -> slots
+        val usedSlots = mutableMapOf<String, MutableSet<Slot>>()
 
-        for (category in categories) {
-            // Fetch match day for this category and matchday number (including court info)
-            val response = client.get("$apiUrl/match_days") {
-                header("apikey", apiKey)
-                header("Authorization", "Bearer $apiKey")
-                parameter("select", "*,day_groups(*,season_courts(id,name,court_number))")
-                parameter("category_id", "eq.${category.id}")
-                parameter("match_number", "eq.$matchdayNumber")
-            }
+        for (matchDay in matchDays) {
+            val category = categoryMap[matchDay.categoryId] ?: continue
+            val categoryLevel = category.level.toIntOrNull() ?: 99
 
-            if (response.status.isSuccess()) {
-                val bodyText = response.bodyAsText()
-                val matchDays = json.decodeFromString<List<AutoScheduleMatchDayRaw>>(bodyText)
-
-                // Parse category level (e.g., "1", "2", "3" -> 1, 2, 3)
-                val categoryLevel = category.level.toIntOrNull() ?: 99
-
-                for (matchDay in matchDays) {
-                    for (dayGroup in matchDay.dayGroups) {
-                        if (dayGroup.matchDate == null || dayGroup.timeSlot == null || dayGroup.courtIndex == null) {
-                            // Unassigned group - add to list for scheduling
-                            unassignedGroups.add(
-                                UnassignedGroup(
-                                    id = dayGroup.id,
-                                    groupNumber = dayGroup.groupNumber,
-                                    categoryId = category.id,
-                                    categoryName = category.name,
-                                    categoryLevel = categoryLevel,
-                                    playerIds = dayGroup.playerIds,
-                                    recommendedCourts = category.recommendedCourts
-                                )
-                            )
-                        } else {
-                            // Already assigned - mark slot as used to avoid overlap
-                            // Use court info from season_courts if available, fallback to court_id or defaults
-                            val courtId = dayGroup.courtId ?: dayGroup.seasonCourt?.id ?: ""
-                            val courtName = dayGroup.seasonCourt?.name ?: "Cancha ${dayGroup.courtIndex}"
-                            val slot = Slot(dayGroup.matchDate, dayGroup.timeSlot, dayGroup.courtIndex, courtId, courtName)
-                            usedSlots.getOrPut(dayGroup.matchDate) { mutableSetOf() }.add(slot)
-                        }
-                    }
+            for (dayGroup in matchDay.dayGroups) {
+                if (dayGroup.matchDate == null || dayGroup.timeSlot == null || dayGroup.courtIndex == null) {
+                    unassignedGroups.add(
+                        UnassignedGroup(
+                            id = dayGroup.id,
+                            groupNumber = dayGroup.groupNumber,
+                            categoryId = category.id,
+                            categoryName = category.name,
+                            categoryLevel = categoryLevel,
+                            playerIds = dayGroup.playerIds,
+                            recommendedCourts = category.recommendedCourts
+                        )
+                    )
+                } else {
+                    val courtId = dayGroup.courtId ?: dayGroup.seasonCourt?.id ?: ""
+                    val courtName = dayGroup.seasonCourt?.name ?: "Cancha ${dayGroup.courtIndex}"
+                    val slot = Slot(dayGroup.matchDate, dayGroup.timeSlot, dayGroup.courtIndex, courtId, courtName)
+                    usedSlots.getOrPut(dayGroup.matchDate) { mutableSetOf() }.add(slot)
                 }
             }
         }
@@ -651,37 +650,33 @@ class AutoSchedulingService(
     )
 
     /**
-     * Build a map of player ID to player name for all players in the season
+     * Build a map of player ID to player name for all players in the season.
+     * Single query using category_id=in.(...) instead of N per-category queries.
      */
     private suspend fun buildPlayerNameMap(seasonId: String): Map<String, String> {
-        val playerNameMap = mutableMapOf<String, String>()
-
-        // Get all categories for the season
         val categories = categoryRepository.getBySeasonId(seasonId)
+        if (categories.isEmpty()) return emptyMap()
 
-        for (category in categories) {
-            // Fetch players for each category
-            val response = client.get("$apiUrl/league_players") {
-                header("apikey", apiKey)
-                header("Authorization", "Bearer $apiKey")
-                parameter("category_id", "eq.${category.id}")
-                parameter("select", "id,name")
-            }
+        val categoryIds = categories.map { it.id }
 
-            if (response.status.isSuccess()) {
-                val bodyText = response.bodyAsText()
-                val players = json.decodeFromString<List<PlayerNameOnly>>(bodyText)
-                for (player in players) {
-                    playerNameMap[player.id] = player.name
-                }
-            }
+        val response = client.get("$apiUrl/league_players") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "id,name")
+            parameter("category_id", "in.(${categoryIds.joinToString(",")})")
         }
 
-        return playerNameMap
+        return if (response.status.isSuccess()) {
+            json.decodeFromString<List<PlayerNameOnly>>(response.bodyAsText())
+                .associate { it.id to it.name }
+        } else {
+            emptyMap()
+        }
     }
 
     /**
      * Fetch historical time slot data for all players in the season from previous matchdays.
+     * Single query using category_id=in.(...) and match_number=lt.N instead of N×M queries.
      * Returns both:
      * - Overall frequency: map of playerId to map of timeSlot to count
      * - Previous matchday slots: map of playerId to the time slot they played in the immediately previous matchday
@@ -690,45 +685,39 @@ class AutoSchedulingService(
         seasonId: String,
         currentMatchdayNumber: Int
     ): PlayerTimeSlotHistoryData {
-        val overallFrequency = mutableMapOf<String, MutableMap<String, Int>>()
-        val previousMatchdaySlots = mutableMapOf<String, String>()
+        val categories = categoryRepository.getBySeasonId(seasonId)
+        if (categories.isEmpty()) return PlayerTimeSlotHistoryData(emptyMap(), emptyMap())
+
+        val categoryIds = categories.map { it.id }
         val previousMatchdayNumber = currentMatchdayNumber - 1
 
-        // Get all categories for the season
-        val categories = categoryRepository.getBySeasonId(seasonId)
+        // 1 query: fetch all previous match days across all categories with day_groups
+        val response = client.get("$apiUrl/match_days") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "id,match_number,day_groups(player_ids,time_slot)")
+            parameter("category_id", "in.(${categoryIds.joinToString(",")})")
+            parameter("match_number", "lt.$currentMatchdayNumber")
+        }
 
-        for (category in categories) {
-            // Fetch all match days before the current one with their day groups
-            for (matchdayNum in 1 until currentMatchdayNumber) {
-                val response = client.get("$apiUrl/match_days") {
-                    header("apikey", apiKey)
-                    header("Authorization", "Bearer $apiKey")
-                    parameter("select", "*,day_groups(*)")
-                    parameter("category_id", "eq.${category.id}")
-                    parameter("match_number", "eq.$matchdayNum")
-                }
+        if (!response.status.isSuccess()) return PlayerTimeSlotHistoryData(emptyMap(), emptyMap())
 
-                if (response.status.isSuccess()) {
-                    val bodyText = response.bodyAsText()
-                    val matchDays = json.decodeFromString<List<AutoScheduleMatchDayRaw>>(bodyText)
+        val matchDays = json.decodeFromString<List<AutoScheduleMatchDayRaw>>(response.bodyAsText())
 
-                    for (matchDay in matchDays) {
-                        for (dayGroup in matchDay.dayGroups) {
-                            // Only consider assigned groups (with time_slot)
-                            val timeSlot = dayGroup.timeSlot
-                            if (timeSlot != null) {
-                                for (playerId in dayGroup.playerIds) {
-                                    // Track overall frequency
-                                    val playerSlots = overallFrequency.getOrPut(playerId) { mutableMapOf() }
-                                    playerSlots[timeSlot] = (playerSlots[timeSlot] ?: 0) + 1
+        val overallFrequency = mutableMapOf<String, MutableMap<String, Int>>()
+        val previousMatchdaySlots = mutableMapOf<String, String>()
 
-                                    // Track previous matchday slot specifically
-                                    if (matchdayNum == previousMatchdayNumber) {
-                                        previousMatchdaySlots[playerId] = timeSlot
-                                    }
-                                }
-                            }
-                        }
+        for (matchDay in matchDays) {
+            for (dayGroup in matchDay.dayGroups) {
+                val timeSlot = dayGroup.timeSlot ?: continue
+                for (playerId in dayGroup.playerIds) {
+                    // Track overall frequency
+                    val playerSlots = overallFrequency.getOrPut(playerId) { mutableMapOf() }
+                    playerSlots[timeSlot] = (playerSlots[timeSlot] ?: 0) + 1
+
+                    // Track previous matchday slot specifically
+                    if (matchDay.matchNumber == previousMatchdayNumber) {
+                        previousMatchdaySlots[playerId] = timeSlot
                     }
                 }
             }
