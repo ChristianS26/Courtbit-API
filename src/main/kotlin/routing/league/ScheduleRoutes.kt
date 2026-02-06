@@ -328,97 +328,27 @@ fun Route.scheduleRoutes(
                         )
                     }
 
-                    // Get the current day group to know its current assignment
-                    val currentGroup = dayGroupRepository.getById(dayGroupId)
-                    if (currentGroup == null) {
-                        return@patch call.respond(
-                            HttpStatusCode.NotFound,
-                            mapOf("error" to "Day group not found")
-                        )
-                    }
+                    // Atomic slot assignment via RPC — handles conflict detection,
+                    // swapping, and displacement in a single DB transaction
+                    val result = dayGroupRepository.assignSlot(dayGroupId, request)
 
-                    // If courtIndex is provided but courtId is not, look up the court
-                    val enrichedRequest = if (request.courtIndex != null && request.courtId == null) {
-                        // Get the season ID from the day group's match day to look up courts
-                        // For now, we'll query courts by courtNumber matching courtIndex
-                        // This requires getting the season context - simplified approach using matchDayId
-                        request // Keep as-is for now, court_id will be set by auto-scheduling
-                    } else {
-                        request
-                    }
-
-                    // Check if target slot is already occupied by another group
-                    val occupyingGroup = if (enrichedRequest.matchDate != null && enrichedRequest.timeSlot != null && enrichedRequest.courtIndex != null) {
-                        dayGroupRepository.findBySlot(enrichedRequest.matchDate, enrichedRequest.timeSlot, enrichedRequest.courtIndex)
-                    } else {
-                        null
-                    }
-
-                    // Determine the action type for UX feedback
-                    val hasCurrentAssignment = currentGroup.matchDate != null &&
-                            currentGroup.timeSlot != null &&
-                            currentGroup.courtIndex != null
-                    val isTargetOccupied = occupyingGroup != null && occupyingGroup.id != dayGroupId
-
-                    // If occupied by a different group, perform swap or displacement
-                    if (isTargetOccupied) {
-                        if (hasCurrentAssignment) {
-                            // Swap: move the occupying group to the current group's old slot
-                            // Include courtId from the current group for proper tracking
-                            val swapRequest = UpdateDayGroupAssignmentRequest(
-                                matchDate = currentGroup.matchDate,
-                                timeSlot = currentGroup.timeSlot,
-                                courtIndex = currentGroup.courtIndex,
-                                courtId = currentGroup.courtId
+                    result.fold(
+                        onSuccess = { slotResult ->
+                            val response = UpdateAssignmentResponse(
+                                success = slotResult.success,
+                                action = slotResult.action,
+                                displacedGroupId = slotResult.displacedGroupId,
+                                displacedGroupNumber = slotResult.displacedGroupNumber
                             )
-                            val swapSuccess = dayGroupRepository.updateAssignment(occupyingGroup!!.id, swapRequest)
-                            if (!swapSuccess) {
-                                return@patch call.respond(
-                                    HttpStatusCode.InternalServerError,
-                                    mapOf("error" to "Failed to swap: could not move existing group")
-                                )
-                            }
-                        } else {
-                            // Displacement: the occupying group becomes unassigned
-                            val clearRequest = UpdateDayGroupAssignmentRequest(
-                                matchDate = null,
-                                timeSlot = null,
-                                courtIndex = null,
-                                courtId = null
+                            call.respond(HttpStatusCode.OK, response)
+                        },
+                        onFailure = { error ->
+                            call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (error.message ?: "Failed to assign slot"))
                             )
-                            val clearSuccess = dayGroupRepository.updateAssignment(occupyingGroup!!.id, clearRequest)
-                            if (!clearSuccess) {
-                                return@patch call.respond(
-                                    HttpStatusCode.InternalServerError,
-                                    mapOf("error" to "Failed to displace existing group")
-                                )
-                            }
                         }
-                    }
-
-                    // Now update the original group to the target slot
-                    val updated = dayGroupRepository.updateAssignment(dayGroupId, enrichedRequest)
-                    if (updated) {
-                        // Determine action type for frontend UX
-                        val actionType = when {
-                            !isTargetOccupied -> "assigned"
-                            hasCurrentAssignment -> "swapped"
-                            else -> "displaced"
-                        }
-
-                        val response = UpdateAssignmentResponse(
-                            success = true,
-                            action = actionType,
-                            displacedGroupId = if (isTargetOccupied) occupyingGroup?.id else null,
-                            displacedGroupNumber = if (isTargetOccupied) occupyingGroup?.groupNumber else null
-                        )
-                        call.respond(HttpStatusCode.OK, response)
-                    } else {
-                        call.respond(
-                            HttpStatusCode.InternalServerError,
-                            mapOf("error" to "Failed to update assignment")
-                        )
-                    }
+                    )
                 }
             }
 

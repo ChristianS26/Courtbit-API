@@ -1,6 +1,7 @@
 package repositories.league
 
 import models.league.DayGroupResponse
+import models.league.SlotAssignmentResult
 import models.league.UpdateDayGroupAssignmentRequest
 
 interface DayGroupRepository {
@@ -15,6 +16,12 @@ interface DayGroupRepository {
      * Used for detecting conflicts and enabling swaps
      */
     suspend fun findBySlot(matchDate: String, timeSlot: String, courtIndex: Int): DayGroupResponse?
+
+    /**
+     * Atomically assign a day group to a slot via RPC transaction.
+     * Handles conflict detection, swapping, and displacement in a single DB call.
+     */
+    suspend fun assignSlot(dayGroupId: String, request: UpdateDayGroupAssignmentRequest): Result<SlotAssignmentResult>
 
     /**
      * Phase 3.1: Clear all assignments for a matchday

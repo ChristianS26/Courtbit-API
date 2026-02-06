@@ -18,8 +18,10 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonPrimitive
 import models.league.DayGroupResponse
 import models.league.LeaguePlayerResponse
+import models.league.SlotAssignmentResult
 import models.league.UpdateDayGroupAssignmentRequest
 import org.slf4j.LoggerFactory
 
@@ -165,6 +167,31 @@ class DayGroupRepositoryImpl(
         } else {
             null
         }
+    }
+
+    override suspend fun assignSlot(dayGroupId: String, request: UpdateDayGroupAssignmentRequest): Result<SlotAssignmentResult> {
+        val payload = buildJsonObject {
+            put("p_day_group_id", JsonPrimitive(dayGroupId))
+            request.matchDate?.let { put("p_match_date", JsonPrimitive(it)) }
+            request.timeSlot?.let { put("p_time_slot", JsonPrimitive(it)) }
+            request.courtIndex?.let { put("p_court_index", JsonPrimitive(it)) }
+            request.courtId?.let { put("p_court_id", JsonPrimitive(it)) }
+        }
+
+        val response = client.post("$apiUrl/rpc/assign_day_group_slot") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(payload.toString())
+        }
+
+        if (!response.status.isSuccess()) {
+            val errorBody = response.bodyAsText()
+            return Result.failure(IllegalStateException("Failed to assign slot: $errorBody"))
+        }
+
+        val result = json.decodeFromString<SlotAssignmentResult>(response.bodyAsText())
+        return Result.success(result)
     }
 
     override suspend fun getRotationCount(dayGroupId: String): Int {

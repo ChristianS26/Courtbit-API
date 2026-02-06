@@ -73,6 +73,14 @@ data class UpdateAssignmentResponse(
     @SerialName("displaced_group_number") val displacedGroupNumber: Int? = null
 )
 
+@Serializable
+data class SlotAssignmentResult(
+    val success: Boolean,
+    val action: String,
+    @SerialName("displaced_group_id") val displacedGroupId: String? = null,
+    @SerialName("displaced_group_number") val displacedGroupNumber: Int? = null
+)
+
 // Master Schedule Response (combines defaults + overrides + day groups)
 @Serializable
 data class MasterScheduleResponse(
