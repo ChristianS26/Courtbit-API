@@ -218,7 +218,7 @@ data class StandingEntry(
     @SerialName("bracket_id") val bracketId: String,
     @SerialName("player_id") val playerId: String? = null,  // For individual tournaments
     @SerialName("team_id") val teamId: String? = null,      // For team tournaments
-    val position: Int,
+    val position: Int? = null,
     @SerialName("total_points") val totalPoints: Int = 0,
     @SerialName("matches_played") val matchesPlayed: Int = 0,
     @SerialName("matches_won") val matchesWon: Int = 0,
@@ -270,7 +270,7 @@ data class StandingInsertRequest(
     @SerialName("bracket_id") val bracketId: String,
     @SerialName("team_id") val teamId: String? = null,
     @SerialName("player_id") val playerId: String? = null,
-    val position: Int,
+    val position: Int? = null,
     @SerialName("total_points") val totalPoints: Int,
     @SerialName("matches_played") val matchesPlayed: Int,
     @SerialName("matches_won") val matchesWon: Int,
