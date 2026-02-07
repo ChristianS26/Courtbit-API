@@ -1,7 +1,7 @@
 package routing.ranking
 
-import com.incodap.security.requireOrganizer
-import com.incodap.security.uid
+import com.incodap.security.getOrganizerId
+import com.incodap.security.hasAccessToOrganizer
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
@@ -10,8 +10,6 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.*
 import models.ranking.CreatePointsConfigRequest
 import models.ranking.UpdatePointsConfigRequest
-import org.koin.ktor.ext.inject
-import repositories.organizer.OrganizerRepository
 import services.ranking.PointsConfigService
 
 class PointsConfigRoutes(
@@ -22,56 +20,41 @@ class PointsConfigRoutes(
             route("/points-config") {
                 // GET /api/points-config — all configs for organizer
                 get {
-                    call.requireOrganizer() ?: return@get
+                    val organizerId = call.getOrganizerId() ?: return@get
 
-                    val organizerRepository by call.application.inject<OrganizerRepository>()
-                    val organizer = organizerRepository.getByUserUid(call.uid)
-                    if (organizer == null) {
-                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Organizer not found"))
-                        return@get
-                    }
-
-                    val configs = service.getAllByOrganizer(organizer.id)
+                    val configs = service.getAllByOrganizer(organizerId)
                     call.respond(configs)
                 }
 
-                // GET /api/points-config/effective?tournament_id=X&tournament_type=Y&stage=Z
-                get("/effective") {
-                    call.requireOrganizer() ?: return@get
-
-                    val organizerRepository by call.application.inject<OrganizerRepository>()
-                    val organizer = organizerRepository.getByUserUid(call.uid)
-                    if (organizer == null) {
-                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Organizer not found"))
+                // GET /api/points-config/{id} — single config
+                get("/{id}") {
+                    val id = call.parameters["id"]
+                    if (id.isNullOrBlank()) {
+                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing id"))
                         return@get
                     }
 
-                    val tournamentId = call.request.queryParameters["tournament_id"]
-                    val tournamentType = call.request.queryParameters["tournament_type"] ?: "regular"
-                    val stage = call.request.queryParameters["stage"] ?: "final"
-
-                    val config = service.getEffective(organizer.id, tournamentId, tournamentType, stage)
-                    if (config != null) {
-                        call.respond(config)
-                    } else {
-                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "No points config found"))
+                    val config = service.getById(id)
+                    if (config == null) {
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Config not found"))
+                        return@get
                     }
+
+                    if (!call.hasAccessToOrganizer(config.organizerId)) {
+                        call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Not authorized"))
+                        return@get
+                    }
+
+                    call.respond(config)
                 }
 
                 // POST /api/points-config — create config
                 post {
-                    call.requireOrganizer() ?: return@post
-
-                    val organizerRepository by call.application.inject<OrganizerRepository>()
-                    val organizer = organizerRepository.getByUserUid(call.uid)
-                    if (organizer == null) {
-                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Organizer not found"))
-                        return@post
-                    }
+                    val organizerId = call.getOrganizerId() ?: return@post
 
                     val request = call.receive<CreatePointsConfigRequest>()
                     try {
-                        val created = service.create(organizer.id, request)
+                        val created = service.create(organizerId, request)
                         call.respond(HttpStatusCode.Created, created)
                     } catch (e: Exception) {
                         call.respond(
@@ -83,11 +66,20 @@ class PointsConfigRoutes(
 
                 // PATCH /api/points-config/{id} — update config
                 patch("/{id}") {
-                    call.requireOrganizer() ?: return@patch
-
                     val id = call.parameters["id"]
                     if (id.isNullOrBlank()) {
                         call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing id"))
+                        return@patch
+                    }
+
+                    val config = service.getById(id)
+                    if (config == null) {
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Config not found"))
+                        return@patch
+                    }
+
+                    if (!call.hasAccessToOrganizer(config.organizerId)) {
+                        call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Not authorized"))
                         return@patch
                     }
 
@@ -96,42 +88,26 @@ class PointsConfigRoutes(
                     if (updated != null) {
                         call.respond(updated)
                     } else {
-                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Config not found"))
-                    }
-                }
-
-                // POST /api/points-config/{id}/activate — activate config
-                post("/{id}/activate") {
-                    call.requireOrganizer() ?: return@post
-
-                    val organizerRepository by call.application.inject<OrganizerRepository>()
-                    val organizer = organizerRepository.getByUserUid(call.uid)
-                    if (organizer == null) {
-                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Organizer not found"))
-                        return@post
-                    }
-
-                    val id = call.parameters["id"]
-                    if (id.isNullOrBlank()) {
-                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing id"))
-                        return@post
-                    }
-
-                    val activated = service.activate(organizer.id, id)
-                    if (activated) {
-                        call.respond(HttpStatusCode.OK, mapOf("message" to "Activated"))
-                    } else {
-                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Config not found"))
+                        call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Failed to update"))
                     }
                 }
 
                 // DELETE /api/points-config/{id} — delete config
                 delete("/{id}") {
-                    call.requireOrganizer() ?: return@delete
-
                     val id = call.parameters["id"]
                     if (id.isNullOrBlank()) {
                         call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing id"))
+                        return@delete
+                    }
+
+                    val config = service.getById(id)
+                    if (config == null) {
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Config not found"))
+                        return@delete
+                    }
+
+                    if (!call.hasAccessToOrganizer(config.organizerId)) {
+                        call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Not authorized"))
                         return@delete
                     }
 
@@ -139,7 +115,7 @@ class PointsConfigRoutes(
                     if (deleted) {
                         call.respond(HttpStatusCode.OK, mapOf("message" to "Deleted"))
                     } else {
-                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Config not found"))
+                        call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Failed to delete"))
                     }
                 }
             }

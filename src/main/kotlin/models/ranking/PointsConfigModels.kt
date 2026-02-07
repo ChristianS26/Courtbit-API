@@ -13,20 +13,13 @@ data class PointDistributionItem(
 data class PointsConfigResponse(
     val id: String,
     @SerialName("organizer_id") val organizerId: String,
-    @SerialName("tournament_id") val tournamentId: String? = null,
     val name: String,
-    @SerialName("tournament_type") val tournamentType: String,
-    val stage: String,
     val distribution: List<PointDistributionItem>,
-    @SerialName("is_active") val isActive: Boolean,
 )
 
 @Serializable
 data class CreatePointsConfigRequest(
-    @SerialName("tournament_id") val tournamentId: String? = null,
     val name: String,
-    @SerialName("tournament_type") val tournamentType: String = "regular",
-    val stage: String = "final",
     val distribution: List<PointDistributionItem>,
 )
 
