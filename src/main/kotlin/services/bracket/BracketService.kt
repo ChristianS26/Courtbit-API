@@ -33,21 +33,38 @@ import repositories.bracket.BracketRepository
  * - First to N points wins (e.g., 8-0 through 8-7 for 8-point format)
  */
 object PadelScoreValidator {
-    private val VALID_WINNING_SCORES = listOf(
-        6 to 0, 6 to 1, 6 to 2, 6 to 3, 6 to 4,  // Standard win
-        7 to 5,                                    // Win from 5-5
-        7 to 6                                     // Tiebreak win
-    )
 
-    private val VALID_SET_SCORES: Set<Pair<Int, Int>> = buildSet {
-        VALID_WINNING_SCORES.forEach { (a, b) ->
+    /**
+     * Generate valid winning scores for a given gamesPerSet (G).
+     * G-0, G-1, ..., G-(G-2), (G+1)-(G-1), (G+1)-G
+     */
+    private fun getValidWinningScores(gamesPerSet: Int): List<Pair<Int, Int>> {
+        val scores = mutableListOf<Pair<Int, Int>>()
+        // Regular wins: G-0 through G-(G-2)
+        for (loser in 0..(gamesPerSet - 2)) {
+            scores.add(gamesPerSet to loser)
+        }
+        // Extended: (G+1)-(G-1)
+        scores.add((gamesPerSet + 1) to (gamesPerSet - 1))
+        // Tiebreak: (G+1)-G
+        scores.add((gamesPerSet + 1) to gamesPerSet)
+        return scores
+    }
+
+    private fun getValidSetScores(gamesPerSet: Int): Set<Pair<Int, Int>> = buildSet {
+        getValidWinningScores(gamesPerSet).forEach { (a, b) ->
             add(a to b)  // Team 1 wins
             add(b to a)  // Team 2 wins
         }
     }
 
-    fun isValidSetScore(team1Games: Int, team2Games: Int): Boolean {
-        return (team1Games to team2Games) in VALID_SET_SCORES
+    fun isValidSetScore(team1Games: Int, team2Games: Int, gamesPerSet: Int = 6): Boolean {
+        return (team1Games to team2Games) in getValidSetScores(gamesPerSet)
+    }
+
+    private fun isTiebreakScore(team1: Int, team2: Int, gamesPerSet: Int): Boolean {
+        return (team1 == gamesPerSet + 1 && team2 == gamesPerSet) ||
+               (team1 == gamesPerSet && team2 == gamesPerSet + 1)
     }
 
     /**
@@ -112,31 +129,35 @@ object PadelScoreValidator {
 
     /**
      * Validate classic format score (games-based).
+     * @param gamesPerSet configurable games per set (default 6)
+     * @param totalSets configurable total sets (default 3, best-of)
      */
-    fun validateMatchScore(setScores: List<SetScore>): ScoreValidationResult {
+    fun validateMatchScore(setScores: List<SetScore>, gamesPerSet: Int = 6, totalSets: Int = 3): ScoreValidationResult {
         if (setScores.isEmpty()) {
             return ScoreValidationResult.Invalid("At least one set required")
         }
-        if (setScores.size > 3) {
-            return ScoreValidationResult.Invalid("Maximum 3 sets allowed")
+        if (setScores.size > totalSets) {
+            return ScoreValidationResult.Invalid("Maximum $totalSets sets allowed")
         }
 
+        val setsNeededToWin = (totalSets + 1) / 2
         var team1SetsWon = 0
         var team2SetsWon = 0
 
         for ((index, set) in setScores.withIndex()) {
-            if (!isValidSetScore(set.team1, set.team2)) {
+            if (!isValidSetScore(set.team1, set.team2, gamesPerSet)) {
+                val validScores = getValidWinningScores(gamesPerSet).joinToString(", ") { "${it.first}-${it.second}" }
                 return ScoreValidationResult.Invalid(
                     "Invalid set ${index + 1} score: ${set.team1}-${set.team2}. " +
-                    "Valid scores: 6-0, 6-1, 6-2, 6-3, 6-4, 7-5, or 7-6"
+                    "Valid scores: $validScores"
                 )
             }
 
-            // Validate tiebreak if 7-6
-            if ((set.team1 == 7 && set.team2 == 6) || (set.team1 == 6 && set.team2 == 7)) {
+            // Validate tiebreak if (G+1)-G
+            if (isTiebreakScore(set.team1, set.team2, gamesPerSet)) {
                 if (set.tiebreak == null) {
                     return ScoreValidationResult.Invalid(
-                        "Set ${index + 1} is a tiebreak (7-6), tiebreak score required"
+                        "Set ${index + 1} is a tiebreak (${gamesPerSet + 1}-${gamesPerSet}), tiebreak score required"
                     )
                 }
                 // Tiebreak validation: first to 7 with 2-point lead
@@ -158,7 +179,7 @@ object PadelScoreValidator {
             }
 
             // Check if match is already decided
-            if (team1SetsWon == 2 || team2SetsWon == 2) {
+            if (team1SetsWon >= setsNeededToWin || team2SetsWon >= setsNeededToWin) {
                 if (index < setScores.size - 1) {
                     return ScoreValidationResult.Invalid(
                         "Match already decided after set ${index + 1}, but ${setScores.size} sets provided"
@@ -169,9 +190,9 @@ object PadelScoreValidator {
 
         // Verify match is complete
         return when {
-            team1SetsWon == 2 -> ScoreValidationResult.Valid(winner = 1, setsWon = team1SetsWon to team2SetsWon)
-            team2SetsWon == 2 -> ScoreValidationResult.Valid(winner = 2, setsWon = team1SetsWon to team2SetsWon)
-            else -> ScoreValidationResult.Invalid("Match incomplete: neither team has won 2 sets yet (current: $team1SetsWon-$team2SetsWon)")
+            team1SetsWon >= setsNeededToWin -> ScoreValidationResult.Valid(winner = 1, setsWon = team1SetsWon to team2SetsWon)
+            team2SetsWon >= setsNeededToWin -> ScoreValidationResult.Valid(winner = 2, setsWon = team1SetsWon to team2SetsWon)
+            else -> ScoreValidationResult.Invalid("Match incomplete: need $setsNeededToWin set(s) to win (current: $team1SetsWon-$team2SetsWon)")
         }
     }
 }
@@ -405,7 +426,9 @@ class BracketService(
             PadelScoreValidator.validateExpressScore(setScores, maxPoints, totalSets)
         } else {
             // Classic format validation
-            PadelScoreValidator.validateMatchScore(setScores)
+            val gamesPerSet = matchFormat?.gamesPerSet ?: 6
+            val totalSets = matchFormat?.sets ?: 3
+            PadelScoreValidator.validateMatchScore(setScores, gamesPerSet, totalSets)
         }
 
         if (validation is ScoreValidationResult.Invalid) {
@@ -544,7 +567,9 @@ class BracketService(
         val validation = if (matchFormat?.pointsPerSet != null) {
             PadelScoreValidator.validateExpressScore(setScores, matchFormat.pointsPerSet, matchFormat.sets)
         } else {
-            PadelScoreValidator.validateMatchScore(setScores)
+            val gamesPerSet = matchFormat?.gamesPerSet ?: 6
+            val totalSets = matchFormat?.sets ?: 3
+            PadelScoreValidator.validateMatchScore(setScores, gamesPerSet, totalSets)
         }
 
         if (validation is ScoreValidationResult.Invalid) {
