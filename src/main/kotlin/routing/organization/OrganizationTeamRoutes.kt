@@ -7,6 +7,7 @@ import io.ktor.server.auth.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import models.organization.AddMemberByEmailRequest
 import models.organization.CreateInvitationRequest
 import models.organization.JoinOrganizationRequest
 import models.organization.RemoveMemberRequest
@@ -163,6 +164,60 @@ fun Route.organizationTeamRoutes(
                                     call.respond(
                                         HttpStatusCode.InternalServerError,
                                         mapOf("error" to "Failed to remove member")
+                                    )
+                                }
+                            }
+                        }
+                    )
+                }
+
+                // POST /organizations/{organizerId}/members - Add a member by email
+                post("/members") {
+                    val uid = call.requireUserUid() ?: return@post
+
+                    val organizerId = call.parameters["organizerId"]
+                    if (organizerId.isNullOrBlank()) {
+                        call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to "Organizer ID is required")
+                        )
+                        return@post
+                    }
+
+                    val request = try {
+                        call.receive<AddMemberByEmailRequest>()
+                    } catch (e: Exception) {
+                        call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to "Invalid request body. Required: email")
+                        )
+                        return@post
+                    }
+
+                    val result = service.addMemberByEmail(request.email, organizerId, uid)
+
+                    result.fold(
+                        onSuccess = { member ->
+                            call.respond(HttpStatusCode.Created, member)
+                        },
+                        onFailure = { error ->
+                            when (error) {
+                                is IllegalAccessException -> {
+                                    call.respond(
+                                        HttpStatusCode.Forbidden,
+                                        mapOf("error" to (error.message ?: "Access denied"))
+                                    )
+                                }
+                                is IllegalArgumentException -> {
+                                    call.respond(
+                                        HttpStatusCode.BadRequest,
+                                        mapOf("error" to (error.message ?: "Invalid request"))
+                                    )
+                                }
+                                else -> {
+                                    call.respond(
+                                        HttpStatusCode.InternalServerError,
+                                        mapOf("error" to (error.message ?: "Failed to add member"))
                                     )
                                 }
                             }

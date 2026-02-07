@@ -1,5 +1,6 @@
 package services.organization
 
+import com.incodap.repositories.users.UserRepository
 import models.organization.JoinOrganizationResult
 import models.organization.OrganizationInvitationResponse
 import models.organization.OrganizationMemberResponse
@@ -9,7 +10,8 @@ import repositories.organizer.OrganizerRepository
 
 class OrganizationTeamService(
     private val repository: OrganizationTeamRepository,
-    private val organizerRepository: OrganizerRepository
+    private val organizerRepository: OrganizerRepository,
+    private val userRepository: UserRepository
 ) {
 
     /**
@@ -170,6 +172,46 @@ class OrganizationTeamService(
             Result.success(true)
         } else {
             Result.failure(IllegalStateException("Failed to remove member"))
+        }
+    }
+
+    /**
+     * Add a member by email
+     * Only accessible to organization owner
+     */
+    suspend fun addMemberByEmail(
+        email: String,
+        organizerId: String,
+        requestingUserUid: String
+    ): Result<OrganizationMemberResponse> {
+        // Verify user is the owner
+        if (!isOwner(requestingUserUid, organizerId)) {
+            return Result.failure(
+                IllegalAccessException("Only the organization owner can add members")
+            )
+        }
+
+        // Look up user by email
+        val user = userRepository.findByEmail(email)
+            ?: return Result.failure(
+                IllegalArgumentException("No se encontró un usuario con ese correo electrónico")
+            )
+
+        // Check if already a member
+        val existingMembers = repository.getMembers(organizerId)
+        if (existingMembers.any { it.userUid == user.uid }) {
+            return Result.failure(
+                IllegalArgumentException("Este usuario ya es miembro de la organización")
+            )
+        }
+
+        val fullName = listOfNotNull(user.firstName, user.lastName).joinToString(" ").ifBlank { email }
+
+        val member = repository.addMember(organizerId, user.uid, fullName, user.email)
+        return if (member != null) {
+            Result.success(member)
+        } else {
+            Result.failure(IllegalStateException("Error al agregar miembro"))
         }
     }
 

@@ -250,6 +250,71 @@ class OrganizationTeamRepositoryImpl(
         }
     }
 
+    override suspend fun addMember(
+        organizerId: String,
+        userUid: String,
+        userName: String,
+        userEmail: String
+    ): OrganizationMemberResponse? {
+        return try {
+            @Serializable
+            data class InsertPayload(
+                @SerialName("organizer_id")
+                val organizerId: String,
+                @SerialName("user_uid")
+                val userUid: String,
+                val role: String,
+                @SerialName("user_name")
+                val userName: String,
+                @SerialName("user_email")
+                val userEmail: String
+            )
+
+            val response = client.post("$apiUrl/organization_members") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                header("Prefer", "return=representation")
+                contentType(ContentType.Application.Json)
+                setBody(listOf(InsertPayload(organizerId, userUid, "member", userName, userEmail)))
+            }
+
+            if (response.status.isSuccess()) {
+                @Serializable
+                data class MemberRow(
+                    val id: String,
+                    @SerialName("organizer_id")
+                    val organizerId: String,
+                    @SerialName("user_uid")
+                    val userUid: String,
+                    val role: String,
+                    @SerialName("joined_at")
+                    val joinedAt: String,
+                    @SerialName("user_name")
+                    val userName: String? = null,
+                    @SerialName("user_email")
+                    val userEmail: String? = null
+                )
+
+                val members = json.decodeFromString<List<MemberRow>>(response.bodyAsText())
+                members.firstOrNull()?.let { member ->
+                    OrganizationMemberResponse(
+                        id = member.id,
+                        organizerId = member.organizerId,
+                        userUid = member.userUid,
+                        role = member.role,
+                        createdAt = member.joinedAt,
+                        userName = member.userName,
+                        userEmail = member.userEmail
+                    )
+                }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     override suspend fun getMemberById(memberId: String): OrganizationMemberResponse? {
         return try {
             val response = client.get("$apiUrl/organization_members") {

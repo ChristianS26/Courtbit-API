@@ -19,7 +19,8 @@ val OrganizationTeamModule = module {
     single {
         OrganizationTeamService(
             repository = get(),         // OrganizationTeamRepository
-            organizerRepository = get() // OrganizerRepository for ownership checks
+            organizerRepository = get(), // OrganizerRepository for ownership checks
+            userRepository = get()      // UserRepository for email lookup
         )
     }
 }

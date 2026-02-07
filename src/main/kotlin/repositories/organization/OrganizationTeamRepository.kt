@@ -50,4 +50,9 @@ interface OrganizationTeamRepository {
      * Get member by ID
      */
     suspend fun getMemberById(memberId: String): OrganizationMemberResponse?
+
+    /**
+     * Add a member directly to an organization
+     */
+    suspend fun addMember(organizerId: String, userUid: String, userName: String, userEmail: String): OrganizationMemberResponse?
 }

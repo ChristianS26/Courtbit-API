@@ -82,3 +82,8 @@ data class RemoveMemberRequest(
     @SerialName("member_id")
     val memberId: String
 )
+
+@Serializable
+data class AddMemberByEmailRequest(
+    val email: String
+)
