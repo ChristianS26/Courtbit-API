@@ -1122,10 +1122,10 @@ class BracketService(
         }
 
         val advancingTeams = mutableListOf<TeamSeed>()
+        val teamGroupMap = mutableMapOf<String, Int>() // teamId -> groupNumber
         var seedCounter = 1
 
-        // Interleave seeds: 1A vs 2B, 1B vs 2A pattern
-        // First collect group winners, then runners-up
+        // Collect advancing teams by position, tracking group origin
         for (position in 1..config.advancingPerGroup) {
             for (groupNum in 1..config.groupCount) {
                 val groupTeams = groupStandings[groupNum]?.sortedBy { it.position } ?: emptyList()
@@ -1137,18 +1137,15 @@ class BracketService(
                     ))
                 }
                 advancingTeams.add(TeamSeed(teamId, seedCounter++))
+                teamGroupMap[teamId] = groupNum
             }
         }
 
         // Add wildcards (best runners-up) if configured
         val wildcardCount = config.wildcardCount
         if (wildcardCount > 0) {
-            // Determine which position to pick wildcards from
-            // If advancingPerGroup == 1, wildcards come from 2nd place
-            // If advancingPerGroup == 2, wildcards come from 3rd place
             val wildcardPosition = config.advancingPerGroup + 1
 
-            // Collect all teams at the wildcard position from all groups
             val wildcardCandidates = mutableListOf<StandingEntry>()
             for (groupNum in 1..config.groupCount) {
                 val groupTeams = groupStandings[groupNum]?.sortedBy { it.position } ?: emptyList()
@@ -1158,40 +1155,23 @@ class BracketService(
                 }
             }
 
-            // Sort wildcards by: total points DESC, point difference DESC, games won DESC
             val sortedWildcards = wildcardCandidates.sortedWith(
                 compareByDescending<StandingEntry> { it.totalPoints }
                     .thenByDescending { it.pointDifference }
                     .thenByDescending { it.gamesWon }
             )
 
-            // Take the best N wildcards
             val selectedWildcards = sortedWildcards.take(wildcardCount)
 
             for (wildcard in selectedWildcards) {
                 val teamId = wildcard.teamId ?: continue
                 advancingTeams.add(TeamSeed(teamId, seedCounter++))
+                teamGroupMap[teamId] = wildcard.groupNumber ?: 0
             }
         }
 
-        // Generate seeding order for bracket (proper seeding placement)
-        // For groups + knockout: 1A vs 2D, 1B vs 2C, 1C vs 2B, 1D vs 2A (if 4 groups, 2 advance each)
-        val seededTeams = if (config.groupCount == 4 && config.advancingPerGroup == 2 && wildcardCount == 0) {
-            // 8 teams: cross-group matchups (only when no wildcards, as they change the seeding)
-            listOf(
-                advancingTeams[0],  // 1A
-                advancingTeams[7],  // 2D
-                advancingTeams[2],  // 1C
-                advancingTeams[5],  // 2B
-                advancingTeams[1],  // 1B
-                advancingTeams[6],  // 2C
-                advancingTeams[3],  // 1D
-                advancingTeams[4],  // 2A
-            )
-        } else {
-            // Generic seeding for other configurations or when wildcards are present
-            advancingTeams
-        }
+        // Cross-group seeding: ensure no same-group matchups in first round
+        val seededTeams = resolveSameGroupConflicts(advancingTeams, teamGroupMap)
 
         // Get current max match number
         val maxMatchNumber = matches.maxOfOrNull { it.matchNumber } ?: 0
@@ -1540,6 +1520,83 @@ class BracketService(
             3 -> "Quarterfinals"
             else -> "Round $round"
         }
+    }
+
+    /**
+     * Resolve same-group conflicts in knockout seeding.
+     * Ensures no two teams from the same group face each other in the first round.
+     * Uses bracket seed positions to determine matchups, then swaps seeds to fix conflicts.
+     */
+    private fun resolveSameGroupConflicts(
+        teams: List<TeamSeed>,
+        teamGroupMap: Map<String, Int>
+    ): List<TeamSeed> {
+        if (teams.size <= 1) return teams
+
+        val bracketSize = nextPowerOfTwo(teams.size)
+        val seedPositions = generateSeedPositions(bracketSize)
+
+        // Build mutable seed-to-team mapping
+        val seedToTeam = mutableMapOf<Int, TeamSeed>()
+        teams.forEach { seedToTeam[it.seed] = it }
+
+        // Determine first-round match pairs (which seeds face each other)
+        val matchPairs = (0 until bracketSize step 2).map { i ->
+            seedPositions[i] to seedPositions[i + 1]
+        }
+
+        // Check each match pair for same-group conflicts
+        for (i in matchPairs.indices) {
+            val (s1, s2) = matchPairs[i]
+            val t1 = seedToTeam[s1] ?: continue
+            val t2 = seedToTeam[s2] ?: continue
+
+            val g1 = teamGroupMap[t1.teamId]
+            val g2 = teamGroupMap[t2.teamId]
+
+            if (g1 != null && g1 == g2) {
+                // Conflict: find another match to swap with
+                var resolved = false
+                for (j in matchPairs.indices) {
+                    if (j == i || resolved) continue
+                    val (os1, os2) = matchPairs[j]
+
+                    // Try swapping t2 with the second team from match j
+                    val ot2 = seedToTeam[os2]
+                    if (ot2 != null) {
+                        val og2 = teamGroupMap[ot2.teamId]
+                        val og1 = teamGroupMap[seedToTeam[os1]?.teamId ?: ""]
+                        // Swap is valid if: t1 vs ot2 are different groups AND ot1 vs t2 are different groups
+                        if (og2 != g1 && (og1 == null || og1 != g2)) {
+                            // Swap seeds
+                            val newT2 = TeamSeed(ot2.teamId, s2)
+                            val newOt2 = TeamSeed(t2.teamId, os2)
+                            seedToTeam[s2] = newT2
+                            seedToTeam[os2] = newOt2
+                            resolved = true
+                            continue
+                        }
+                    }
+
+                    // Try swapping t2 with the first team from match j
+                    val ot1 = seedToTeam[os1]
+                    if (ot1 != null) {
+                        val og1 = teamGroupMap[ot1.teamId]
+                        val og2j = teamGroupMap[seedToTeam[os2]?.teamId ?: ""]
+                        if (og1 != g1 && (og2j == null || og2j != g2)) {
+                            val newT2 = TeamSeed(ot1.teamId, s2)
+                            val newOt1 = TeamSeed(t2.teamId, os1)
+                            seedToTeam[s2] = newT2
+                            seedToTeam[os1] = newOt1
+                            resolved = true
+                            continue
+                        }
+                    }
+                }
+            }
+        }
+
+        return seedToTeam.values.sortedBy { it.seed }
     }
 
     // ============ Status and Withdrawal ============
