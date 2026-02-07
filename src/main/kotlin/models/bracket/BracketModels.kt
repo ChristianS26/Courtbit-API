@@ -26,6 +26,11 @@ data class CreateBracketRequest(
     // config is ignored for now - we use defaults
 )
 
+@Serializable
+data class UpdateBracketConfigRequest(
+    val config: JsonElement
+)
+
 // ============ Response DTOs ============
 
 /**

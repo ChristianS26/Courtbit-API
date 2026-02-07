@@ -21,6 +21,7 @@ import models.bracket.SuccessResponse
 import models.bracket.SwapTeamsRequest
 import models.bracket.UpdateScoreRequest
 import models.bracket.UpdateStatusRequest
+import models.bracket.UpdateBracketConfigRequest
 import models.bracket.UpdateScheduleRequest
 import models.bracket.WithdrawTeamRequest
 import services.bracket.BracketService
@@ -196,6 +197,53 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.Created, it) },
                     onFailure = { call.respond(HttpStatusCode.BadRequest, mapOf("error" to (it.message ?: "Bracket creation failed"))) }
+                )
+            }
+
+            // PATCH /api/brackets/{categoryId}?tournament_id=xxx
+            // Requires authentication - updates bracket config (e.g. match format)
+            patch("/{categoryId}") {
+                val organizerId = call.getOrganizerId() ?: return@patch
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@patch
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@patch
+                }
+
+                val request = try {
+                    call.receive<UpdateBracketConfigRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid request body: ${e.localizedMessage}"))
+                    return@patch
+                }
+
+                val result = bracketService.updateBracketConfig(
+                    tournamentId = tournamentId,
+                    categoryId = categoryId,
+                    configJson = request.config.toString()
+                )
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.NotFound,
+                                mapOf("error" to (e.message ?: "Bracket not found"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Config update failed"))
+                            )
+                        }
+                    }
                 )
             }
 

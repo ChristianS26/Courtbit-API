@@ -199,6 +199,29 @@ class BracketService(
     }
 
     /**
+     * Update bracket config (e.g. match format) without regenerating matches.
+     */
+    suspend fun updateBracketConfig(
+        tournamentId: String,
+        categoryId: Int,
+        configJson: String
+    ): Result<BracketWithMatchesResponse> {
+        val existing = repository.getBracketWithMatches(tournamentId, categoryId)
+            ?: return Result.failure(IllegalArgumentException("Bracket not found"))
+
+        val updated = repository.updateBracketConfig(existing.bracket.id, configJson)
+        if (!updated) {
+            return Result.failure(IllegalStateException("Failed to update bracket config"))
+        }
+
+        // Re-fetch to return updated data
+        val refreshed = repository.getBracketWithMatches(tournamentId, categoryId)
+            ?: return Result.failure(IllegalStateException("Bracket not found after update"))
+
+        return Result.success(refreshed)
+    }
+
+    /**
      * Create a bracket without generating matches.
      * Allows organizer to configure the bracket before generating matches.
      * If bracket exists, deletes it and creates a new one.
