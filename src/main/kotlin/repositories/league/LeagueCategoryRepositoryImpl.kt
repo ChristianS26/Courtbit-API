@@ -36,11 +36,12 @@ class LeagueCategoryRepositoryImpl(
     private fun parseWithCategoryName(bodyText: String): List<LeagueCategoryResponse> {
         val rawList = json.decodeFromString<List<JsonObject>>(bodyText)
         return rawList.map { obj ->
-            val categoryName = obj["categories"]
-                ?.jsonObject
-                ?.get("name")
-                ?.jsonPrimitive
-                ?.contentOrNull
+            val categoriesElement = obj["categories"]
+            val categoryName = if (categoriesElement is JsonObject) {
+                categoriesElement["name"]?.jsonPrimitive?.contentOrNull
+            } else {
+                null
+            }
             val base = json.decodeFromJsonElement(LeagueCategoryResponse.serializer(), obj)
             base.copy(globalCategoryName = categoryName)
         }
