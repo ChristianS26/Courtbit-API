@@ -14,4 +14,6 @@ interface PointsConfigRepository {
     suspend fun create(organizerId: String, body: String): PointsConfigResponse
     suspend fun update(id: String, body: String): PointsConfigResponse?
     suspend fun delete(id: String): Boolean
+    suspend fun deactivateByType(organizerId: String, tournamentType: String, stage: String): Boolean
+    suspend fun activate(id: String): Boolean
 }

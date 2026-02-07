@@ -129,4 +129,31 @@ class PointsConfigRepositoryImpl(
         }
         return response.status.isSuccess()
     }
+
+    override suspend fun deactivateByType(organizerId: String, tournamentType: String, stage: String): Boolean {
+        val response = client.patch("$apiUrl/$table") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            parameter("organizer_id", "eq.$organizerId")
+            parameter("tournament_id", "is.null")
+            parameter("tournament_type", "eq.$tournamentType")
+            parameter("stage", "eq.$stage")
+            parameter("is_active", "eq.true")
+            setBody("""{"is_active": false}""")
+        }
+        return response.status.isSuccess()
+    }
+
+    override suspend fun activate(id: String): Boolean {
+        val response = client.patch("$apiUrl/$table") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            parameter("id", "eq.$id")
+            setBody("""{"is_active": true}""")
+        }
+        return response.status.isSuccess()
+    }
 }

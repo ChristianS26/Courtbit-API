@@ -100,6 +100,31 @@ class PointsConfigRoutes(
                     }
                 }
 
+                // POST /api/points-config/{id}/activate — activate config
+                post("/{id}/activate") {
+                    call.requireOrganizer() ?: return@post
+
+                    val organizerRepository by call.application.inject<OrganizerRepository>()
+                    val organizer = organizerRepository.getByUserUid(call.uid)
+                    if (organizer == null) {
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Organizer not found"))
+                        return@post
+                    }
+
+                    val id = call.parameters["id"]
+                    if (id.isNullOrBlank()) {
+                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing id"))
+                        return@post
+                    }
+
+                    val activated = service.activate(organizer.id, id)
+                    if (activated) {
+                        call.respond(HttpStatusCode.OK, mapOf("message" to "Activated"))
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Config not found"))
+                    }
+                }
+
                 // DELETE /api/points-config/{id} — delete config
                 delete("/{id}") {
                     call.requireOrganizer() ?: return@delete
