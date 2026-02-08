@@ -121,7 +121,7 @@ class CategoryRepositoryImpl(
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
             parameter("tournament_id", "eq.$tournamentId")
-            parameter("select", "category_id,price,categories(id,name,category_type,level)")
+            parameter("select", "category_id,price,color,max_teams,categories(id,name,category_type,level)")
             parameter("order", "categories(category_type),categories(level)")
         }
 
@@ -132,20 +132,61 @@ class CategoryRepositoryImpl(
         val body = response.bodyAsText()
         val rawList = json.decodeFromString<List<JsonObject>>(body)
 
+        // Fetch bracket category IDs to check which categories have brackets
+        val bracketCategoryIds = getBracketCategoryIds(tournamentId)
+
+        // Fetch team counts per category
+        val teamCountsByCategory = getTeamCountsByCategory(tournamentId)
+
         return rawList.mapNotNull { obj ->
             val categoryId = obj["category_id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
             val categoryObj = obj["categories"]?.jsonObject ?: return@mapNotNull null
             val name = categoryObj["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
             val price = obj["price"]?.jsonPrimitive?.intOrNull ?: 0
+            val color = obj["color"]?.jsonPrimitive?.content
+            val maxTeams = obj["max_teams"]?.jsonPrimitive?.intOrNull
 
             CategoryPriceResponse(
                 id = null,
                 tournamentType = tournamentType,
                 categoryId = categoryId,
                 price = price,
-                categoryName = name
+                categoryName = name,
+                color = color,
+                maxTeams = maxTeams,
+                currentTeamCount = teamCountsByCategory[categoryId] ?: 0,
+                hasBracket = bracketCategoryIds.contains(categoryId)
             )
         }.sortedBy { it.categoryId }
+    }
+
+    private suspend fun getBracketCategoryIds(tournamentId: String): Set<Int> {
+        val response = client.get("${config.apiUrl}/tournament_brackets") {
+            header("apikey", config.apiKey)
+            header("Authorization", "Bearer ${config.apiKey}")
+            parameter("tournament_id", "eq.$tournamentId")
+            parameter("select", "category_id")
+        }
+        return if (response.status.isSuccess()) {
+            json.decodeFromString<List<JsonObject>>(response.bodyAsText())
+                .mapNotNull { it["category_id"]?.jsonPrimitive?.intOrNull }
+                .toSet()
+        } else emptySet()
+    }
+
+    private suspend fun getTeamCountsByCategory(tournamentId: String): Map<Int, Int> {
+        val response = client.get("${config.apiUrl}/teams") {
+            header("apikey", config.apiKey)
+            header("Authorization", "Bearer ${config.apiKey}")
+            parameter("tournament_id", "eq.$tournamentId")
+            parameter("select", "category_id")
+        }
+        return if (response.status.isSuccess()) {
+            json.decodeFromString<List<JsonObject>>(response.bodyAsText())
+                .mapNotNull { it["category_id"]?.jsonPrimitive?.intOrNull }
+                .groupingBy { it }
+                .eachCount()
+        } else emptyMap()
     }
 
 
