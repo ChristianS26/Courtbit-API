@@ -2,12 +2,11 @@ package services.tournament
 
 import com.incodap.models.tournament.UpdateTournamentRequest
 import com.incodap.repositories.teams.TeamRepository
+import models.bracket.MatchResponse
+import models.bracket.StandingEntry
 import models.category.TournamentCategoryRequest
-import models.tournament.CategoryColorRequest
-import models.tournament.CategoryPriceRequest
-import models.tournament.CreateTournamentRequest
-import models.tournament.DeleteTournamentResult
-import models.tournament.TournamentResponse
+import models.tournament.*
+import repositories.bracket.BracketRepository
 import repositories.tournament.TournamentHasPaymentsException
 import repositories.tournament.TournamentRepository
 import services.category.CategoryService
@@ -16,6 +15,7 @@ class TournamentService(
     private val repository: TournamentRepository,
     private val categoryService: CategoryService,
     private val teamRepository: TeamRepository,
+    private val bracketRepository: BracketRepository,
 ) {
 
     suspend fun getAllTournaments(): List<TournamentResponse> = repository.getAll()
@@ -170,4 +170,219 @@ class TournamentService(
 
     suspend fun saveSchedulingConfig(tournamentId: String, config: models.tournament.SchedulingConfigRequest): Boolean =
         repository.saveSchedulingConfig(tournamentId, config)
+
+    suspend fun getPlayerTournamentContext(
+        userUid: String,
+        tournamentId: String
+    ): PlayerTournamentContextResponse {
+        // 1. Get user's registrations in this tournament (team_id, category_id, partner info)
+        val registrations = teamRepository.getUserRegistrationsInTournament(userUid, tournamentId)
+        if (registrations.isEmpty()) {
+            return PlayerTournamentContextResponse(categories = emptyList())
+        }
+
+        val teamIds = registrations.map { it.team_id }
+
+        // 2. Get all brackets for this tournament
+        val brackets = bracketRepository.getBracketsByTournament(tournamentId)
+        val bracketsByCategory = brackets.associateBy { it.categoryId }
+        val bracketIds = brackets.map { it.id }
+
+        // 3. Get standings for user's teams
+        val standings = bracketRepository.getStandingsByTeamIds(teamIds)
+        val standingsByTeam = standings.associateBy { it.teamId }
+
+        // 4. Get matches involving user's teams
+        val matches = if (bracketIds.isNotEmpty()) {
+            bracketRepository.getMatchesByTeamIds(bracketIds, teamIds)
+        } else {
+            emptyList()
+        }
+        // Group matches by team: a match belongs to a team if team1_id or team2_id matches
+        val matchesByTeam = mutableMapOf<String, MutableList<MatchResponse>>()
+        for (match in matches) {
+            for (teamId in teamIds) {
+                if (match.team1Id == teamId || match.team2Id == teamId) {
+                    matchesByTeam.getOrPut(teamId) { mutableListOf() }.add(match)
+                }
+            }
+        }
+
+        // 5. Collect opponent team IDs for name lookups
+        val opponentTeamIds = matches.flatMap { match ->
+            listOfNotNull(match.team1Id, match.team2Id)
+        }.toSet() - teamIds.toSet()
+
+        // 6. Get opponent team names (player names from users table)
+        val opponentNames = if (opponentTeamIds.isNotEmpty()) {
+            getTeamDisplayNames(opponentTeamIds.toList())
+        } else {
+            emptyMap()
+        }
+
+        // 7. Assemble per-category context
+        val categoryContexts = registrations.map { reg ->
+            val bracket = bracketsByCategory[reg.category_id]
+            val standing = standingsByTeam[reg.team_id]
+            val teamMatches = matchesByTeam[reg.team_id] ?: emptyList()
+
+            // Group context (only if standings have a group_number)
+            val groupCtx = if (standing?.groupNumber != null) {
+                // Count teams in the same group within the same bracket
+                val sameGroupTeams = standings.count {
+                    it.bracketId == standing.bracketId && it.groupNumber == standing.groupNumber
+                }
+                GroupContext(
+                    groupNumber = standing.groupNumber,
+                    groupName = "Grupo ${groupLetter(standing.groupNumber)}",
+                    position = standing.position ?: 0,
+                    totalTeams = sameGroupTeams
+                )
+            } else null
+
+            // Stats from standings (or zeros if no standings yet)
+            val statsCtx = StatsContext(
+                matchesPlayed = standing?.matchesPlayed ?: 0,
+                matchesWon = standing?.matchesWon ?: 0,
+                matchesLost = standing?.matchesLost ?: 0,
+                gamesWon = standing?.gamesWon ?: 0,
+                gamesLost = standing?.gamesLost ?: 0
+            )
+
+            // Next match: first non-completed match
+            val pendingMatches = teamMatches.filter { it.status != "completed" && it.status != "forfeit" && !it.isBye }
+            val nextMatch = pendingMatches.firstOrNull()
+            val nextMatchCtx = nextMatch?.let { m ->
+                val opponentId = if (m.team1Id == reg.team_id) m.team2Id else m.team1Id
+                MatchContext(
+                    matchId = m.id,
+                    opponentTeamName = opponentId?.let { opponentNames[it] },
+                    scheduledTime = m.scheduledTime,
+                    courtNumber = m.courtNumber,
+                    roundName = m.roundName
+                )
+            }
+
+            // Last match: most recent completed match
+            val completedMatches = teamMatches.filter { it.status == "completed" || it.status == "forfeit" }
+            val lastMatch = completedMatches.lastOrNull()
+            val lastMatchCtx = lastMatch?.let { m ->
+                val isTeam1 = m.team1Id == reg.team_id
+                val won = if (isTeam1) m.winnerTeam == 1 else m.winnerTeam == 2
+                val opponentId = if (isTeam1) m.team2Id else m.team1Id
+                LastMatchContext(
+                    matchId = m.id,
+                    opponentTeamName = opponentId?.let { opponentNames[it] },
+                    won = won,
+                    scoreDisplay = buildScoreDisplay(m, isTeam1)
+                )
+            }
+
+            // Partner name
+            val partnerName = listOfNotNull(reg.partner_first_name, reg.partner_last_name)
+                .joinToString(" ")
+                .ifBlank { null }
+
+            CategoryContext(
+                categoryId = reg.category_id,
+                categoryName = reg.category_name,
+                teamId = reg.team_id,
+                partnerName = partnerName,
+                partnerPhotoUrl = reg.partner_photo_url,
+                bracket = bracket?.let {
+                    BracketContext(
+                        bracketId = it.id,
+                        format = it.format,
+                        status = it.status
+                    )
+                },
+                group = groupCtx,
+                stats = statsCtx,
+                nextMatch = nextMatchCtx,
+                lastMatch = lastMatchCtx
+            )
+        }
+
+        return PlayerTournamentContextResponse(categories = categoryContexts)
+    }
+
+    private fun groupLetter(groupNumber: Int): String {
+        // groupNumber is 1-based: 1 -> A, 2 -> B, etc.
+        return if (groupNumber in 1..26) {
+            ('A' + groupNumber - 1).toString()
+        } else {
+            groupNumber.toString()
+        }
+    }
+
+    private fun buildScoreDisplay(match: MatchResponse, isTeam1: Boolean): String {
+        val setScores = match.setScores ?: return "${match.scoreTeam1 ?: 0}-${match.scoreTeam2 ?: 0}"
+        return try {
+            // setScores is a JsonElement (array of {team1, team2} objects)
+            val jsonParser = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            val sets = jsonParser.decodeFromJsonElement(
+                kotlinx.serialization.builtins.ListSerializer(models.bracket.SetScore.serializer()),
+                setScores
+            )
+            sets.joinToString(", ") { set ->
+                if (isTeam1) "${set.team1}-${set.team2}" else "${set.team2}-${set.team1}"
+            }
+        } catch (_: Exception) {
+            "${match.scoreTeam1 ?: 0}-${match.scoreTeam2 ?: 0}"
+        }
+    }
+
+    /**
+     * Gets display names for teams by looking up player names from the users table
+     * via the teams table (player_a_uid -> users.first_name + last_name).
+     * Returns a map of teamId -> "PlayerA & PlayerB" display name.
+     */
+    private suspend fun getTeamDisplayNames(teamIds: List<String>): Map<String, String> {
+        if (teamIds.isEmpty()) return emptyMap()
+
+        // Fetch all teams in one batch per team (findTeamById is per-team but we batch user lookups)
+        val teams = teamIds.mapNotNull { teamRepository.findTeamById(it)?.let { t -> it to t } }.toMap()
+
+        // Collect all user UIDs that need lookup
+        val uidsThatNeedLookup = teams.values.flatMap { team ->
+            listOfNotNull(
+                team.playerAUid.takeIf { team.playerAName.isNullOrBlank() },
+                team.playerBUid.takeIf { team.playerBName.isNullOrBlank() }
+            )
+        }.distinct()
+
+        // Batch lookup users
+        val usersMap = if (uidsThatNeedLookup.isNotEmpty()) {
+            teamRepository.findUsersByIds(uidsThatNeedLookup).associateBy { it.uid }
+        } else {
+            emptyMap()
+        }
+
+        // Build display names
+        val names = mutableMapOf<String, String>()
+        for ((teamId, team) in teams) {
+            val playerNames = mutableListOf<String>()
+
+            if (!team.playerAName.isNullOrBlank()) {
+                playerNames.add(team.playerAName)
+            } else if (team.playerAUid != null) {
+                usersMap[team.playerAUid]?.let { u ->
+                    playerNames.add("${u.firstName} ${u.lastName}".trim())
+                }
+            }
+
+            if (!team.playerBName.isNullOrBlank()) {
+                playerNames.add(team.playerBName)
+            } else if (team.playerBUid != null) {
+                usersMap[team.playerBUid]?.let { u ->
+                    playerNames.add("${u.firstName} ${u.lastName}".trim())
+                }
+            }
+
+            if (playerNames.isNotEmpty()) {
+                names[teamId] = playerNames.joinToString(" & ")
+            }
+        }
+        return names
+    }
 }

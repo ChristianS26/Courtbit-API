@@ -2,6 +2,7 @@ package com.incodap.routing.tournament
 
 import com.incodap.security.getOrganizerId
 import com.incodap.security.requireOrganizer
+import com.incodap.security.requireUserUid
 import io.ktor.server.auth.authenticate
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -406,6 +407,18 @@ fun Route.tournamentRoutes(
                 // Return the courts for the frontend to use in scheduling
                 // (actual court assignment happens during schedule creation)
                 call.respond(HttpStatusCode.OK, clubCourts)
+            }
+
+            // GET /tournaments/{id}/my-context - Player's personalized tournament context
+            get("{id}/my-context") {
+                val uid = call.requireUserUid() ?: return@get
+                val tournamentId = call.parameters["id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Parámetro 'id' requerido"))
+                    return@get
+                }
+                val context = tournamentService.getPlayerTournamentContext(uid, tournamentId)
+                call.respond(HttpStatusCode.OK, context)
             }
         }
     }

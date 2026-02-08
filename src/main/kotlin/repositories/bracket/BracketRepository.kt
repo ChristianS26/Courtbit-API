@@ -183,4 +183,16 @@ interface BracketRepository {
         winnerTeam: Int,
         submittedByUserId: String
     ): Result<MatchResponse>
+
+    // ============ Player Context Helpers ============
+
+    /**
+     * Get standings for specific team IDs (across all brackets)
+     */
+    suspend fun getStandingsByTeamIds(teamIds: List<String>): List<StandingEntry>
+
+    /**
+     * Get matches where any of the given team IDs participate, filtered by bracket IDs
+     */
+    suspend fun getMatchesByTeamIds(bracketIds: List<String>, teamIds: List<String>): List<MatchResponse>
 }

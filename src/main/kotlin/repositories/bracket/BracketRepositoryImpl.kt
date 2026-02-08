@@ -746,4 +746,50 @@ class BracketRepositoryImpl(
             Result.failure(IllegalStateException("Failed to update match score: ${response.status.value}"))
         }
     }
+
+    // ============ Player Context Helpers ============
+
+    override suspend fun getStandingsByTeamIds(teamIds: List<String>): List<StandingEntry> {
+        if (teamIds.isEmpty()) return emptyList()
+
+        val teamIdsFilter = teamIds.joinToString(",") { "\"$it\"" }
+        val response = client.get("$apiUrl/tournament_standings") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("team_id", "in.($teamIdsFilter)")
+            parameter("select", "*")
+            parameter("order", "position.asc")
+        }
+
+        return if (response.status.isSuccess()) {
+            json.decodeFromString<List<StandingEntry>>(response.bodyAsText())
+        } else {
+            emptyList()
+        }
+    }
+
+    override suspend fun getMatchesByTeamIds(bracketIds: List<String>, teamIds: List<String>): List<MatchResponse> {
+        if (bracketIds.isEmpty() || teamIds.isEmpty()) return emptyList()
+
+        val bracketIdsFilter = bracketIds.joinToString(",") { "\"$it\"" }
+        // Build OR filter for team participation on either side
+        val teamOrClauses = teamIds.flatMap { teamId ->
+            listOf("team1_id.eq.$teamId", "team2_id.eq.$teamId")
+        }.joinToString(",")
+
+        val response = client.get("$apiUrl/tournament_matches") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("bracket_id", "in.($bracketIdsFilter)")
+            parameter("or", "($teamOrClauses)")
+            parameter("select", "*")
+            parameter("order", "scheduled_time.asc.nullslast,round_number.asc,match_number.asc")
+        }
+
+        return if (response.status.isSuccess()) {
+            json.decodeFromString<List<MatchResponse>>(response.bodyAsText())
+        } else {
+            emptyList()
+        }
+    }
 }
