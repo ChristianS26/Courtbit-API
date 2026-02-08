@@ -39,8 +39,9 @@ data class BatchRankingRequest(
 
 @Serializable
 data class BatchRankingEntry(
-    @SerialName("user_id") val userId: String,
+    @SerialName("user_id") val userId: String? = null,
     val points: Int,
     val position: String,
     @SerialName("team_result_id") val teamResultId: String? = null,
+    @SerialName("team_member_id") val teamMemberId: String? = null,
 )

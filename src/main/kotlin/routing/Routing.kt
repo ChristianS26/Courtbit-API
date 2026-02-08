@@ -24,6 +24,7 @@ import repositories.league.PlayerAvailabilityRepository
 import repositories.league.RotationRepository
 import repositories.league.SeasonRepository
 import repositories.league.SeasonScheduleDefaultsRepository
+import com.incodap.repositories.ranking.RankingRepository
 import com.incodap.repositories.teams.TeamRepository
 import routing.auth.profileRoute
 import routing.draw.drawRoutes
@@ -150,7 +151,7 @@ fun Application.configureRouting() {
             seasonRoutes(get<SeasonService>(), get<SeasonRepository>())
             leagueCategoryRoutes(get<LeagueCategoryService>(), get<LeagueCategoryRepository>())
             leaguePlayerRoutes(get<LeaguePlayerRepository>())
-            playerLinkRoutes(get<LeaguePlayerRepository>(), get<TeamRepository>(), get())
+            playerLinkRoutes(get<LeaguePlayerRepository>(), get<TeamRepository>(), get(), get<RankingRepository>())
             leaguePaymentRoutes(get<LeaguePaymentService>(), get<SeasonRepository>())
             matchDayRoutes(get<MatchDayRepository>())
             matchDayOptimizedRoutes(get<MatchDayService>())  // Optimized endpoint

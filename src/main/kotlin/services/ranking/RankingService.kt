@@ -1,7 +1,9 @@
 package services.ranking
 
 import com.incodap.repositories.ranking.RankingRepository
+import repositories.category.CategoryRepository
 import models.ranking.AddRankingEventRequest
+import models.ranking.AddTeamMemberRankingEventRequest
 import models.ranking.BatchRankingRequest
 import models.ranking.PlayerProfileResponse
 import models.ranking.PublicUser
@@ -12,6 +14,7 @@ import java.util.Locale
 
 class RankingService(
     private val repository: RankingRepository,
+    private val categoryRepository: CategoryRepository,
 ) {
 
     suspend fun addRankingEvent(request: AddRankingEventRequest): String {
@@ -19,17 +22,48 @@ class RankingService(
     }
 
     suspend fun batchAddRankingEvents(request: BatchRankingRequest): List<String> {
-        return request.entries.map { entry ->
-            repository.addRankingEvent(
-                AddRankingEventRequest(
-                    userId = entry.userId,
-                    season = request.season,
-                    categoryId = request.categoryId,
-                    points = entry.points,
-                    tournamentId = request.tournamentId,
-                    position = entry.position
+        // Only natural categories can receive ranking points
+        val categories = categoryRepository.getCategoriesByIds(listOf(request.categoryId))
+        val category = categories.firstOrNull()
+            ?: throw IllegalArgumentException("Category ${request.categoryId} not found")
+        if (category.categoryType != "natural") {
+            throw IllegalArgumentException("Only natural categories can receive ranking points")
+        }
+
+        return request.entries.mapIndexed { index, entry ->
+            val hasUser = entry.userId != null
+            val hasTeamMember = entry.teamMemberId != null
+
+            require(hasUser || hasTeamMember) {
+                "Entry at index $index must have either userId or teamMemberId"
+            }
+            require(!(hasUser && hasTeamMember)) {
+                "Entry at index $index cannot have both userId and teamMemberId"
+            }
+
+            if (hasUser) {
+                repository.addRankingEvent(
+                    AddRankingEventRequest(
+                        userId = entry.userId!!,
+                        season = request.season,
+                        categoryId = request.categoryId,
+                        points = entry.points,
+                        tournamentId = request.tournamentId,
+                        position = entry.position
+                    )
                 )
-            )
+            } else {
+                repository.addTeamMemberRankingEvent(
+                    AddTeamMemberRankingEventRequest(
+                        teamMemberId = entry.teamMemberId!!,
+                        season = request.season,
+                        categoryId = request.categoryId,
+                        points = entry.points,
+                        tournamentId = request.tournamentId,
+                        position = entry.position
+                    )
+                )
+            }
         }
     }
 

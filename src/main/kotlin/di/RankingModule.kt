@@ -12,7 +12,7 @@ import services.ranking.RankingService
 
 val RankingModule = module {
     single<RankingRepository> { RankingRepositoryImpl(get(), get(), get()) }
-    single { RankingService(get()) }
+    single { RankingService(get(), get()) }
 
     single {
         RankingRoutes(

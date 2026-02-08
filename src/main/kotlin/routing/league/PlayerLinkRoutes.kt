@@ -1,5 +1,6 @@
 package routing.league
 
+import com.incodap.repositories.ranking.RankingRepository
 import com.incodap.repositories.teams.TeamRepository
 import com.incodap.repositories.users.UserRepository
 import com.incodap.security.requireUserUid
@@ -24,7 +25,8 @@ import repositories.league.LeaguePlayerRepository
 fun Route.playerLinkRoutes(
     leaguePlayerRepository: LeaguePlayerRepository,
     teamRepository: TeamRepository,
-    userRepository: UserRepository
+    userRepository: UserRepository,
+    rankingRepository: RankingRepository
 ) {
     route("/player-links") {
         authenticate("auth-jwt") {
@@ -229,6 +231,16 @@ fun Route.playerLinkRoutes(
                 )
 
                 if (success) {
+                    // Transfer any ranking events from this manual player to the linked user
+                    try {
+                        val teamMemberId = "${request.teamId}:${request.playerPosition}"
+                        rankingRepository.transferRankingEventsToUser(teamMemberId, userUid)
+                    } catch (e: Exception) {
+                        call.application.environment.log.error(
+                            "Failed to transfer ranking events for teamMember=${request.teamId}:${request.playerPosition} to user=$userUid: ${e.message}"
+                        )
+                    }
+
                     call.respond(
                         HttpStatusCode.OK,
                         LinkTournamentPlayerResponse(

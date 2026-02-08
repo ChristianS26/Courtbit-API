@@ -10,7 +10,10 @@ import io.ktor.server.plugins.NotFoundException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import models.ranking.AddRankingEventRequest
+import models.ranking.AddTeamMemberRankingEventRequest
 import models.ranking.PlayerProfileResponse
 import models.ranking.PlayerTournamentHistoryItem
 import models.ranking.Ranking
@@ -37,6 +40,36 @@ class RankingRepositoryImpl(
             throw IllegalStateException("Error calling add_ranking_event_and_update: ${response.status} ${response.bodyAsText()}")
         }
         return response.bodyAsText().replace("\"", "")
+    }
+
+    override suspend fun addTeamMemberRankingEvent(request: AddTeamMemberRankingEventRequest): String {
+        val response = client.post("$apiUrl/rpc/add_ranking_event_for_team_member") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(json.encodeToString(AddTeamMemberRankingEventRequest.serializer(), request))
+        }
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException("Error calling add_ranking_event_for_team_member: ${response.status} ${response.bodyAsText()}")
+        }
+        return response.bodyAsText().replace("\"", "")
+    }
+
+    override suspend fun transferRankingEventsToUser(teamMemberId: String, userId: String): Int {
+        val body = buildJsonObject {
+            put("p_team_member_id", teamMemberId)
+            put("p_user_id", userId)
+        }
+        val response = client.post("$apiUrl/rpc/transfer_ranking_events_to_user") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(body.toString())
+        }
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException("Error calling transfer_ranking_events_to_user: ${response.status} ${response.bodyAsText()}")
+        }
+        return response.bodyAsText().trim().replace("\"", "").toIntOrNull() ?: 0
     }
 
     override suspend fun getRanking(season: String?, categoryId: Int?, organizerId: String?): List<RankingItemResponse> {

@@ -24,3 +24,24 @@ data class AddRankingEventRequest(
     val position: String? = null
 )
 
+@Serializable
+data class AddTeamMemberRankingEventRequest(
+    @SerialName("p_team_member_id")
+    val teamMemberId: String,
+
+    @SerialName("p_season")
+    val season: String,
+
+    @SerialName("p_category_id")
+    val categoryId: Int,
+
+    @SerialName("p_points")
+    val points: Int,
+
+    @SerialName("p_tournament_id")
+    val tournamentId: String? = null,
+
+    @SerialName("p_position")
+    val position: String? = null
+)
+
