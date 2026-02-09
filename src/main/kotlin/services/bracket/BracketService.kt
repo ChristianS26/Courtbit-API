@@ -791,6 +791,8 @@ class BracketService(
         val config = request.config
         val groups = request.groups
 
+        println("[BracketService] generateGroupStage: tournamentId=$tournamentId, categoryId=$categoryId, groups=${groups.size}, config=$config")
+
         // Validate input
         if (groups.size != config.groupCount) {
             return Result.failure(IllegalArgumentException(
@@ -809,13 +811,18 @@ class BracketService(
 
         // Check if bracket already exists
         val existing = repository.getBracket(tournamentId, categoryId)
+        println("[BracketService] Existing bracket: ${existing?.id}")
         val bracket: BracketResponse
 
         if (existing != null) {
             // Delete existing matches to regenerate
-            repository.deleteMatchesByBracketId(existing.id)
+            val deletedMatches = repository.deleteMatchesByBracketId(existing.id)
+            println("[BracketService] Deleted existing matches: $deletedMatches")
             // Update bracket config
-            repository.updateBracketConfig(existing.id, json.encodeToString(config))
+            val configJson = json.encodeToString(config)
+            println("[BracketService] Config JSON: $configJson")
+            val configUpdated = repository.updateBracketConfig(existing.id, configJson)
+            println("[BracketService] Config updated: $configUpdated")
             bracket = existing
         } else {
             // Create new bracket
@@ -825,8 +832,12 @@ class BracketService(
                 format = "groups_knockout",
                 seedingMethod = "manual"
             ) ?: return Result.failure(IllegalStateException("Failed to create bracket"))
+            println("[BracketService] Created bracket: ${bracket.id}")
             // Save config to the new bracket
-            repository.updateBracketConfig(bracket.id, json.encodeToString(config))
+            val configJson = json.encodeToString(config)
+            println("[BracketService] Config JSON: $configJson")
+            val configUpdated = repository.updateBracketConfig(bracket.id, configJson)
+            println("[BracketService] Config updated: $configUpdated")
         }
 
         // Generate round-robin matches for each group
@@ -842,9 +853,11 @@ class BracketService(
             allMatches.addAll(groupMatches)
             matchNumber += groupMatches.size
         }
+        println("[BracketService] Generated ${allMatches.size} matches")
 
         // Create matches in database
         val createdMatches = repository.createMatches(bracket.id, allMatches)
+        println("[BracketService] Created ${createdMatches.size} matches in DB (expected ${allMatches.size})")
         if (createdMatches.isEmpty() && allMatches.isNotEmpty()) {
             repository.deleteBracket(bracket.id)
             return Result.failure(IllegalStateException("Failed to create group matches"))
@@ -870,12 +883,14 @@ class BracketService(
                 )
             }
         }
-        repository.upsertStandings(standingInputs)
+        val standingsResult = repository.upsertStandings(standingInputs)
+        println("[BracketService] Standings upsert result: $standingsResult (${standingInputs.size} entries)")
 
         // Return complete bracket
         val result = repository.getBracketWithMatches(tournamentId, categoryId)
             ?: return Result.failure(IllegalStateException("Failed to fetch created bracket"))
 
+        println("[BracketService] Returning bracket with ${result.matches.size} matches, ${result.standings.size} standings, ${result.players.size} players")
         return Result.success(result)
     }
 

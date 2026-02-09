@@ -485,11 +485,19 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 request.groups.forEach { group ->
                 }
 
-                val result = bracketService.generateGroupStage(tournamentId, categoryId, request)
+                val result = try {
+                    bracketService.generateGroupStage(tournamentId, categoryId, request)
+                } catch (e: Exception) {
+                    println("[BracketRoutes] Uncaught exception in generateGroupStage: ${e::class.simpleName}: ${e.message}")
+                    e.printStackTrace()
+                    Result.failure(e)
+                }
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.Created, it) },
                     onFailure = { e ->
+                        val errorMsg = "${e::class.simpleName}: ${e.message}"
+                        println("[BracketRoutes] generateGroupStage failed: $errorMsg")
                         when (e) {
                             is IllegalArgumentException -> call.respond(
                                 HttpStatusCode.BadRequest,
@@ -497,7 +505,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                             )
                             else -> call.respond(
                                 HttpStatusCode.InternalServerError,
-                                mapOf("error" to (e.message ?: "Group generation failed"))
+                                mapOf("error" to errorMsg)
                             )
                         }
                     }
