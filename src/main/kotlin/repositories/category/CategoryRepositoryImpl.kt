@@ -145,11 +145,13 @@ class CategoryRepositoryImpl(
             val categoryId = obj["category_id"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
             val categoryObj = obj["categories"]?.jsonObject ?: return@mapNotNull null
             val name = categoryObj["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+            val level = categoryObj["level"]?.jsonPrimitive?.intOrNull ?: 0
+            val categoryType = categoryObj["category_type"]?.jsonPrimitive?.content ?: ""
             val price = obj["price"]?.jsonPrimitive?.intOrNull ?: 0
             val color = obj["color"]?.jsonPrimitive?.content
             val maxTeams = obj["max_teams"]?.jsonPrimitive?.intOrNull
 
-            CategoryPriceResponse(
+            Triple(categoryType, level, CategoryPriceResponse(
                 id = null,
                 tournamentType = tournamentType,
                 categoryId = categoryId,
@@ -159,8 +161,8 @@ class CategoryRepositoryImpl(
                 maxTeams = maxTeams,
                 currentTeamCount = teamCountsByCategory[categoryId] ?: 0,
                 hasBracket = bracketCategoryIds.contains(categoryId)
-            )
-        }.sortedBy { it.categoryId }
+            ))
+        }.sortedWith(compareBy({ it.first }, { it.second })).map { it.third }
     }
 
     private suspend fun getBracketCategoryIds(tournamentId: String): Set<Int> {
@@ -199,6 +201,7 @@ class CategoryRepositoryImpl(
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
             parameter("id", "in.($filter)")
+            parameter("order", "category_type.asc,level.asc")
         }
 
         return if (response.status.isSuccess()) {
