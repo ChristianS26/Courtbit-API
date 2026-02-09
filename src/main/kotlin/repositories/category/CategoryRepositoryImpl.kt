@@ -98,14 +98,17 @@ class CategoryRepositoryImpl(
                 ListSerializer(JsonObject.serializer()),
                 raw
             ).map {
+                val catObj = it["categories"]?.jsonObject
                 TournamentCategoryDto(
                     id = it["category_id"]?.jsonPrimitive?.content ?: "",
-                    name = it["categories"]?.jsonObject?.get("name")?.jsonPrimitive?.content ?: "",
+                    name = catObj?.get("name")?.jsonPrimitive?.content ?: "",
                     color = it["color"]?.jsonPrimitive?.content,
                     maxTeams = it["max_teams"]?.jsonPrimitive?.intOrNull,
-                    price = it["price"]?.jsonPrimitive?.intOrNull
+                    price = it["price"]?.jsonPrimitive?.intOrNull,
+                    categoryType = catObj?.get("category_type")?.jsonPrimitive?.content,
+                    level = catObj?.get("level")?.jsonPrimitive?.intOrNull
                 )
-            }
+            }.sortedWith(compareBy({ it.categoryType }, { it.level }))
         } else {
             emptyList()
         }
