@@ -78,7 +78,7 @@ fun Route.playoffRoutes(
         }
 
         authenticate("auth-jwt") {
-            // Assign semifinals players
+            // Assign semifinals players (auto or custom)
             post("/assign-semifinals") {
                 call.requireOrganizer() ?: return@post
 
@@ -86,16 +86,25 @@ fun Route.playoffRoutes(
                     HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
                 )
 
-                val result = playoffService.assignSemifinals(categoryId)
+                // Try to parse custom player IDs from body; fall back to automatic
+                val customRequest = try {
+                    call.receive<CustomPlayoffAssignmentRequest>()
+                } catch (e: Exception) {
+                    null
+                }
+
+                val result = if (customRequest != null && customRequest.playerIds.isNotEmpty()) {
+                    playoffService.assignSemifinalsCustom(categoryId, customRequest.playerIds)
+                } else {
+                    playoffService.assignSemifinals(categoryId)
+                }
 
                 if (result.isSuccess) {
                     val responseBody = result.getOrNull()!!
 
-                    // Parse the JSON response from the RPC function
                     val parsedResponse = try {
                         json.decodeFromString<AssignPlayoffResponse>(responseBody)
                     } catch (e: Exception) {
-                        // If parsing fails, return raw response
                         return@post call.respond(
                             HttpStatusCode.OK,
                             mapOf("success" to true, "message" to responseBody)
@@ -111,7 +120,7 @@ fun Route.playoffRoutes(
                 }
             }
 
-            // Assign final players
+            // Assign final players (auto or custom)
             post("/assign-final") {
                 call.requireOrganizer() ?: return@post
 
@@ -119,16 +128,25 @@ fun Route.playoffRoutes(
                     HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
                 )
 
-                val result = playoffService.assignFinal(categoryId)
+                // Try to parse custom player IDs from body; fall back to automatic
+                val customRequest = try {
+                    call.receive<CustomPlayoffAssignmentRequest>()
+                } catch (e: Exception) {
+                    null
+                }
+
+                val result = if (customRequest != null && customRequest.playerIds.isNotEmpty()) {
+                    playoffService.assignFinalCustom(categoryId, customRequest.playerIds)
+                } else {
+                    playoffService.assignFinal(categoryId)
+                }
 
                 if (result.isSuccess) {
                     val responseBody = result.getOrNull()!!
 
-                    // Parse the JSON response from the RPC function
                     val parsedResponse = try {
                         json.decodeFromString<AssignPlayoffResponse>(responseBody)
                     } catch (e: Exception) {
-                        // If parsing fails, return raw response
                         return@post call.respond(
                             HttpStatusCode.OK,
                             mapOf("success" to true, "message" to responseBody)
@@ -140,6 +158,46 @@ fun Route.playoffRoutes(
                     call.respond(
                         HttpStatusCode.BadRequest,
                         mapOf("error" to sanitizeError(result.exceptionOrNull(), "Unable to assign final"))
+                    )
+                }
+            }
+
+            // Reset semifinals player assignments
+            post("/reset-semifinals") {
+                call.requireOrganizer() ?: return@post
+
+                val categoryId = call.parameters["categoryId"] ?: return@post call.respond(
+                    HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
+                )
+
+                val result = playoffService.resetSemifinals(categoryId)
+
+                if (result.isSuccess) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to sanitizeError(result.exceptionOrNull(), "Unable to reset semifinals"))
+                    )
+                }
+            }
+
+            // Reset final player assignments
+            post("/reset-final") {
+                call.requireOrganizer() ?: return@post
+
+                val categoryId = call.parameters["categoryId"] ?: return@post call.respond(
+                    HttpStatusCode.BadRequest, mapOf("error" to "Missing category ID")
+                )
+
+                val result = playoffService.resetFinal(categoryId)
+
+                if (result.isSuccess) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to sanitizeError(result.exceptionOrNull(), "Unable to reset final"))
                     )
                 }
             }

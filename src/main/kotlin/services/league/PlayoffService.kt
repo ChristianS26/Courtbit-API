@@ -126,6 +126,122 @@ class PlayoffService(
     }
 
     /**
+     * Assigns a custom list of players to semifinals (organizer-selected)
+     */
+    suspend fun assignSemifinalsCustom(categoryId: String, playerIds: List<String>): Result<String> {
+        val idsArray = buildJsonArray {
+            playerIds.forEach { add(it) }
+        }
+        val payload = buildJsonObject {
+            put("p_category_id", categoryId)
+            put("p_player_ids", idsArray)
+        }
+
+        return try {
+            val response = client.post("${config.apiUrl}/rpc/assign_semifinals_custom") {
+                header("apikey", config.apiKey)
+                header("Authorization", "Bearer ${config.apiKey}")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            if (response.status.isSuccess()) {
+                Result.success(response.bodyAsText())
+            } else {
+                val errorBody = response.bodyAsText()
+                Result.failure(IllegalStateException("Custom semifinals assignment failed: $errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Assigns a custom list of players to final (organizer-selected)
+     */
+    suspend fun assignFinalCustom(categoryId: String, playerIds: List<String>): Result<String> {
+        val idsArray = buildJsonArray {
+            playerIds.forEach { add(it) }
+        }
+        val payload = buildJsonObject {
+            put("p_category_id", categoryId)
+            put("p_player_ids", idsArray)
+        }
+
+        return try {
+            val response = client.post("${config.apiUrl}/rpc/assign_final_custom") {
+                header("apikey", config.apiKey)
+                header("Authorization", "Bearer ${config.apiKey}")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            if (response.status.isSuccess()) {
+                Result.success(response.bodyAsText())
+            } else {
+                val errorBody = response.bodyAsText()
+                Result.failure(IllegalStateException("Custom final assignment failed: $errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Resets semifinals player assignments (only if no matches scored)
+     */
+    suspend fun resetSemifinals(categoryId: String): Result<String> {
+        val payload = buildJsonObject {
+            put("p_category_id", categoryId)
+        }
+
+        return try {
+            val response = client.post("${config.apiUrl}/rpc/reset_semifinals_players") {
+                header("apikey", config.apiKey)
+                header("Authorization", "Bearer ${config.apiKey}")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            if (response.status.isSuccess()) {
+                Result.success(response.bodyAsText())
+            } else {
+                val errorBody = response.bodyAsText()
+                Result.failure(IllegalStateException("Reset semifinals failed: $errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Resets final player assignments (only if no matches scored)
+     */
+    suspend fun resetFinal(categoryId: String): Result<String> {
+        val payload = buildJsonObject {
+            put("p_category_id", categoryId)
+        }
+
+        return try {
+            val response = client.post("${config.apiUrl}/rpc/reset_final_players") {
+                header("apikey", config.apiKey)
+                header("Authorization", "Bearer ${config.apiKey}")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+
+            if (response.status.isSuccess()) {
+                Result.success(response.bodyAsText())
+            } else {
+                val errorBody = response.bodyAsText()
+                Result.failure(IllegalStateException("Reset final failed: $errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Gets the playoff status for a category
      * Returns whether regular season and semifinals are complete
      */

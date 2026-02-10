@@ -119,3 +119,9 @@ data class SaveStandingsResponse(
     @SerialName("totalPlayers") val totalPlayers: Int? = null,
     val error: String? = null
 )
+
+// Custom playoff assignment request (organizer picks specific players)
+@Serializable
+data class CustomPlayoffAssignmentRequest(
+    @SerialName("player_ids") val playerIds: List<String>
+)
