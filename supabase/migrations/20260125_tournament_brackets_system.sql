@@ -37,13 +37,13 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
   scheduled_time timestamptz,
 
   team1_id uuid REFERENCES teams(id),
-  team1_player1_id uuid REFERENCES users(uid),
-  team1_player2_id uuid REFERENCES users(uid),
+  team1_player1_id text REFERENCES users(uid),
+  team1_player2_id text REFERENCES users(uid),
   team1_seed integer,
 
   team2_id uuid REFERENCES teams(id),
-  team2_player1_id uuid REFERENCES users(uid),
-  team2_player2_id uuid REFERENCES users(uid),
+  team2_player1_id text REFERENCES users(uid),
+  team2_player2_id text REFERENCES users(uid),
   team2_seed integer,
 
   score_team1 integer,
@@ -55,10 +55,12 @@ CREATE TABLE IF NOT EXISTS tournament_matches (
   next_match_position integer CHECK (next_match_position IN (1, 2)),
   loser_next_match_id uuid,
 
+  group_number integer,
+
   status text DEFAULT 'pending' CHECK (status IN ('pending', 'scheduled', 'in_progress', 'completed', 'bye', 'walkover', 'cancelled')),
   is_bye boolean DEFAULT false,
 
-  submitted_by_user_id uuid REFERENCES users(uid),
+  submitted_by_user_id text REFERENCES users(uid),
   submitted_at timestamptz,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
@@ -74,7 +76,8 @@ COMMENT ON COLUMN tournament_matches.set_scores IS 'Set-by-set scores (JSONB arr
 CREATE TABLE IF NOT EXISTS tournament_standings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   bracket_id uuid NOT NULL REFERENCES tournament_brackets(id) ON DELETE CASCADE,
-  player_id uuid NOT NULL REFERENCES users(uid),
+  player_id text REFERENCES users(uid),
+  team_id uuid REFERENCES teams(id),
   group_number integer DEFAULT 0,
   total_points integer DEFAULT 0,
   matches_played integer DEFAULT 0,
@@ -84,13 +87,13 @@ CREATE TABLE IF NOT EXISTS tournament_standings (
   games_lost integer DEFAULT 0,
   point_difference integer DEFAULT 0,
   position integer,
+  round_reached text,
   head_to_head jsonb DEFAULT '{}'::jsonb,
   created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
-  UNIQUE(bracket_id, player_id, group_number)
+  updated_at timestamptz DEFAULT now()
 );
 
-COMMENT ON TABLE tournament_standings IS 'Player standings for Americano/Mexicano formats';
+COMMENT ON TABLE tournament_standings IS 'Standings for tournament brackets (supports both player and team formats)';
 
 -- ============================================================================
 -- STEP 4: Create performance indexes

@@ -190,6 +190,28 @@ fun Route.tournamentRoutes(
                 }
             }
 
+            patch("{id}/show-brackets") {
+                val id = call.validateOrganizerAndId() ?: return@patch
+                val payload = try { call.receive<Map<String, Boolean>>() }
+                catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato inválido"))
+                    return@patch
+                }
+
+                val showBrackets = payload["show_brackets"]
+                if (showBrackets == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "El campo 'show_brackets' es requerido"))
+                    return@patch
+                }
+
+                val updated = tournamentService.updateShowBrackets(id, showBrackets)
+                if (updated) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo actualizar 'show_brackets'"))
+                }
+            }
+
             delete("{id}") {
                 val id = call.validateOrganizerAndId() ?: return@delete
 
