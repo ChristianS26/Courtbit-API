@@ -166,7 +166,7 @@ class PaymentRoutes(
             // 🔗 STRIPE CONNECT (organizer onboarding)
             // -------------------------------------------------------
 
-            route.post("/connect/create-account") {
+            post("/connect/create-account") {
                 try {
                     val organizerId = call.getOrganizerId() ?: return@post
                     val organizer = organizerRepository.getById(organizerId)
@@ -196,7 +196,7 @@ class PaymentRoutes(
                 }
             }
 
-            route.post("/connect/account-session") {
+            post("/connect/account-session") {
                 try {
                     val organizerId = call.getOrganizerId() ?: return@post
                     val accountId = organizerRepository.getStripeAccountId(organizerId)
@@ -220,7 +220,7 @@ class PaymentRoutes(
                 }
             }
 
-            route.get("/connect/account-status") {
+            get("/connect/account-status") {
                 try {
                     val organizerId = call.getOrganizerId() ?: return@get
                     val accountId = organizerRepository.getStripeAccountId(organizerId)
