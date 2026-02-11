@@ -13,6 +13,7 @@ data class SeasonResponse(
     @SerialName("registrations_open") val registrationsOpen: Boolean = false,
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int = 2,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int = 4,
+    @SerialName("players_in_final") val playersInFinal: Int = 4,
     @SerialName("organizer_id") val organizerId: String?,
     @SerialName("organizer_name") val organizerName: String?,
     @SerialName("organizer_logo_url") val organizerLogoURL: String? = null,
@@ -38,6 +39,7 @@ data class CreateSeasonRequest(
     @SerialName("matchday_dates") val matchdayDates: List<String>? = null,
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int = 2,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int = 4,
+    @SerialName("players_in_final") val playersInFinal: Int = 4,
     @SerialName("organizer_id") val organizerId: String? = null,
     @SerialName("ranking_criteria") val rankingCriteria: List<String>? = null,
     @SerialName("max_points_per_game") val maxPointsPerGame: Int? = null,
@@ -65,5 +67,6 @@ data class UpdateSeasonRequest(
     @SerialName("requires_shirt_size") val requiresShirtSize: Boolean? = null,
     @SerialName("requires_shirt_name") val requiresShirtName: Boolean? = null,
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
-    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null
+    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
+    @SerialName("players_in_final") val playersInFinal: Int? = null
 )

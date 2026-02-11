@@ -20,6 +20,7 @@ data class LeagueCategoryResponse(
     // Playoff configuration (category override, null = use season default)
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
+    @SerialName("players_in_final") val playersInFinal: Int? = null,
     // Recommended courts for auto-scheduling (null = no preference)
     @SerialName("recommended_courts") val recommendedCourts: List<Int>? = null,
     // Registration fee override (null = use season default)
@@ -41,6 +42,7 @@ data class CreateLeagueCategoryRequest(
     // Playoff configuration (optional, null = use season default)
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
+    @SerialName("players_in_final") val playersInFinal: Int? = null,
     // Registration fee override (optional, null = use season default)
     @SerialName("registration_fee") val registrationFee: Long? = null,
     // Ranking criteria order (optional, null = use season default)
@@ -59,6 +61,7 @@ data class UpdateLeagueCategoryRequest(
     // Playoff configuration (optional, null = keep current value, explicit value = override)
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
+    @SerialName("players_in_final") val playersInFinal: Int? = null,
     // Registration fee override (optional, null = keep current value)
     @SerialName("registration_fee") val registrationFee: Long? = null,
     // Ranking criteria order (optional, null = keep current value)
@@ -77,7 +80,8 @@ data class UpdateCategoryMaxPlayersRequest(
 @Serializable
 data class UpdateCategoryPlayoffConfigRequest(
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
-    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null
+    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
+    @SerialName("players_in_final") val playersInFinal: Int? = null
 )
 
 // Response with effective playoff config (resolved from category or season)
@@ -86,6 +90,7 @@ data class CategoryPlayoffConfigResponse(
     @SerialName("category_id") val categoryId: String,
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int,
     @SerialName("players_in_semifinals") val playersInSemifinals: Int,
+    @SerialName("players_in_final") val playersInFinal: Int = 4,
     @SerialName("config_source") val configSource: String // "category" or "season"
 )
 
