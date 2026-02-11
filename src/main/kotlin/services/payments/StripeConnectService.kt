@@ -1,8 +1,14 @@
 package com.incodap.services.payments
 
 import com.stripe.model.Account
+import com.stripe.model.Balance
+import com.stripe.model.Charge
+import com.stripe.model.Payout
+import com.stripe.net.RequestOptions
 import com.stripe.param.AccountCreateParams
-import models.payments.ConnectAccountStatus
+import com.stripe.param.ChargeListParams
+import com.stripe.param.PayoutListParams
+import models.payments.*
 import mu.KotlinLogging
 import io.ktor.client.*
 import io.ktor.client.request.*
@@ -100,5 +106,59 @@ class StripeConnectService(
             onboardingComplete = chargesEnabled && payoutsEnabled,
             requiresAction = hasCurrentlyDue || hasPastDue
         )
+    }
+
+    /**
+     * Gets the balance for a connected account (available + pending).
+     */
+    fun getBalance(accountId: String): ConnectBalance {
+        val opts = RequestOptions.builder().setStripeAccount(accountId).build()
+        val balance = Balance.retrieve(opts)
+
+        return ConnectBalance(
+            available = balance.available.map { BalanceAmount(it.amount, it.currency) },
+            pending = balance.pending.map { BalanceAmount(it.amount, it.currency) }
+        )
+    }
+
+    /**
+     * Lists recent charges (transactions) for a connected account.
+     */
+    fun getTransactions(accountId: String, limit: Long = 20): List<ConnectTransaction> {
+        val opts = RequestOptions.builder().setStripeAccount(accountId).build()
+        val params = ChargeListParams.builder().setLimit(limit).build()
+        val charges = Charge.list(params, opts)
+
+        return charges.data.map { charge ->
+            ConnectTransaction(
+                id = charge.id,
+                amount = charge.amount,
+                currency = charge.currency,
+                status = charge.status,
+                description = charge.description,
+                customerEmail = charge.billingDetails?.email,
+                created = charge.created
+            )
+        }
+    }
+
+    /**
+     * Lists recent payouts for a connected account.
+     */
+    fun getPayouts(accountId: String, limit: Long = 20): List<ConnectPayout> {
+        val opts = RequestOptions.builder().setStripeAccount(accountId).build()
+        val params = PayoutListParams.builder().setLimit(limit).build()
+        val payouts = Payout.list(params, opts)
+
+        return payouts.data.map { payout ->
+            ConnectPayout(
+                id = payout.id,
+                amount = payout.amount,
+                currency = payout.currency,
+                status = payout.status,
+                arrivalDate = payout.arrivalDate,
+                created = payout.created
+            )
+        }
     }
 }

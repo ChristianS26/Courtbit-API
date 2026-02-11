@@ -19,6 +19,7 @@ import io.ktor.server.routing.post
 import kotlinx.serialization.Serializable
 import models.payments.AccountSessionResponse
 import models.payments.ConnectAccountStatus
+import models.payments.ConnectDashboardData
 import models.payments.CreateConnectAccountResponse
 import models.payments.PaymentsReportRequest
 import repositories.organizer.OrganizerRepository
@@ -242,6 +243,97 @@ class PaymentRoutes(
                         HttpStatusCode.InternalServerError,
                         mapOf("error" to "Error al obtener estado de cuenta")
                     )
+                }
+            }
+
+            get("/connect/dashboard") {
+                try {
+                    val organizerId = call.getOrganizerId() ?: return@get
+                    val accountId = organizerRepository.getStripeAccountId(organizerId)
+
+                    if (accountId.isNullOrBlank()) {
+                        call.respond(
+                            HttpStatusCode.NotFound,
+                            mapOf("error" to "No Stripe Connect account found")
+                        )
+                        return@get
+                    }
+
+                    val limit = call.request.queryParameters["limit"]?.toLongOrNull() ?: 20L
+                    val balance = stripeConnectService.getBalance(accountId)
+                    val transactions = stripeConnectService.getTransactions(accountId, limit)
+                    val payouts = stripeConnectService.getPayouts(accountId, limit)
+
+                    call.respond(
+                        HttpStatusCode.OK,
+                        ConnectDashboardData(
+                            balance = balance,
+                            transactions = transactions,
+                            payouts = payouts
+                        )
+                    )
+                } catch (e: Exception) {
+                    logger.error(e) { "Error getting connect dashboard: ${e.message}" }
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Error al obtener datos del dashboard")
+                    )
+                }
+            }
+
+            get("/connect/balance") {
+                try {
+                    val organizerId = call.getOrganizerId() ?: return@get
+                    val accountId = organizerRepository.getStripeAccountId(organizerId)
+
+                    if (accountId.isNullOrBlank()) {
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "No Stripe Connect account found"))
+                        return@get
+                    }
+
+                    val balance = stripeConnectService.getBalance(accountId)
+                    call.respond(HttpStatusCode.OK, balance)
+                } catch (e: Exception) {
+                    logger.error(e) { "Error getting balance: ${e.message}" }
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Error al obtener balance"))
+                }
+            }
+
+            get("/connect/transactions") {
+                try {
+                    val organizerId = call.getOrganizerId() ?: return@get
+                    val accountId = organizerRepository.getStripeAccountId(organizerId)
+
+                    if (accountId.isNullOrBlank()) {
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "No Stripe Connect account found"))
+                        return@get
+                    }
+
+                    val limit = call.request.queryParameters["limit"]?.toLongOrNull() ?: 20L
+                    val transactions = stripeConnectService.getTransactions(accountId, limit)
+                    call.respond(HttpStatusCode.OK, transactions)
+                } catch (e: Exception) {
+                    logger.error(e) { "Error getting transactions: ${e.message}" }
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Error al obtener transacciones"))
+                }
+            }
+
+            get("/connect/payouts") {
+                try {
+                    val organizerId = call.getOrganizerId() ?: return@get
+                    val accountId = organizerRepository.getStripeAccountId(organizerId)
+
+                    if (accountId.isNullOrBlank()) {
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "No Stripe Connect account found"))
+                        return@get
+                    }
+
+                    val limit = call.request.queryParameters["limit"]?.toLongOrNull() ?: 20L
+                    val payouts = stripeConnectService.getPayouts(accountId, limit)
+                    call.respond(HttpStatusCode.OK, payouts)
+                } catch (e: Exception) {
+                    logger.error(e) { "Error getting payouts: ${e.message}" }
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Error al obtener payouts"))
                 }
             }
         }

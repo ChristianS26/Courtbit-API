@@ -18,10 +18,14 @@ import com.stripe.param.checkout.SessionCreateParams
 import io.ktor.server.plugins.BadRequestException
 import models.payments.CreateIntentResponse
 import models.payments.RpcApplyCodeDto
+import mu.KotlinLogging
 import repositories.category.CategoryRepository
+import repositories.organizer.OrganizerRepository
 import repositories.tournament.TournamentRepository
 import services.email.EmailService
 import java.util.UUID
+
+private val logger = KotlinLogging.logger {}
 
 class PaymentService(
     private val teamRepository: TeamRepository,
@@ -31,12 +35,14 @@ class PaymentService(
     private val tournamentRepository: TournamentRepository,
     private val categoryRepository: CategoryRepository,
     private val userRepository: UserRepository,
+    private val organizerRepository: OrganizerRepository,
 ) {
     companion object {
         private const val BASE_REDIRECT_URL = "https://neon-dango-f7ebd5.netlify.app"
         private val ADMIN_EMAIL: String = System.getenv("ADMIN_EMAIL") ?: "christianug26@gmail.com"
         private val STRIPE_MOBILE_SDK_API_VERSION: String =
             System.getenv("STRIPE_MOBILE_SDK_API_VERSION") ?: "2020-08-27"
+        private const val PLATFORM_FEE_PERCENT = 5
     }
 
     init {
@@ -155,9 +161,13 @@ class PaymentService(
         }
 
         val idem = UUID.randomUUID().toString()
+        val amountInCents = request.amount * 100L
+
+        // Resolve organizer's Stripe Connect account from tournament
+        val connectedAccountId = resolveConnectedAccount(request.tournamentId)
 
         val params = PaymentIntentCreateParams.builder()
-            .setAmount(request.amount * 100L)
+            .setAmount(amountInCents)
             .setCurrency(normalizedCurrency)
             .setAutomaticPaymentMethods(
                 PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
@@ -176,6 +186,17 @@ class PaymentService(
                 if (customer != null) {
                     setCustomer(customer.id)
                     setSetupFutureUsage(PaymentIntentCreateParams.SetupFutureUsage.OFF_SESSION)
+                }
+                // Route payment to organizer's connected account
+                if (connectedAccountId != null) {
+                    val fee = amountInCents * PLATFORM_FEE_PERCENT / 100
+                    setApplicationFeeAmount(fee)
+                    setTransferData(
+                        PaymentIntentCreateParams.TransferData.builder()
+                            .setDestination(connectedAccountId)
+                            .build()
+                    )
+                    logger.info { "Payment routed to connected account $connectedAccountId (fee: $fee cents)" }
                 }
             }
             .build()
@@ -241,6 +262,21 @@ class PaymentService(
             .build()
 
         return EphemeralKey.create(ekParams)
+    }
+
+    // -------------------------------------------------------
+    // 🔗 CONNECT: resolve organizer's Stripe account
+    // -------------------------------------------------------
+    private suspend fun resolveConnectedAccount(tournamentId: String): String? {
+        return try {
+            val tournament = tournamentRepository.getById(tournamentId) ?: return null
+            val organizerId = tournament.organizerId ?: return null
+            val accountId = organizerRepository.getStripeAccountId(organizerId)
+            if (accountId.isNullOrBlank()) null else accountId
+        } catch (e: Exception) {
+            logger.warn { "Could not resolve connected account for tournament $tournamentId: ${e.message}" }
+            null
+        }
     }
 
     // -------------------------------------------------------

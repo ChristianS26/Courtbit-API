@@ -16,3 +16,43 @@ data class ConnectAccountStatus(
     val onboardingComplete: Boolean,
     val requiresAction: Boolean
 )
+
+@Serializable
+data class BalanceAmount(
+    val amount: Long,
+    val currency: String
+)
+
+@Serializable
+data class ConnectBalance(
+    val available: List<BalanceAmount>,
+    val pending: List<BalanceAmount>
+)
+
+@Serializable
+data class ConnectTransaction(
+    val id: String,
+    val amount: Long,
+    val currency: String,
+    val status: String,
+    val description: String? = null,
+    val customerEmail: String? = null,
+    val created: Long
+)
+
+@Serializable
+data class ConnectPayout(
+    val id: String,
+    val amount: Long,
+    val currency: String,
+    val status: String,
+    val arrivalDate: Long,
+    val created: Long
+)
+
+@Serializable
+data class ConnectDashboardData(
+    val balance: ConnectBalance,
+    val transactions: List<ConnectTransaction>,
+    val payouts: List<ConnectPayout>
+)
