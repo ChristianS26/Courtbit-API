@@ -17,12 +17,11 @@ private val connectLogger = KotlinLogging.logger {}
 class StripeConnectService(
     private val httpClient: HttpClient
 ) {
-    private val stripeSecretKey: String = System.getenv("STRIPE_SECRET_KEY")
-        ?: error("STRIPE_SECRET_KEY not configured")
+    private val stripeSecretKey: String = System.getenv("STRIPE_SECRET_KEY") ?: ""
 
     init {
         // Ensure Stripe.apiKey is set (in case this service initializes before PaymentService)
-        if (com.stripe.Stripe.apiKey.isNullOrBlank()) {
+        if (stripeSecretKey.isNotBlank()) {
             com.stripe.Stripe.apiKey = stripeSecretKey
         }
     }
