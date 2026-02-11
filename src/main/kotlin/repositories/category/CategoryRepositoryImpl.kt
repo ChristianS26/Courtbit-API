@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import models.category.CategoryPriceResponse
 import models.category.CategoryResponseDto
 import models.category.TournamentCategoryDto
@@ -81,6 +82,20 @@ class CategoryRepositoryImpl(
         val body = response.bodyAsText()
 
         return response.status.isSuccess()
+    }
+
+    override suspend fun getCategoryPrice(tournamentId: String, categoryId: Int): Long? {
+        val response = client.get("${config.apiUrl}/tournament_categories") {
+            header("apikey", config.apiKey)
+            header("Authorization", "Bearer ${config.apiKey}")
+            parameter("tournament_id", "eq.$tournamentId")
+            parameter("category_id", "eq.$categoryId")
+            parameter("select", "price")
+        }
+        if (!response.status.isSuccess()) return null
+        val body = response.bodyAsText()
+        val list = json.decodeFromString<List<JsonObject>>(body)
+        return list.firstOrNull()?.get("price")?.jsonPrimitive?.longOrNull
     }
 
     override suspend fun getCategoriesByTournamentId(tournamentId: String): List<TournamentCategoryDto> {

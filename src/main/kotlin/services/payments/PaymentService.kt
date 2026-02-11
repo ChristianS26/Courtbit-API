@@ -119,7 +119,7 @@ class PaymentService(
             .setPriceData(
                 SessionCreateParams.LineItem.PriceData.builder()
                     .setCurrency(request.currency.lowercase())
-                    .setUnitAmount(request.amount * 100L)
+                    .setUnitAmount(request.amount)
                     .setProductData(
                         SessionCreateParams.LineItem.PriceData.ProductData.builder()
                             .setName("Inscripción: ${request.playerName} - ${request.categoryId}")
@@ -138,9 +138,18 @@ class PaymentService(
     ): CreateIntentResponse {
         validatePaymentRequest(request)
 
-        require(request.amount > 0) { "El monto debe ser mayor a cero." }
         require(!request.currency.isNullOrBlank()) { "La moneda es requerida." }
         val normalizedCurrency = request.currency.lowercase()
+
+        // Server-side price lookup — never trust the client amount
+        val categoryPrice = categoryRepository.getCategoryPrice(request.tournamentId, request.categoryId)
+            ?: throw BadRequestException("No se encontró precio para la categoría ${request.categoryId}")
+        require(categoryPrice > 0) { "El precio de la categoría debe ser mayor a cero." }
+
+        val paidFor = (request.paidFor.toIntOrNull() ?: 1).coerceIn(1, 2)
+        val amountInCents = categoryPrice * paidFor
+
+        paymentLogger.info { "Price from DB: categoryPrice=$categoryPrice, paidFor=$paidFor, amountInCents=$amountInCents" }
 
         // 🔍 resolver email desde param → request → DB
         val resolvedEmail: String = run {
@@ -161,7 +170,6 @@ class PaymentService(
         }
 
         val idem = UUID.randomUUID().toString()
-        val amountInCents = request.amount * 100L
 
         // Resolve organizer's Stripe Connect account from tournament
         val connectedAccountId = resolveConnectedAccount(request.tournamentId)

@@ -11,6 +11,7 @@ interface CategoryRepository {
     suspend fun getCategoriesByTournamentId(tournamentId: String): List<TournamentCategoryDto>
     suspend fun getCategoryPricesForTournament(tournamentId: String, tournamentType: String): List<CategoryPriceResponse>
     suspend fun getCategoriesByIds(ids: List<Int>): List<CategoryResponseDto>
+    suspend fun getCategoryPrice(tournamentId: String, categoryId: Int): Long?
     suspend fun updateCategoryMaxTeams(tournamentId: String, categoryId: Int, maxTeams: Int?): Boolean
     suspend fun getNaturalCategories(gender: String? = null): List<CategoryResponseDto>
 }
