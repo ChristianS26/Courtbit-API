@@ -25,7 +25,7 @@ import repositories.tournament.TournamentRepository
 import services.email.EmailService
 import java.util.UUID
 
-private val logger = KotlinLogging.logger {}
+private val paymentLogger = KotlinLogging.logger {}
 
 class PaymentService(
     private val teamRepository: TeamRepository,
@@ -196,7 +196,7 @@ class PaymentService(
                             .setDestination(connectedAccountId)
                             .build()
                     )
-                    logger.info { "Payment routed to connected account $connectedAccountId (fee: $fee cents)" }
+                    paymentLogger.info { "Payment routed to connected account $connectedAccountId (fee: $fee cents)" }
                 }
             }
             .build()
@@ -274,7 +274,7 @@ class PaymentService(
             val accountId = organizerRepository.getStripeAccountId(organizerId)
             if (accountId.isNullOrBlank()) null else accountId
         } catch (e: Exception) {
-            logger.warn { "Could not resolve connected account for tournament $tournamentId: ${e.message}" }
+            paymentLogger.warn { "Could not resolve connected account for tournament $tournamentId: ${e.message}" }
             null
         }
     }
