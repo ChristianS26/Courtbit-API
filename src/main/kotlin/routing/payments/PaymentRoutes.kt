@@ -169,8 +169,11 @@ class PaymentRoutes(
             post("/connect/create-account") {
                 try {
                     val organizerId = call.getOrganizerId() ?: return@post
+                    logger.info { "Connect create-account: organizerId=$organizerId" }
+
                     val organizer = organizerRepository.getById(organizerId)
                         ?: run {
+                            logger.warn { "Connect create-account: organizer not found for id=$organizerId" }
                             call.respond(HttpStatusCode.NotFound, mapOf("error" to "Organizer not found"))
                             return@post
                         }
@@ -178,20 +181,29 @@ class PaymentRoutes(
                     // Check if already has a Stripe account
                     val existing = organizerRepository.getStripeAccountId(organizerId)
                     if (!existing.isNullOrBlank()) {
+                        logger.info { "Connect create-account: already has account=$existing" }
                         call.respond(HttpStatusCode.OK, CreateConnectAccountResponse(accountId = existing))
                         return@post
                     }
 
                     val email = organizer.contactEmail.takeIf { it.isNotBlank() } ?: call.email
+                    logger.info { "Connect create-account: creating Express account for email=$email" }
                     val accountId = stripeConnectService.createExpressAccount(email, organizerId)
+                    logger.info { "Connect create-account: Stripe returned accountId=$accountId" }
                     organizerRepository.updateStripeAccountId(organizerId, accountId)
 
                     call.respond(HttpStatusCode.Created, CreateConnectAccountResponse(accountId = accountId))
-                } catch (e: Exception) {
-                    logger.error(e) { "Error creating Stripe Connect account: ${e.message}" }
+                } catch (e: com.stripe.exception.StripeException) {
+                    logger.error(e) { "Stripe API error: code=${e.code}, statusCode=${e.statusCode}, message=${e.message}" }
                     call.respond(
                         HttpStatusCode.InternalServerError,
-                        mapOf("error" to "Error al crear cuenta de Stripe Connect")
+                        mapOf("error" to "Stripe error: ${e.message}")
+                    )
+                } catch (e: Exception) {
+                    logger.error(e) { "Error creating Stripe Connect account: ${e.javaClass.simpleName}: ${e.message}" }
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Error: ${e.javaClass.simpleName}: ${e.message}")
                     )
                 }
             }
