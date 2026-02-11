@@ -37,7 +37,12 @@ data class ConnectTransaction(
     val status: String,
     val description: String? = null,
     val customerEmail: String? = null,
-    val created: Long
+    val created: Long,
+    val platformFee: Long? = null,
+    val stripeFee: Long? = null,
+    val net: Long? = null,
+    val paymentMethod: String? = null,
+    val playerName: String? = null
 )
 
 @Serializable
