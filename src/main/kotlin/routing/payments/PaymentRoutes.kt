@@ -263,13 +263,17 @@ class PaymentRoutes(
                     val balance = stripeConnectService.getBalance(accountId)
                     val transactions = stripeConnectService.getTransactions(accountId, limit)
                     val payouts = stripeConnectService.getPayouts(accountId, limit)
+                    val bankAccounts = stripeConnectService.getBankAccounts(accountId)
+                    val dashboardUrl = stripeConnectService.createExpressDashboardLink(accountId)
 
                     call.respond(
                         HttpStatusCode.OK,
                         ConnectDashboardData(
                             balance = balance,
                             transactions = transactions,
-                            payouts = payouts
+                            payouts = payouts,
+                            bankAccounts = bankAccounts,
+                            stripeDashboardUrl = dashboardUrl
                         )
                     )
                 } catch (e: Exception) {

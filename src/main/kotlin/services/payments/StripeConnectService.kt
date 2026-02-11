@@ -2,7 +2,9 @@ package com.incodap.services.payments
 
 import com.stripe.model.Account
 import com.stripe.model.Balance
+import com.stripe.model.BankAccount
 import com.stripe.model.Charge
+import com.stripe.model.LoginLink
 import com.stripe.model.Payout
 import com.stripe.model.Transfer
 import com.stripe.net.RequestOptions
@@ -227,6 +229,45 @@ class StripeConnectService(
                 arrivalDate = payout.arrivalDate,
                 created = payout.created
             )
+        }
+    }
+
+    /**
+     * Gets the external bank accounts configured on a connected account.
+     */
+    fun getBankAccounts(accountId: String): List<ConnectBankAccount> {
+        return try {
+            val account = Account.retrieve(accountId)
+            val externals = account.externalAccounts?.data ?: return emptyList()
+
+            externals.filterIsInstance<BankAccount>().map { bank ->
+                ConnectBankAccount(
+                    bankName = bank.bankName,
+                    last4 = bank.last4,
+                    currency = bank.currency,
+                    country = bank.country,
+                    routingNumber = bank.routingNumber,
+                    status = bank.status,
+                    defaultForCurrency = bank.defaultForCurrency ?: false
+                )
+            }
+        } catch (e: Exception) {
+            connectLogger.warn { "Failed to get bank accounts for $accountId: ${e.message}" }
+            emptyList()
+        }
+    }
+
+    /**
+     * Creates a login link to the Stripe Express Dashboard for the connected account.
+     * The organizer can manage bank accounts, view payouts, etc. from there.
+     */
+    fun createExpressDashboardLink(accountId: String): String? {
+        return try {
+            val loginLink = LoginLink.createOnAccount(accountId, mapOf<String, Any>(), null)
+            loginLink.url
+        } catch (e: Exception) {
+            connectLogger.warn { "Failed to create Express dashboard link for $accountId: ${e.message}" }
+            null
         }
     }
 }

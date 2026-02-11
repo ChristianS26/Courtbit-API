@@ -56,8 +56,21 @@ data class ConnectPayout(
 )
 
 @Serializable
+data class ConnectBankAccount(
+    val bankName: String?,
+    val last4: String?,
+    val currency: String?,
+    val country: String?,
+    val routingNumber: String?,
+    val status: String?,
+    val defaultForCurrency: Boolean = false
+)
+
+@Serializable
 data class ConnectDashboardData(
     val balance: ConnectBalance,
     val transactions: List<ConnectTransaction>,
-    val payouts: List<ConnectPayout>
+    val payouts: List<ConnectPayout>,
+    val bankAccounts: List<ConnectBankAccount> = emptyList(),
+    val stripeDashboardUrl: String? = null
 )
