@@ -307,4 +307,46 @@ class OrganizerRepositoryImpl(
             null
         }
     }
+
+    override suspend fun getStripeAccountId(organizerId: String): String? {
+        return try {
+            @Serializable
+            data class StripeAccountRow(val stripe_account_id: String? = null)
+
+            val response = client.get("$apiUrl/organizers") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                parameter("select", "stripe_account_id")
+                parameter("id", "eq.$organizerId")
+            }
+
+            if (response.status.isSuccess()) {
+                json.decodeFromString<List<StripeAccountRow>>(response.bodyAsText())
+                    .firstOrNull()?.stripe_account_id
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    override suspend fun updateStripeAccountId(organizerId: String, stripeAccountId: String): Boolean {
+        return try {
+            @Serializable
+            data class UpdateStripePayload(val stripe_account_id: String)
+
+            val response = client.patch("$apiUrl/organizers") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                parameter("id", "eq.$organizerId")
+                setBody(UpdateStripePayload(stripe_account_id = stripeAccountId))
+            }
+
+            response.status.isSuccess()
+        } catch (e: Exception) {
+            false
+        }
+    }
 }

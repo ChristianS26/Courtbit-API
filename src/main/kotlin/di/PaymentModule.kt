@@ -3,6 +3,7 @@ package di
 import com.incodap.repositories.payments.PaymentRepository
 import com.incodap.repositories.payments.PaymentRepositoryImpl
 import com.incodap.services.payments.PaymentService
+import com.incodap.services.payments.StripeConnectService
 import com.incodap.services.payments.StripeWebhookService
 import org.koin.dsl.module
 import routing.payments.PaymentRoutes
@@ -41,9 +42,17 @@ val PaymentModule = module {
     }
 
     single {
+        StripeConnectService(
+            httpClient = get()
+        )
+    }
+
+    single {
         PaymentRoutes(
             paymentService = get(),
-            stripeWebhookService = get()
+            stripeWebhookService = get(),
+            stripeConnectService = get(),
+            organizerRepository = get()
         )
     }
 }

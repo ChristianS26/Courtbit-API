@@ -2,7 +2,9 @@ package routing.payments
 
 import com.incodap.models.payments.PaymentRequest
 import com.incodap.security.email
+import com.incodap.security.getOrganizerId
 import com.incodap.services.payments.PaymentService
+import com.incodap.services.payments.StripeConnectService
 import com.incodap.services.payments.StripeWebhookService
 import com.incodap.services.payments.logger
 import io.ktor.http.HttpStatusCode
@@ -12,13 +14,20 @@ import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import kotlinx.serialization.Serializable
+import models.payments.AccountSessionResponse
+import models.payments.ConnectAccountStatus
+import models.payments.CreateConnectAccountResponse
 import models.payments.PaymentsReportRequest
+import repositories.organizer.OrganizerRepository
 
 class PaymentRoutes(
     private val paymentService: PaymentService,
-    private val stripeWebhookService: StripeWebhookService
+    private val stripeWebhookService: StripeWebhookService,
+    private val stripeConnectService: StripeConnectService,
+    private val organizerRepository: OrganizerRepository
 ) {
     fun register(route: Route) {
         // Webhook de Stripe (sin auth)
@@ -150,6 +159,88 @@ class PaymentRoutes(
                 } catch (e: Exception) {
                     logger.error(e) { "❌ Error en /payments/report: ${e.message}" }
                     call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Error al generar/enviar el reporte"))
+                }
+            }
+
+            // -------------------------------------------------------
+            // 🔗 STRIPE CONNECT (organizer onboarding)
+            // -------------------------------------------------------
+
+            route.post("/connect/create-account") {
+                try {
+                    val organizerId = call.getOrganizerId() ?: return@post
+                    val organizer = organizerRepository.getById(organizerId)
+                        ?: run {
+                            call.respond(HttpStatusCode.NotFound, mapOf("error" to "Organizer not found"))
+                            return@post
+                        }
+
+                    // Check if already has a Stripe account
+                    val existing = organizerRepository.getStripeAccountId(organizerId)
+                    if (!existing.isNullOrBlank()) {
+                        call.respond(HttpStatusCode.OK, CreateConnectAccountResponse(accountId = existing))
+                        return@post
+                    }
+
+                    val email = organizer.contactEmail.takeIf { it.isNotBlank() } ?: call.email
+                    val accountId = stripeConnectService.createExpressAccount(email, organizerId)
+                    organizerRepository.updateStripeAccountId(organizerId, accountId)
+
+                    call.respond(HttpStatusCode.Created, CreateConnectAccountResponse(accountId = accountId))
+                } catch (e: Exception) {
+                    logger.error(e) { "Error creating Stripe Connect account: ${e.message}" }
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Error al crear cuenta de Stripe Connect")
+                    )
+                }
+            }
+
+            route.post("/connect/account-session") {
+                try {
+                    val organizerId = call.getOrganizerId() ?: return@post
+                    val accountId = organizerRepository.getStripeAccountId(organizerId)
+
+                    if (accountId.isNullOrBlank()) {
+                        call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to "No Stripe Connect account found. Create one first.")
+                        )
+                        return@post
+                    }
+
+                    val clientSecret = stripeConnectService.createAccountSession(accountId)
+                    call.respond(HttpStatusCode.OK, AccountSessionResponse(clientSecret = clientSecret))
+                } catch (e: Exception) {
+                    logger.error(e) { "Error creating account session: ${e.message}" }
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Error al crear sesión de cuenta")
+                    )
+                }
+            }
+
+            route.get("/connect/account-status") {
+                try {
+                    val organizerId = call.getOrganizerId() ?: return@get
+                    val accountId = organizerRepository.getStripeAccountId(organizerId)
+
+                    if (accountId.isNullOrBlank()) {
+                        call.respond(
+                            HttpStatusCode.NotFound,
+                            mapOf("error" to "No Stripe Connect account found")
+                        )
+                        return@get
+                    }
+
+                    val status = stripeConnectService.getAccountStatus(accountId)
+                    call.respond(HttpStatusCode.OK, status)
+                } catch (e: Exception) {
+                    logger.error(e) { "Error getting account status: ${e.message}" }
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Error al obtener estado de cuenta")
+                    )
                 }
             }
         }

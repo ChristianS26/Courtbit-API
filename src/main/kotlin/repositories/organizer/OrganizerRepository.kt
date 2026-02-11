@@ -45,4 +45,14 @@ interface OrganizerRepository {
      * Get organizer statistics (using database function)
      */
     suspend fun getStatistics(organizerId: String): OrganizerStatisticsResponse?
+
+    /**
+     * Get the Stripe Connect account ID for an organizer
+     */
+    suspend fun getStripeAccountId(organizerId: String): String?
+
+    /**
+     * Update the Stripe Connect account ID for an organizer
+     */
+    suspend fun updateStripeAccountId(organizerId: String, stripeAccountId: String): Boolean
 }
