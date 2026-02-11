@@ -1310,21 +1310,25 @@ class BracketService(
         }
 
         // Swap teams in all affected matches
-        for (match in team1Matches) {
-            val newTeam1Id = if (match.team1Id == team1Id) team2Id else match.team1Id
-            val newTeam2Id = if (match.team2Id == team1Id) team2Id else match.team2Id
-            repository.updateMatchTeams(match.id, newTeam1Id, newTeam2Id, team2Group)
-        }
+        try {
+            for (match in team1Matches) {
+                val newTeam1Id = if (match.team1Id == team1Id) team2Id else match.team1Id
+                val newTeam2Id = if (match.team2Id == team1Id) team2Id else match.team2Id
+                repository.updateMatchTeams(match.id, newTeam1Id, newTeam2Id, team2Group)
+            }
 
-        for (match in team2Matches) {
-            val newTeam1Id = if (match.team1Id == team2Id) team1Id else match.team1Id
-            val newTeam2Id = if (match.team2Id == team2Id) team1Id else match.team2Id
-            repository.updateMatchTeams(match.id, newTeam1Id, newTeam2Id, team1Group)
-        }
+            for (match in team2Matches) {
+                val newTeam1Id = if (match.team1Id == team2Id) team1Id else match.team1Id
+                val newTeam2Id = if (match.team2Id == team2Id) team1Id else match.team2Id
+                repository.updateMatchTeams(match.id, newTeam1Id, newTeam2Id, team1Group)
+            }
 
-        // Update standings group numbers
-        repository.updateStandingGroupNumber(bracket.id, team1Id, team2Group)
-        repository.updateStandingGroupNumber(bracket.id, team2Id, team1Group)
+            // Update standings group numbers
+            repository.updateStandingGroupNumber(bracket.id, team1Id, team2Group)
+            repository.updateStandingGroupNumber(bracket.id, team2Id, team1Group)
+        } catch (e: Exception) {
+            return Result.failure(IllegalStateException("Error al intercambiar equipos: ${e.message}"))
+        }
 
         return getGroupsState(tournamentId, categoryId)
     }
