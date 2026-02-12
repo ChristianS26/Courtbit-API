@@ -31,12 +31,12 @@ class DiscountCodeRepositoryImpl(
             contentType(ContentType.Application.Json)
             setBody(json.encodeToString(DiscountCode.serializer(), code))
         }
+        val body = response.bodyAsText()
         return if (response.status.isSuccess()) {
-            val body = response.bodyAsText()
             val list = json.decodeFromString(ListSerializer(DiscountCode.serializer()), body)
             list.firstOrNull()
         } else {
-            logger.warn { "Failed to create discount code: ${response.status} - ${response.bodyAsText()}" }
+            logger.warn { "Failed to create discount code: ${response.status} - $body" }
             null
         }
     }
