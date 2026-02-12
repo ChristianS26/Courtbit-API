@@ -14,7 +14,8 @@ data class PaymentRequest(
     val tournamentId: String,
     val categoryId: Int,
     val email: String,
-    val paidFor: String // "1" o "2"
+    val paidFor: String, // "1" o "2"
+    val discountCode: String? = null
 ) {
     fun validate(): List<String> {
         val errors = mutableListOf<String>()

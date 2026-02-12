@@ -5,6 +5,7 @@ import com.incodap.repositories.payments.PaymentRepository
 import com.incodap.repositories.teams.TeamRepository
 import com.incodap.repositories.users.UserRepository
 import com.incodap.services.excel.ExcelService
+import repositories.discountcode.DiscountCodeRepository
 import com.stripe.Stripe
 import com.stripe.exception.StripeException
 import com.stripe.model.Customer
@@ -18,10 +19,15 @@ import com.stripe.param.checkout.SessionCreateParams
 import io.ktor.server.plugins.BadRequestException
 import models.payments.CreateIntentResponse
 import models.payments.RpcApplyCodeDto
+import mu.KotlinLogging
 import repositories.category.CategoryRepository
+import repositories.organizer.OrganizerRepository
+import repositories.registrationcode.RegistrationCodeRepository
 import repositories.tournament.TournamentRepository
 import services.email.EmailService
 import java.util.UUID
+
+private val paymentLogger = KotlinLogging.logger {}
 
 class PaymentService(
     private val teamRepository: TeamRepository,
@@ -31,12 +37,16 @@ class PaymentService(
     private val tournamentRepository: TournamentRepository,
     private val categoryRepository: CategoryRepository,
     private val userRepository: UserRepository,
+    private val organizerRepository: OrganizerRepository,
+    private val registrationCodeRepository: RegistrationCodeRepository,
+    private val discountCodeRepository: DiscountCodeRepository,
 ) {
     companion object {
         private const val BASE_REDIRECT_URL = "https://neon-dango-f7ebd5.netlify.app"
         private val ADMIN_EMAIL: String = System.getenv("ADMIN_EMAIL") ?: "christianug26@gmail.com"
         private val STRIPE_MOBILE_SDK_API_VERSION: String =
             System.getenv("STRIPE_MOBILE_SDK_API_VERSION") ?: "2020-08-27"
+        private const val PLATFORM_FEE_PERCENT = 5
     }
 
     init {
@@ -113,7 +123,7 @@ class PaymentService(
             .setPriceData(
                 SessionCreateParams.LineItem.PriceData.builder()
                     .setCurrency(request.currency.lowercase())
-                    .setUnitAmount(request.amount * 100L)
+                    .setUnitAmount(request.amount)
                     .setProductData(
                         SessionCreateParams.LineItem.PriceData.ProductData.builder()
                             .setName("Inscripción: ${request.playerName} - ${request.categoryId}")
@@ -132,9 +142,77 @@ class PaymentService(
     ): CreateIntentResponse {
         validatePaymentRequest(request)
 
-        require(request.amount > 0) { "El monto debe ser mayor a cero." }
         require(!request.currency.isNullOrBlank()) { "La moneda es requerida." }
         val normalizedCurrency = request.currency.lowercase()
+
+        // Server-side price lookup — never trust the client amount
+        val categoryPrice = categoryRepository.getCategoryPrice(request.tournamentId, request.categoryId)
+            ?: throw BadRequestException("No se encontró precio para la categoría ${request.categoryId}")
+        require(categoryPrice > 0) { "El precio de la categoría debe ser mayor a cero." }
+
+        val paidFor = (request.paidFor.toIntOrNull() ?: 1).coerceIn(1, 2)
+        val amountInCents = categoryPrice * paidFor
+
+        paymentLogger.info { "Price from DB: categoryPrice=$categoryPrice, paidFor=$paidFor, amountInCents=$amountInCents" }
+
+        // 🏷️ Discount code handling
+        if (!request.discountCode.isNullOrBlank()) {
+            val validation = discountCodeRepository.validateCode(
+                request.discountCode, request.tournamentId, request.playerUid
+            )
+
+            if (!validation.valid) {
+                throw BadRequestException(validation.message ?: "Invalid discount code")
+            }
+
+            // Calculate amounts server-side using category price + discount info
+            val discountAmount: Long = when (validation.discountType) {
+                "percentage" -> (amountInCents * (validation.discountValue ?: 0) / 100.0).toLong()
+                "fixed_amount" -> minOf((validation.discountValue ?: 0).toLong(), amountInCents)
+                else -> 0L
+            }
+            val finalAmount: Long = maxOf(0L, amountInCents - discountAmount)
+
+            if (finalAmount <= 0L) {
+                // 100% discount — apply code and register team for free via RPC
+                val applyResult = discountCodeRepository.applyCode(
+                    code = request.discountCode,
+                    tournamentId = request.tournamentId,
+                    playerUid = request.playerUid,
+                    partnerUid = request.partnerUid,
+                    categoryId = request.categoryId.toString(),
+                    playerName = request.playerName,
+                    restriction = request.restriction,
+                    usedByEmail = request.email,
+                    originalAmount = amountInCents.toInt()
+                )
+
+                if (!applyResult.valid || applyResult.applied != true) {
+                    throw BadRequestException(applyResult.message ?: "Failed to apply discount code")
+                }
+
+                return CreateIntentResponse(
+                    paymentIntentClientSecret = null,
+                    isFreeRegistration = true,
+                    originalAmount = amountInCents,
+                    discountApplied = discountAmount,
+                    finalAmount = 0,
+                    discountCode = request.discountCode
+                )
+            }
+
+            // Partial discount — continue with reduced amount
+            paymentLogger.info { "Discount applied: original=$amountInCents, discount=$discountAmount, final=$finalAmount" }
+            return createPaymentIntentWithDiscount(
+                request = request,
+                userEmail = userEmail,
+                originalAmount = amountInCents,
+                finalAmount = finalAmount,
+                discountAmount = discountAmount,
+                normalizedCurrency = normalizedCurrency,
+                paidFor = paidFor
+            )
+        }
 
         // 🔍 resolver email desde param → request → DB
         val resolvedEmail: String = run {
@@ -156,8 +234,11 @@ class PaymentService(
 
         val idem = UUID.randomUUID().toString()
 
+        // Resolve organizer's Stripe Connect account from tournament
+        val connectedAccountId = resolveConnectedAccount(request.tournamentId)
+
         val params = PaymentIntentCreateParams.builder()
-            .setAmount(request.amount * 100L)
+            .setAmount(amountInCents)
             .setCurrency(normalizedCurrency)
             .setAutomaticPaymentMethods(
                 PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
@@ -176,6 +257,17 @@ class PaymentService(
                 if (customer != null) {
                     setCustomer(customer.id)
                     setSetupFutureUsage(PaymentIntentCreateParams.SetupFutureUsage.OFF_SESSION)
+                }
+                // Route payment to organizer's connected account
+                if (connectedAccountId != null) {
+                    val fee = amountInCents * PLATFORM_FEE_PERCENT / 100
+                    setApplicationFeeAmount(fee)
+                    setTransferData(
+                        PaymentIntentCreateParams.TransferData.builder()
+                            .setDestination(connectedAccountId)
+                            .build()
+                    )
+                    paymentLogger.info { "Payment routed to connected account $connectedAccountId (fee: $fee cents)" }
                 }
             }
             .build()
@@ -244,6 +336,103 @@ class PaymentService(
     }
 
     // -------------------------------------------------------
+    // 🔗 CONNECT: resolve organizer's Stripe account
+    // -------------------------------------------------------
+    private suspend fun resolveConnectedAccount(tournamentId: String): String? {
+        return try {
+            val tournament = tournamentRepository.getById(tournamentId) ?: return null
+            val organizerId = tournament.organizerId ?: return null
+            val accountId = organizerRepository.getStripeAccountId(organizerId)
+            if (accountId.isNullOrBlank()) null else accountId
+        } catch (e: Exception) {
+            paymentLogger.warn { "Could not resolve connected account for tournament $tournamentId: ${e.message}" }
+            null
+        }
+    }
+
+    // -------------------------------------------------------
+    // 🏷️ DISCOUNT: create intent with reduced amount
+    // -------------------------------------------------------
+    private suspend fun createPaymentIntentWithDiscount(
+        request: PaymentRequest,
+        userEmail: String?,
+        originalAmount: Long,
+        finalAmount: Long,
+        discountAmount: Long,
+        normalizedCurrency: String,
+        paidFor: Int
+    ): CreateIntentResponse {
+        val resolvedEmail: String = run {
+            val fromParam = userEmail?.trim().orEmpty()
+            if (fromParam.isNotEmpty()) return@run fromParam
+            val fromRequest = request.email?.trim().orEmpty()
+            if (fromRequest.isNotEmpty()) return@run fromRequest
+            userRepository.findByUid(request.playerUid)?.email?.trim().orEmpty()
+        }
+
+        val email = resolvedEmail
+        val customer: Customer? = if (email.isNotEmpty()) {
+            ensureCustomer(uid = request.playerUid, email = email)
+        } else null
+
+        val idem = UUID.randomUUID().toString()
+        val connectedAccountId = resolveConnectedAccount(request.tournamentId)
+
+        val params = PaymentIntentCreateParams.builder()
+            .setAmount(finalAmount)
+            .setCurrency(normalizedCurrency)
+            .setAutomaticPaymentMethods(
+                PaymentIntentCreateParams.AutomaticPaymentMethods.builder()
+                    .setEnabled(true)
+                    .build()
+            )
+            .putMetadata("tournament_id", request.tournamentId)
+            .putMetadata("player_name", request.playerName)
+            .putMetadata("restriction", request.restriction ?: "")
+            .putMetadata("email", email)
+            .putMetadata("partner_uid", request.partnerUid)
+            .putMetadata("categoryId", request.categoryId.toString())
+            .putMetadata("paid_for", request.paidFor)
+            .putMetadata("player_uid", request.playerUid)
+            .putMetadata("discount_code", request.discountCode ?: "")
+            .putMetadata("original_amount", originalAmount.toString())
+            .putMetadata("discount_amount", discountAmount.toString())
+            .apply {
+                if (customer != null) {
+                    setCustomer(customer.id)
+                    setSetupFutureUsage(PaymentIntentCreateParams.SetupFutureUsage.OFF_SESSION)
+                }
+                if (connectedAccountId != null) {
+                    val fee = finalAmount * PLATFORM_FEE_PERCENT / 100
+                    setApplicationFeeAmount(fee)
+                    setTransferData(
+                        PaymentIntentCreateParams.TransferData.builder()
+                            .setDestination(connectedAccountId)
+                            .build()
+                    )
+                }
+            }
+            .build()
+
+        val requestOptions = RequestOptions.builder().setIdempotencyKey(idem).build()
+        val intent = PaymentIntent.create(params, requestOptions)
+
+        val ephemeralKeySecret = customer?.let {
+            try { createEphemeralKey(it.id).secret } catch (_: Exception) { null }
+        }
+
+        return CreateIntentResponse(
+            paymentIntentClientSecret = intent.clientSecret,
+            customerId = customer?.id,
+            ephemeralKey = ephemeralKeySecret,
+            originalAmount = originalAmount,
+            discountApplied = discountAmount,
+            finalAmount = finalAmount,
+            discountCode = request.discountCode
+        )
+    }
+
+    // -------------------------------------------------------
     // 🏷️ CÓDIGOS Y REPORTES
     // -------------------------------------------------------
     enum class RedeemOutcome { Created, Updated, ConflictAlreadyPaid, ConflictPartnerOther, InvalidCode }
@@ -260,6 +449,19 @@ class PaymentService(
     ): RedeemOutcome {
         if (categoryId == null) throw BadRequestException("categoryId es requerido")
         if (playerUid == partnerUid) throw BadRequestException("Los jugadores no pueden ser iguales")
+
+        // Validate code exists and belongs to the same organization as the tournament
+        val validCode = registrationCodeRepository.getValidCode(code)
+            ?: return RedeemOutcome.InvalidCode
+
+        val codeOrgId = validCode.organizer_id
+        if (codeOrgId != null) {
+            val tournament = tournamentRepository.getById(tournamentId)
+            val tournamentOrgId = tournament?.organizerId
+            if (tournamentOrgId != null && codeOrgId != tournamentOrgId) {
+                throw BadRequestException("Este código no es válido para este torneo.")
+            }
+        }
 
         val myTeam = teamRepository.findByPlayerAndCategory(playerUid, tournamentId, categoryId)
         if (myTeam != null) {

@@ -212,6 +212,28 @@ fun Route.tournamentRoutes(
                 }
             }
 
+            patch("{id}/payments-enabled") {
+                val id = call.validateOrganizerAndId() ?: return@patch
+                val payload = try { call.receive<Map<String, Boolean>>() }
+                catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato inválido"))
+                    return@patch
+                }
+
+                val paymentsEnabled = payload["payments_enabled"]
+                if (paymentsEnabled == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "El campo 'payments_enabled' es requerido"))
+                    return@patch
+                }
+
+                val updated = tournamentService.updatePaymentsEnabled(id, paymentsEnabled)
+                if (updated) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo actualizar 'payments_enabled'"))
+                }
+            }
+
             delete("{id}") {
                 val id = call.validateOrganizerAndId() ?: return@delete
 
