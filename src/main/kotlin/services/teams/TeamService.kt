@@ -501,9 +501,13 @@ class TeamService(
     }
 
     suspend fun registerFreeTeam(req: RegisterTeamRequest): Boolean {
-        // Check if team already exists
-        if (req.playerUid != null && req.partnerUid != null) {
-            val existing = teamRepository.findTeam(req.tournamentId, req.playerUid, req.partnerUid)
+        // Check if this player already has a team in this category
+        if (req.playerUid != null) {
+            val existing = teamRepository.findByPlayerAndCategory(
+                playerUid = req.playerUid,
+                tournamentId = req.tournamentId,
+                categoryId = req.categoryId
+            )
             if (existing != null) {
                 // Update existing team: mark calling player as paid
                 val paidField =
