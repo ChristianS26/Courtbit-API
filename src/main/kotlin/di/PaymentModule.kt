@@ -26,7 +26,9 @@ val PaymentModule = module {
             tournamentRepository = get(),
             categoryRepository = get(),
             userRepository = get(),
-            organizerRepository = get()
+            organizerRepository = get(),
+            registrationCodeRepository = get(),
+            discountCodeRepository = get()
         )
     }
 

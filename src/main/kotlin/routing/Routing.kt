@@ -55,6 +55,7 @@ import routing.bracket.bracketRoutes
 import com.incodap.routing.club.clubRoutes
 import com.incodap.routing.city.cityRoutes
 import com.incodap.routing.padelclub.padelClubRoutes
+import com.incodap.routing.discountcode.discountCodeRoutes
 import com.incodap.services.club.ClubService
 import services.city.CityService
 import services.padelclub.PadelClubService
@@ -72,6 +73,7 @@ import services.league.SeasonService
 import services.organization.OrganizationTeamService
 import services.organizer.OrganizerService
 import services.registrationcode.RegistrationCodeService
+import services.discountcode.DiscountCodeService
 import services.remoteconfig.RemoteConfigService
 import services.teams.TeamService
 
@@ -102,6 +104,9 @@ fun Application.configureRouting() {
 
             // Códigos de inscripción
             registrationCodeRoutes(get<RegistrationCodeService>(), get<EmailService>(), get<ExcelService>())
+
+            // Códigos de descuento
+            discountCodeRoutes(get<DiscountCodeService>())
 
             // Torneos
             tournamentRoutes(get(), get(), get<ClubService>())

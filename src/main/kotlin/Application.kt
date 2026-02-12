@@ -42,6 +42,7 @@ fun Application.module() {
             BracketModule,
             ClubModule,
             CityPadelClubModule,
+            DiscountCodeModule,
         )
     }
 
