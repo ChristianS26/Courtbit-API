@@ -8,6 +8,10 @@ import io.ktor.http.*
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import models.discountcode.*
 import mu.KotlinLogging
 import repositories.discountcode.DiscountCodeRepository
@@ -86,6 +90,21 @@ class DiscountCodeRepositoryImpl(
         return response.status.isSuccess()
     }
 
+    /**
+     * PostgREST returns jsonb RPC results in varying formats:
+     * - Direct object: {"valid":false,...}
+     * - JSON string (double-encoded): "{\"valid\":false,...}"
+     * This helper unwraps to the actual JSON string for deserialization.
+     */
+    private fun unwrapRpcJsonb(raw: String): String {
+        val trimmed = raw.trim()
+        // If it's a JSON string literal (starts with "), unwrap it
+        if (trimmed.startsWith("\"")) {
+            return json.decodeFromString<String>(trimmed)
+        }
+        return trimmed
+    }
+
     override suspend fun validateCode(
         code: String,
         tournamentId: String,
@@ -100,7 +119,8 @@ class DiscountCodeRepositoryImpl(
         }
         val body = response.bodyAsText()
         logger.info { "RPC validate_discount_code -> ${response.status} | $body" }
-        return json.decodeFromString(ValidateDiscountCodeResponse.serializer(), body)
+        val unwrapped = unwrapRpcJsonb(body)
+        return json.decodeFromString(ValidateDiscountCodeResponse.serializer(), unwrapped)
     }
 
     override suspend fun applyCode(
@@ -120,6 +140,7 @@ class DiscountCodeRepositoryImpl(
         }
         val body = response.bodyAsText()
         logger.info { "RPC apply_discount_code -> ${response.status} | $body" }
-        return json.decodeFromString(ValidateDiscountCodeResponse.serializer(), body)
+        val unwrapped = unwrapRpcJsonb(body)
+        return json.decodeFromString(ValidateDiscountCodeResponse.serializer(), unwrapped)
     }
 }
