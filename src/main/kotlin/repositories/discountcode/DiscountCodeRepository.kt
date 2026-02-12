@@ -1,6 +1,7 @@
 package repositories.discountcode
 
 import models.discountcode.DiscountCode
+import models.discountcode.DiscountCodeUsageResponse
 import models.discountcode.ValidateDiscountCodeResponse
 
 interface DiscountCodeRepository {
@@ -15,4 +16,5 @@ interface DiscountCodeRepository {
         categoryId: String, playerName: String, restriction: String?,
         usedByEmail: String?, originalAmount: Int?
     ): ValidateDiscountCodeResponse
+    suspend fun getUsagesByOrganizerId(organizerId: String): List<DiscountCodeUsageResponse>
 }

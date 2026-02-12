@@ -65,6 +65,19 @@ fun Route.discountCodeRoutes(discountCodeService: DiscountCodeService) {
                 }
             }
 
+            // List discount code usages for the organizer
+            get("/usages") {
+                try {
+                    val organizerId = call.getOrganizerId()
+                        ?: return@get
+
+                    val usages = discountCodeService.getUsages(organizerId)
+                    call.respond(HttpStatusCode.OK, usages)
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Error fetching discount code usages"))
+                }
+            }
+
             // Update a discount code
             patch("/{id}") {
                 try {

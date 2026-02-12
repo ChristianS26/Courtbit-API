@@ -105,6 +105,20 @@ class DiscountCodeRepositoryImpl(
         return trimmed
     }
 
+    override suspend fun getUsagesByOrganizerId(organizerId: String): List<DiscountCodeUsageResponse> {
+        val url = "$apiUrl/discount_code_usages_enriched?organization_id=eq.$organizerId&order=used_at.desc&select=*"
+        val response = client.get(url) {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+        }
+        return if (response.status == HttpStatusCode.OK) {
+            json.decodeFromString(ListSerializer(DiscountCodeUsageResponse.serializer()), response.bodyAsText())
+        } else {
+            logger.warn { "Failed to fetch discount code usages: ${response.status}" }
+            emptyList()
+        }
+    }
+
     override suspend fun validateCode(
         code: String,
         tournamentId: String,

@@ -61,6 +61,10 @@ class DiscountCodeService(
         return repository.delete(id)
     }
 
+    suspend fun getUsages(organizerId: String): List<DiscountCodeUsageResponse> {
+        return repository.getUsagesByOrganizerId(organizerId)
+    }
+
     suspend fun validateDiscountCode(
         code: String,
         tournamentId: String,
