@@ -17,6 +17,7 @@ import org.json.JSONObject
 import services.email.EmailService
 import repositories.tournament.TournamentRepository
 import repositories.category.CategoryRepository
+import repositories.discountcode.DiscountCodeRepository
 
 val logger = KotlinLogging.logger {}
 
@@ -25,7 +26,8 @@ class StripeWebhookService(
     private val paymentRepository: PaymentRepository,
     private val emailService: EmailService,
     private val tournamentRepository: TournamentRepository,
-    private val categoryRepository: CategoryRepository
+    private val categoryRepository: CategoryRepository,
+    private val discountCodeRepository: DiscountCodeRepository
 ) {
 
     companion object {
@@ -154,6 +156,32 @@ class StripeWebhookService(
         }
 
         logger.info { "✅ RPC apply_stripe_payment OK para intent ${intent.id}" }
+
+        // Record discount code usage if one was applied
+        val discountCode = intent.metadata["discount_code"]
+        if (!discountCode.isNullOrBlank()) {
+            try {
+                val originalAmount = intent.metadata["original_amount"]?.toIntOrNull()
+                val applyResult = discountCodeRepository.applyCode(
+                    code = discountCode,
+                    tournamentId = tournamentId,
+                    playerUid = playerUid,
+                    partnerUid = partnerUid,
+                    categoryId = categoryId,
+                    playerName = playerName,
+                    restriction = restriction,
+                    usedByEmail = playerEmail,
+                    originalAmount = originalAmount
+                )
+                if (applyResult.valid && applyResult.applied == true) {
+                    logger.info { "✅ Discount code '$discountCode' usage recorded for intent ${intent.id}" }
+                } else {
+                    logger.warn { "⚠️ Discount code '$discountCode' apply returned: valid=${applyResult.valid}, msg=${applyResult.message}" }
+                }
+            } catch (e: Exception) {
+                logger.error(e) { "❌ Error recording discount code usage for '$discountCode': ${e.message}" }
+            }
+        }
 
         val tournamentName = tournamentRepository.getById(tournamentId)?.name
         val categoryName   = categoryRepository
