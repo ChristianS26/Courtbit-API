@@ -25,4 +25,5 @@ data class TournamentResponse(
     @SerialName("city_id") val cityId: Int? = null,
     @SerialName("padel_club_id") val padelClubId: Int? = null,
     @SerialName("allow_player_scores") val allowPlayerScores: Boolean = false,
+    @SerialName("payments_enabled") val paymentsEnabled: Boolean = true,
 )

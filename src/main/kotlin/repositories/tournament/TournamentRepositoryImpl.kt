@@ -394,7 +394,8 @@ data class TournamentRawResponse(
     val organizers: OrganizerInfo? = null,
     @SerialName("city_id") val cityId: Int? = null,
     @SerialName("padel_club_id") val padelClubId: Int? = null,
-    @SerialName("allow_player_scores") val allowPlayerScores: Boolean = false
+    @SerialName("allow_player_scores") val allowPlayerScores: Boolean = false,
+    @SerialName("payments_enabled") val paymentsEnabled: Boolean = true
 ) {
     fun toTournamentResponse(): TournamentResponse {
         return TournamentResponse(
@@ -417,7 +418,8 @@ data class TournamentRawResponse(
             organizerLogoUrl = organizers?.logoUrl,
             cityId = cityId,
             padelClubId = padelClubId,
-            allowPlayerScores = allowPlayerScores
+            allowPlayerScores = allowPlayerScores,
+            paymentsEnabled = paymentsEnabled
         )
     }
 }
