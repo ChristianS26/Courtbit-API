@@ -119,7 +119,7 @@ fun Route.discountCodeRoutes(discountCodeService: DiscountCodeService) {
                     )
                     call.respond(HttpStatusCode.OK, result)
                 } catch (e: Exception) {
-                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Error validating discount code"))
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Error validating discount code")))
                 }
             }
         }
