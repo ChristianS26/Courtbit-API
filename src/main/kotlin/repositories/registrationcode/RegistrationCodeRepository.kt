@@ -10,4 +10,5 @@ interface RegistrationCodeRepository {
     suspend fun getAllCodes(): List<RegistrationCode>
     suspend fun getCodesByOrganizerId(organizerId: String): List<RegistrationCode>
     suspend fun getAllCodesWithTournamentInfo(): List<RegistrationCodeWithTournamentInfo>
+    suspend fun getCodesByOrganizerWithTournamentInfo(organizerId: String): List<RegistrationCodeWithTournamentInfo>
 }

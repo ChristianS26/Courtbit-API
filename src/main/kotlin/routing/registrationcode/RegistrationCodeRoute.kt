@@ -45,13 +45,13 @@ fun Route.registrationCodeRoutes(
                     // Query parameter for filtering by organizer
                     val organizerId = call.request.queryParameters["organizer_id"]
 
-                    val codes = if (organizerId != null) {
-                        registrationCodeService.getRegistrationCodesByOrganizer(organizerId)
+                    if (organizerId != null) {
+                        val codes = registrationCodeService.getRegistrationCodesByOrganizerWithTournamentInfo(organizerId)
+                        call.respond(HttpStatusCode.OK, codes)
                     } else {
-                        registrationCodeService.getAllRegistrationCodes()
+                        val codes = registrationCodeService.getAllRegistrationCodes()
+                        call.respond(HttpStatusCode.OK, codes)
                     }
-
-                    call.respond(HttpStatusCode.OK, codes)
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.InternalServerError, "Error al obtener códigos")
                 }
