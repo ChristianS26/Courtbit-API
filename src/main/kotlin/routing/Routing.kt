@@ -100,7 +100,7 @@ fun Application.configureRouting() {
             uploadProfilePhotoRoute(get())
 
             // Equipos
-            teamRoutes(get<TeamService>(), get<EmailService>(), get<ExcelService>())
+            teamRoutes(get<TeamService>(), get<EmailService>(), get<ExcelService>(), get())
 
             // Códigos de inscripción
             registrationCodeRoutes(get<RegistrationCodeService>(), get<EmailService>(), get<ExcelService>())

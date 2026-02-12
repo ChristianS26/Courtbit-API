@@ -500,6 +500,30 @@ class TeamService(
         }
     }
 
+    suspend fun registerFreeTeam(req: RegisterTeamRequest): Boolean {
+        // Check if team already exists
+        if (req.playerUid != null && req.partnerUid != null) {
+            val existing = teamRepository.findTeam(req.tournamentId, req.playerUid, req.partnerUid)
+            if (existing != null) {
+                // Update existing team: mark calling player as paid
+                val paidField =
+                    if (existing.playerAUid == req.playerUid) PlayerType.PLAYER_A.fieldName else PlayerType.PLAYER_B.fieldName
+                return teamRepository.updateTeamPaidStatus(existing.id, paidField, true)
+            }
+        }
+        // Create new team with player A paid (the calling player)
+        return teamRepository.createTeam(
+            TeamRequest(
+                tournamentId = req.tournamentId,
+                playerAUid = req.playerUid,
+                playerBUid = req.partnerUid,
+                categoryId = req.categoryId,
+                playerAPaid = true,
+                playerBPaid = false,
+            )
+        )
+    }
+
     suspend fun replacePlayer(request: ReplacePlayerRequest): Boolean {
         // Validate player position
         if (request.playerPosition != "a" && request.playerPosition != "b") {
