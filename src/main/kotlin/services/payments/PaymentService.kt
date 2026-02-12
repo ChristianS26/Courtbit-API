@@ -165,8 +165,13 @@ class PaymentService(
                 throw BadRequestException(validation.message ?: "Invalid discount code")
             }
 
-            val discountAmount = validation.discountAmount?.toLong() ?: 0L
-            val finalAmount = validation.finalAmount?.toLong() ?: amountInCents
+            // Calculate amounts server-side using category price + discount info
+            val discountAmount: Long = when (validation.discountType) {
+                "percentage" -> (amountInCents * (validation.discountValue ?: 0) / 100.0).toLong()
+                "fixed_amount" -> minOf((validation.discountValue ?: 0).toLong(), amountInCents)
+                else -> 0L
+            }
+            val finalAmount: Long = maxOf(0L, amountInCents - discountAmount)
 
             if (finalAmount <= 0L) {
                 // 100% discount — apply code and register team for free via RPC
