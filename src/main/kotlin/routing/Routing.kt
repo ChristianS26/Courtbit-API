@@ -52,7 +52,6 @@ import routing.ranking.RankingRoutes
 import routing.remoteconfig.remoteConfigRoutes
 import routing.shirtSizeRoutes
 import routing.bracket.bracketRoutes
-import com.incodap.routing.club.clubRoutes
 import com.incodap.routing.city.cityRoutes
 import com.incodap.routing.padelclub.padelClubRoutes
 import com.incodap.routing.discountcode.discountCodeRoutes
@@ -113,13 +112,10 @@ fun Application.configureRouting() {
             discountCodeRoutes(get<DiscountCodeService>())
 
             // Torneos
-            tournamentRoutes(get(), get(), get<ClubService>())
+            tournamentRoutes(get(), get())
 
             // Brackets (tournament brackets system)
             bracketRoutes(get())
-
-            // Clubs (venue management)
-            clubRoutes(get<ClubService>())
 
             // Cities catalog
             cityRoutes(get<CityService>())

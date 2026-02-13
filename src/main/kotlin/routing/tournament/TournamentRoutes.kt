@@ -15,7 +15,6 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
-import com.incodap.services.club.ClubService
 import models.tournament.CreateTournamentWithCategoriesRequest
 import models.tournament.DeleteTournamentResult
 import models.tournament.InheritCourtsRequest
@@ -28,8 +27,7 @@ import services.tournament.TournamentService
 
 fun Route.tournamentRoutes(
     tournamentService: TournamentService,
-    categoryService: CategoryService,
-    clubService: ClubService
+    categoryService: CategoryService
 ) {
     route("/tournaments") {
 
@@ -492,28 +490,6 @@ fun Route.tournamentRoutes(
                 }
             }
 
-            // POST /tournaments/{id}/inherit-courts - Copy courts from associated club
-            post("{id}/inherit-courts") {
-                val id = call.validateOrganizerAndId() ?: return@post
-
-                val request = try {
-                    call.receive<InheritCourtsRequest>()
-                } catch (e: Exception) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato invalido: ${e.localizedMessage}"))
-                    return@post
-                }
-
-                // Get club courts
-                val clubCourts = clubService.getClubCourts(request.clubId)
-                if (clubCourts.isEmpty()) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "El club no tiene canchas configuradas"))
-                    return@post
-                }
-
-                // Return the courts for the frontend to use in scheduling
-                // (actual court assignment happens during schedule creation)
-                call.respond(HttpStatusCode.OK, clubCourts)
-            }
         }
     }
 }

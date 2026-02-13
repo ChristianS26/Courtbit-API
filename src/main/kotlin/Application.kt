@@ -40,7 +40,6 @@ fun Application.module() {
             LeagueModule,
             ShirtSizeModule,
             BracketModule,
-            ClubModule,
             CityPadelClubModule,
             DiscountCodeModule,
             FollowModule,
