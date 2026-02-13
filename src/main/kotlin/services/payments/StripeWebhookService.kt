@@ -18,6 +18,7 @@ import services.email.EmailService
 import repositories.tournament.TournamentRepository
 import repositories.category.CategoryRepository
 import repositories.discountcode.DiscountCodeRepository
+import repositories.organization.OrganizationTeamRepository
 
 val logger = KotlinLogging.logger {}
 
@@ -27,7 +28,8 @@ class StripeWebhookService(
     private val emailService: EmailService,
     private val tournamentRepository: TournamentRepository,
     private val categoryRepository: CategoryRepository,
-    private val discountCodeRepository: DiscountCodeRepository
+    private val discountCodeRepository: DiscountCodeRepository,
+    private val organizationTeamRepository: OrganizationTeamRepository
 ) {
 
     companion object {
@@ -219,8 +221,11 @@ class StripeWebhookService(
             logger.warn { "⚠️ No hay email en metadata para enviar confirmación al jugador" }
         }
 
+        val ownerEmail = getOrganizerOwnerEmail(tournamentId)
+        val recipients = listOfNotNull(ADMIN_EMAIL, ownerEmail).distinct()
+
         emailService.sendAdminNewRegistration(
-            adminEmail = ADMIN_EMAIL,
+            adminEmails = recipients,
             playerName = playerName,
             partnerName = null,
             playerEmail = toPlayer ?: "desconocido",
@@ -231,6 +236,18 @@ class StripeWebhookService(
             paidFor = paidFor,
             method = "Stripe"
         )
+    }
+
+    private suspend fun getOrganizerOwnerEmail(tournamentId: String): String? {
+        return try {
+            val tournament = tournamentRepository.getById(tournamentId) ?: return null
+            val organizerId = tournament.organizerId ?: return null
+            val members = organizationTeamRepository.getMembers(organizerId)
+            members.firstOrNull { it.role == "owner" }?.userEmail
+        } catch (e: Exception) {
+            logger.warn { "No se pudo obtener email del owner para torneo $tournamentId: ${e.message}" }
+            null
+        }
     }
 
     private suspend fun retrievePaymentIntentFromJson(

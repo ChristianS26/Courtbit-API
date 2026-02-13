@@ -8,7 +8,7 @@ val ResendModule = module {
         ResendConfig(
             apiKey = System.getenv("RESEND_API_KEY")
                 ?: error("❌ RESEND_API_KEY no definida"),
-            fromEmail = System.getenv("RESEND_FROM_EMAIL") ?: "noreply@padeljalisco.com"
+            fromEmail = System.getenv("RESEND_FROM_EMAIL") ?: "noreply@courtbit.com"
         )
     }
 }

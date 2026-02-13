@@ -23,6 +23,7 @@ import mu.KotlinLogging
 import repositories.category.CategoryRepository
 import repositories.organizer.OrganizerRepository
 import repositories.registrationcode.RegistrationCodeRepository
+import repositories.organization.OrganizationTeamRepository
 import repositories.tournament.TournamentRepository
 import services.email.EmailService
 import java.util.UUID
@@ -41,6 +42,7 @@ class PaymentService(
     private val registrationCodeRepository: RegistrationCodeRepository,
     private val discountCodeRepository: DiscountCodeRepository,
     private val stripeConnectService: StripeConnectService,
+    private val organizationTeamRepository: OrganizationTeamRepository,
 ) {
     companion object {
         private const val BASE_REDIRECT_URL = "https://neon-dango-f7ebd5.netlify.app"
@@ -525,8 +527,11 @@ class PaymentService(
             )
         }
 
+        val ownerEmail = getOrganizerOwnerEmail(tournamentId)
+        val recipients = listOfNotNull(ADMIN_EMAIL, ownerEmail).distinct()
+
         emailService.sendAdminNewRegistration(
-            adminEmail = ADMIN_EMAIL,
+            adminEmails = recipients,
             playerName = playerName,
             partnerName = null,
             playerEmail = toPlayer ?: "desconocido",
@@ -539,6 +544,18 @@ class PaymentService(
         )
 
         return if (myTeam == null) RedeemOutcome.Created else RedeemOutcome.Updated
+    }
+
+    private suspend fun getOrganizerOwnerEmail(tournamentId: String): String? {
+        return try {
+            val tournament = tournamentRepository.getById(tournamentId) ?: return null
+            val organizerId = tournament.organizerId ?: return null
+            val members = organizationTeamRepository.getMembers(organizerId)
+            members.firstOrNull { it.role == "owner" }?.userEmail
+        } catch (e: Exception) {
+            paymentLogger.warn { "No se pudo obtener email del owner para torneo $tournamentId: ${e.message}" }
+            null
+        }
     }
 
     suspend fun sendPaymentsReport(

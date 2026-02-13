@@ -59,7 +59,7 @@ class EmailService(
     }
 
     suspend fun sendAdminNewRegistration(
-        adminEmail: String,
+        adminEmails: List<String>,
         playerName: String,
         partnerName: String?,
         playerEmail: String,
@@ -82,6 +82,8 @@ class EmailService(
             paidFor = paidFor,
             method = method
         )
-        return repository.sendEmail(adminEmail, subject, html)
+        return adminEmails.all { email ->
+            repository.sendEmail(email, subject, html)
+        }
     }
 }
