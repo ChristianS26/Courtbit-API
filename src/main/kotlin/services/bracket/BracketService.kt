@@ -331,6 +331,9 @@ class BracketService(
             }
         }
 
+        // Auto-advance bye matches: mark as completed and advance winner to next round
+        processByeMatches(createdMatches, matchNumberToId)
+
         // Fetch complete bracket with updated matches
         val result = repository.getBracketWithMatches(tournamentId, categoryId)
             ?: return Result.failure(IllegalStateException("Failed to fetch created bracket"))
@@ -1199,6 +1202,9 @@ class BracketService(
             }
         }
 
+        // Auto-advance bye matches
+        processByeMatches(createdMatches, matchNumberToId)
+
         // Return complete bracket
         val result = repository.getBracketWithMatches(tournamentId, categoryId)
             ?: return Result.failure(IllegalStateException("Failed to fetch updated bracket"))
@@ -1364,6 +1370,39 @@ class BracketService(
     }
 
     // ============ Bracket Generation Algorithm ============
+
+    /**
+     * Process bye matches after bracket generation:
+     * marks them as completed and advances the bye winner to the next round.
+     */
+    private suspend fun processByeMatches(
+        createdMatches: List<MatchResponse>,
+        matchNumberToId: Map<Int, String>
+    ) {
+        val byeMatches = createdMatches.filter { it.isBye && it.status == "bye" }
+
+        for (byeMatch in byeMatches) {
+            // Determine the winner (the non-null team)
+            val winnerTeamId = byeMatch.team1Id ?: byeMatch.team2Id ?: continue
+            val winnerTeam = if (byeMatch.team1Id != null) 1 else 2
+
+            // Mark bye match as completed with the bye recipient as winner
+            repository.updateMatchScore(
+                matchId = byeMatch.id,
+                scoreTeam1 = 0,
+                scoreTeam2 = 0,
+                setScores = emptyList(),
+                winnerTeam = winnerTeam
+            )
+
+            // Advance winner to next match (next_match_id is set by this point)
+            // Re-fetch the match to get the updated next_match_id
+            val updatedMatch = repository.getMatch(byeMatch.id) ?: continue
+            if (updatedMatch.nextMatchId != null) {
+                repository.advanceWinner(byeMatch.id, winnerTeamId)
+            }
+        }
+    }
 
     /**
      * Generate knockout matches from seeded teams.
