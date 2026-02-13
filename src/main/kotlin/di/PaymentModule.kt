@@ -29,7 +29,8 @@ val PaymentModule = module {
             organizerRepository = get(),
             registrationCodeRepository = get(),
             discountCodeRepository = get(),
-            stripeConnectService = get()
+            stripeConnectService = get(),
+            organizationTeamRepository = get()
         )
     }
 
@@ -42,7 +43,8 @@ val PaymentModule = module {
             emailService = get(),
             tournamentRepository = get(),
             categoryRepository = get(),
-            discountCodeRepository = get()
+            discountCodeRepository = get(),
+            organizationTeamRepository = get()
         )
     }
 
