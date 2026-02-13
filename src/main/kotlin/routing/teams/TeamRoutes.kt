@@ -15,6 +15,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import com.incodap.models.teams.SetTeamResultRequest
 import com.incodap.security.requireUserUid
+import repositories.tournament.TournamentRepository
 import models.ranking.TeamResultResponse
 import models.teams.CheckTeamResponse
 import models.teams.MarkPaymentRequest
@@ -30,7 +31,8 @@ import services.teams.TeamService
 fun Route.teamRoutes(
     teamService: TeamService,
     emailService: EmailService,
-    excelService: ExcelService
+    excelService: ExcelService,
+    tournamentRepository: TournamentRepository
 ) {
     route("/teams") {
 
@@ -123,6 +125,61 @@ fun Route.teamRoutes(
                     call.respond(
                         status = HttpStatusCode.InternalServerError,
                         message = mapOf("error" to "No se pudo registrar o actualizar el equipo.")
+                    )
+                }
+            }
+
+            post("/register-free") {
+                val uid = call.requireUserUid() ?: return@post
+
+                val request = try {
+                    call.receive<RegisterTeamRequest>()
+                } catch (e: Exception) {
+                    call.respond(
+                        status = HttpStatusCode.BadRequest,
+                        message = mapOf("error" to "Invalid request format: ${e.localizedMessage}")
+                    )
+                    return@post
+                }
+
+                // Verify tournament has payments disabled
+                val tournament = tournamentRepository.getById(request.tournamentId)
+                if (tournament == null) {
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Torneo no encontrado"))
+                    return@post
+                }
+                if (tournament.paymentsEnabled) {
+                    call.respond(
+                        HttpStatusCode.Forbidden,
+                        mapOf("error" to "Este torneo requiere pago para inscribirse")
+                    )
+                    return@post
+                }
+
+                // Validate: caller must be the player
+                if (request.playerUid != uid) {
+                    call.respond(HttpStatusCode.Forbidden, mapOf("error" to "Solo puedes registrarte a ti mismo"))
+                    return@post
+                }
+
+                // Validate partner
+                if (request.partnerUid.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Se requiere un compañero"))
+                    return@post
+                }
+
+                if (request.playerUid == request.partnerUid) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Los jugadores no pueden ser iguales"))
+                    return@post
+                }
+
+                val success = teamService.registerFreeTeam(request)
+                if (success) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "No se pudo registrar el equipo")
                     )
                 }
             }

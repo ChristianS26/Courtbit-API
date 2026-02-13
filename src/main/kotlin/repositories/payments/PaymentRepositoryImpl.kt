@@ -99,7 +99,44 @@ class PaymentRepositoryImpl(
     }
 
 
-    // 👇 nuevo
+    override suspend fun isWebhookProcessed(eventId: String): Boolean {
+        return try {
+            val response = client.get("$apiUrl/rest/v1/processed_webhook_events") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                parameter("event_id", "eq.$eventId")
+                parameter("select", "event_id")
+            }
+            if (!response.status.isSuccess()) return false
+            val body = response.bodyAsText().trim()
+            // Empty array means not processed
+            body != "[]"
+        } catch (e: Exception) {
+            logger.error(e) { "Error checking webhook idempotency for $eventId" }
+            false
+        }
+    }
+
+    override suspend fun markWebhookProcessed(eventId: String, eventType: String): Boolean {
+        return try {
+            val payload = buildJsonObject {
+                put("event_id", eventId)
+                put("event_type", eventType)
+            }
+            val response = client.post("$apiUrl/rest/v1/processed_webhook_events") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                header("Prefer", "return=minimal")
+                contentType(ContentType.Application.Json)
+                setBody(payload.toString())
+            }
+            response.status.isSuccess()
+        } catch (e: Exception) {
+            logger.error(e) { "Error marking webhook $eventId as processed" }
+            false
+        }
+    }
+
     override suspend fun getPaymentsReport(tournamentId: String): List<PaymentReportRowDto> {
         val payload = buildJsonObject { put("p_tournament_id", tournamentId) }
         val response = client.post("$apiUrl/rpc/get_payments_report") {
