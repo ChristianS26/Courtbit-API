@@ -47,7 +47,7 @@ class PaymentService(
         private val ADMIN_EMAIL: String = System.getenv("ADMIN_EMAIL") ?: "christianug26@gmail.com"
         private val STRIPE_MOBILE_SDK_API_VERSION: String =
             System.getenv("STRIPE_MOBILE_SDK_API_VERSION") ?: "2020-08-27"
-        private const val PLATFORM_FEE_PERCENT = 5
+        private const val PLATFORM_FEE_PERCENT = 0
     }
 
     init {
