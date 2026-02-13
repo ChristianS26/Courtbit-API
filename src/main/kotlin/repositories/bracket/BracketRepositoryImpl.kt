@@ -355,9 +355,30 @@ class BracketRepositoryImpl(
         return response.status.isSuccess()
     }
 
+    override suspend fun getMatchesByBracketId(bracketId: String): List<MatchResponse> {
+        val response = client.get("$apiUrl/tournament_matches") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("bracket_id", "eq.$bracketId")
+            parameter("select", "id,status")
+            parameter("order", "match_number.asc")
+        }
+        return if (response.status.isSuccess()) {
+            json.decodeFromString<List<MatchResponse>>(response.bodyAsText())
+        } else {
+            emptyList()
+        }
+    }
+
     override suspend fun deleteBracket(bracketId: String): Boolean {
-        // Delete matches first (foreign key constraint)
-        val matchesResponse = client.delete("$apiUrl/tournament_matches?bracket_id=eq.$bracketId") {
+        // Delete standings first (foreign key constraint)
+        client.delete("$apiUrl/tournament_standings?bracket_id=eq.$bracketId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+        }
+
+        // Delete matches (foreign key constraint)
+        client.delete("$apiUrl/tournament_matches?bracket_id=eq.$bracketId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
         }

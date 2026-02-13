@@ -369,12 +369,24 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@delete
                 }
 
-                val deleted = bracketService.deleteBracket(bracket.bracket.id)
-                if (deleted) {
-                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
-                } else {
-                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Failed to delete bracket"))
-                }
+                val result = bracketService.deleteBracket(bracket.bracket.id)
+                result.fold(
+                    onSuccess = {
+                        call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                    },
+                    onFailure = { error ->
+                        when (error) {
+                            is IllegalStateException -> call.respond(
+                                HttpStatusCode.Conflict,
+                                mapOf("error" to (error.message ?: "Cannot delete bracket"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (error.message ?: "Failed to delete bracket"))
+                            )
+                        }
+                    }
+                )
             }
 
             // POST /api/brackets/{categoryId}/standings/calculate?tournament_id=xxx

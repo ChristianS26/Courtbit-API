@@ -59,6 +59,11 @@ interface BracketRepository {
     suspend fun updateBracketStatus(bracketId: String, status: String): Boolean
 
     /**
+     * Get all matches for a bracket by bracket ID
+     */
+    suspend fun getMatchesByBracketId(bracketId: String): List<MatchResponse>
+
+    /**
      * Delete a bracket and all its matches (cascade)
      */
     suspend fun deleteBracket(bracketId: String): Boolean

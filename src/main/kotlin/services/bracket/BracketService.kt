@@ -388,10 +388,26 @@ class BracketService(
     }
 
     /**
-     * Delete a bracket
+     * Delete a bracket. Only allowed if no matches have been started or completed.
      */
-    suspend fun deleteBracket(bracketId: String): Boolean {
-        return repository.deleteBracket(bracketId)
+    suspend fun deleteBracket(bracketId: String): Result<Boolean> {
+        // Check if any matches have been played
+        val bracketData = repository.getBracketById(bracketId)
+            ?: return Result.failure(IllegalArgumentException("Bracket not found"))
+
+        val matches = repository.getMatchesByBracketId(bracketId)
+        val playedMatches = matches.count { it.status == "in_progress" || it.status == "completed" }
+
+        if (playedMatches > 0) {
+            return Result.failure(IllegalStateException(
+                "Cannot delete bracket: $playedMatches match(es) already started or completed. " +
+                "Delete is only allowed when no matches have been played."
+            ))
+        }
+
+        val deleted = repository.deleteBracket(bracketId)
+        return if (deleted) Result.success(true)
+        else Result.failure(IllegalStateException("Failed to delete bracket"))
     }
 
     // ============ Match Scoring ============
