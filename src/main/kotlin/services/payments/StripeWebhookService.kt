@@ -41,17 +41,27 @@ class StripeWebhookService(
 
         logger.info { "📩 Evento recibido de Stripe: ${event.type}" }
 
+        // Idempotency check — skip already-processed events
+        if (paymentRepository.isWebhookProcessed(event.id)) {
+            logger.info { "⏭️ Evento ${event.id} ya procesado, skip" }
+            call.respond(HttpStatusCode.OK)
+            return
+        }
+
         try {
             when (event.type) {
                 "checkout.session.completed" -> handleCheckoutSession(event)
                 "payment_intent.succeeded"   -> handlePaymentIntentSucceeded(event, call)
                 else                         -> logger.info { "ℹ️ Evento no manejado: ${event.type}" }
             }
+            // Mark as processed and respond OK only if everything succeeded
+            paymentRepository.markWebhookProcessed(event.id, event.type)
+            call.respond(HttpStatusCode.OK)
         } catch (e: Exception) {
             logger.error(e) { "❌ Error durante el manejo del evento ${event.type}" }
+            // Return 500 so Stripe retries the webhook
+            call.respond(HttpStatusCode.InternalServerError, "Processing failed")
         }
-
-        call.respond(HttpStatusCode.OK)
     }
 
     private suspend fun readPayload(call: ApplicationCall): String? = try {
@@ -136,6 +146,9 @@ class StripeWebhookService(
             return
         }
 
+        val categoryIdInt = categoryId.toIntOrNull()
+            ?: throw IllegalStateException("categoryId inválido en metadata: $categoryId")
+
         val ok = paymentRepository.applyStripePayment(
             RpcApplyStripePaymentDto(
                 p_stripe_payment_id = intent.id,
@@ -143,7 +156,7 @@ class StripeWebhookService(
                 p_tournament_id     = tournamentId,
                 p_player_uid        = playerUid,
                 p_partner_uid       = partnerUid,
-                p_category_id       = categoryId.toInt(),
+                p_category_id       = categoryIdInt,
                 p_paid_for          = paidFor,
                 p_customer_id       = intent.customer,
                 p_restriction       = restriction
@@ -151,8 +164,7 @@ class StripeWebhookService(
         )
 
         if (!ok) {
-            logger.error { "❌ RPC apply_stripe_payment falló para intent ${intent.id}" }
-            return
+            throw IllegalStateException("RPC apply_stripe_payment falló para intent ${intent.id}")
         }
 
         logger.info { "✅ RPC apply_stripe_payment OK para intent ${intent.id}" }
@@ -185,7 +197,7 @@ class StripeWebhookService(
 
         val tournamentName = tournamentRepository.getById(tournamentId)?.name
         val categoryName   = categoryRepository
-            .getCategoriesByIds(listOf(categoryId.toInt()))
+            .getCategoriesByIds(listOf(categoryIdInt))
             .firstOrNull()
             ?.name
 
@@ -195,11 +207,11 @@ class StripeWebhookService(
             emailService.sendRegistrationConfirmation(
                 toEmail = toPlayer,
                 playerName = playerName,
-                partnerName = null,                      // opcional: obtener por UserRepository si quieres
+                partnerName = null,
                 tournamentName = tournamentName,
                 tournamentId = tournamentId,
                 categoryName = categoryName,
-                categoryId = categoryId.toInt(),
+                categoryId = categoryIdInt,
                 paidFor = paidFor,
                 method = "Stripe"
             )
@@ -215,7 +227,7 @@ class StripeWebhookService(
             tournamentName = tournamentName,
             tournamentId = tournamentId,
             categoryName = categoryName,
-            categoryId = categoryId.toInt(),
+            categoryId = categoryIdInt,
             paidFor = paidFor,
             method = "Stripe"
         )

@@ -40,6 +40,7 @@ class PaymentService(
     private val organizerRepository: OrganizerRepository,
     private val registrationCodeRepository: RegistrationCodeRepository,
     private val discountCodeRepository: DiscountCodeRepository,
+    private val stripeConnectService: StripeConnectService,
 ) {
     companion object {
         private const val BASE_REDIRECT_URL = "https://neon-dango-f7ebd5.netlify.app"
@@ -54,11 +55,19 @@ class PaymentService(
     }
 
     // -------------------------------------------------------
-    // 🧾 STRIPE CHECKOUT (legacy flow, kept intact)
+    // 🧾 STRIPE CHECKOUT (legacy flow)
     // -------------------------------------------------------
     suspend fun createCheckoutSession(request: PaymentRequest): String {
         validatePaymentRequest(request)
-        return createStripeSession(request)
+
+        // Server-side price lookup — never trust the client amount
+        val categoryPrice = categoryRepository.getCategoryPrice(request.tournamentId, request.categoryId)
+            ?: throw BadRequestException("No se encontró precio para la categoría ${request.categoryId}")
+        require(categoryPrice > 0) { "El precio de la categoría debe ser mayor a cero." }
+        val paidFor = (request.paidFor.toIntOrNull() ?: 1).coerceIn(1, 2)
+        val serverAmount = categoryPrice * paidFor
+
+        return createStripeSession(request, serverAmount)
     }
 
     private suspend fun validatePaymentRequest(request: PaymentRequest) {
@@ -90,19 +99,19 @@ class PaymentService(
         }
     }
 
-    private fun createStripeSession(request: PaymentRequest): String {
-        val params = buildSessionParams(request)
+    private fun createStripeSession(request: PaymentRequest, serverAmount: Long): String {
+        val params = buildSessionParams(request, serverAmount)
         return Session.create(params).url
     }
 
-    private fun buildSessionParams(request: PaymentRequest): SessionCreateParams =
+    private fun buildSessionParams(request: PaymentRequest, serverAmount: Long): SessionCreateParams =
         SessionCreateParams.builder()
             .setMode(SessionCreateParams.Mode.PAYMENT)
             .setSuccessUrl("$BASE_REDIRECT_URL/success.html?tournamentId=${request.tournamentId}")
             .setCancelUrl("$BASE_REDIRECT_URL/cancel.html?tournamentId=${request.tournamentId}")
             .setCustomerCreation(SessionCreateParams.CustomerCreation.ALWAYS)
             .setPaymentIntentData(createPaymentIntentData(request))
-            .addLineItem(createLineItem(request))
+            .addLineItem(createLineItem(request, serverAmount))
             .build()
 
     private fun createPaymentIntentData(request: PaymentRequest): SessionCreateParams.PaymentIntentData =
@@ -117,13 +126,13 @@ class PaymentService(
             .putMetadata("player_uid", request.playerUid)
             .build()
 
-    private fun createLineItem(request: PaymentRequest): SessionCreateParams.LineItem =
+    private fun createLineItem(request: PaymentRequest, serverAmount: Long): SessionCreateParams.LineItem =
         SessionCreateParams.LineItem.builder()
             .setQuantity(1L)
             .setPriceData(
                 SessionCreateParams.LineItem.PriceData.builder()
                     .setCurrency(request.currency.lowercase())
-                    .setUnitAmount(request.amount)
+                    .setUnitAmount(serverAmount)
                     .setProductData(
                         SessionCreateParams.LineItem.PriceData.ProductData.builder()
                             .setName("Inscripción: ${request.playerName} - ${request.categoryId}")
@@ -167,7 +176,7 @@ class PaymentService(
 
             // Calculate amounts server-side using category price + discount info
             val discountAmount: Long = when (validation.discountType) {
-                "percentage" -> (amountInCents * (validation.discountValue ?: 0) / 100.0).toLong()
+                "percentage" -> amountInCents * (validation.discountValue ?: 0) / 100
                 "fixed_amount" -> minOf((validation.discountValue ?: 0).toLong(), amountInCents)
                 else -> 0L
             }
@@ -235,7 +244,7 @@ class PaymentService(
         val idem = UUID.randomUUID().toString()
 
         // Resolve organizer's Stripe Connect account from tournament
-        val connectedAccountId = resolveConnectedAccount(request.tournamentId)
+        val connectedAccountId = resolveConnectedAccountOrFail(request.tournamentId)
 
         val params = PaymentIntentCreateParams.builder()
             .setAmount(amountInCents)
@@ -338,15 +347,30 @@ class PaymentService(
     // -------------------------------------------------------
     // 🔗 CONNECT: resolve organizer's Stripe account
     // -------------------------------------------------------
-    private suspend fun resolveConnectedAccount(tournamentId: String): String? {
+    private suspend fun resolveConnectedAccountOrFail(tournamentId: String): String? {
+        val tournament = tournamentRepository.getById(tournamentId)
+            ?: throw BadRequestException("Torneo no encontrado")
+        val organizerId = tournament.organizerId ?: return null // No organizer — legacy flow
+
+        val accountId = organizerRepository.getStripeAccountId(organizerId)
+        if (accountId.isNullOrBlank()) return null // Organizer without Stripe Connect — legacy OK
+
+        // Organizer HAS an account — validate it can receive charges
         return try {
-            val tournament = tournamentRepository.getById(tournamentId) ?: return null
-            val organizerId = tournament.organizerId ?: return null
-            val accountId = organizerRepository.getStripeAccountId(organizerId)
-            if (accountId.isNullOrBlank()) null else accountId
+            val status = stripeConnectService.getAccountStatus(accountId)
+            if (!status.chargesEnabled) {
+                throw BadRequestException(
+                    "La cuenta de pagos del organizador aún no está habilitada. Contacta al organizador."
+                )
+            }
+            accountId
+        } catch (e: BadRequestException) {
+            throw e
         } catch (e: Exception) {
-            paymentLogger.warn { "Could not resolve connected account for tournament $tournamentId: ${e.message}" }
-            null
+            paymentLogger.error { "Error validating Stripe account $accountId: ${e.message}" }
+            throw BadRequestException(
+                "Error al verificar la cuenta de pagos del organizador. Intenta de nuevo."
+            )
         }
     }
 
@@ -376,7 +400,7 @@ class PaymentService(
         } else null
 
         val idem = UUID.randomUUID().toString()
-        val connectedAccountId = resolveConnectedAccount(request.tournamentId)
+        val connectedAccountId = resolveConnectedAccountOrFail(request.tournamentId)
 
         val params = PaymentIntentCreateParams.builder()
             .setAmount(finalAmount)

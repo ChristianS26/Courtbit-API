@@ -28,7 +28,8 @@ val PaymentModule = module {
             userRepository = get(),
             organizerRepository = get(),
             registrationCodeRepository = get(),
-            discountCodeRepository = get()
+            discountCodeRepository = get(),
+            stripeConnectService = get()
         )
     }
 
