@@ -30,7 +30,11 @@ class AuthService(
     fun hashPassword(password: String): String = BCrypt.hashpw(password, BCrypt.gensalt())
     fun verifyPassword(plain: String, hash: String): Boolean {
         // jBCrypt 0.4 only supports $2a$ — normalize $2b$/$2y$ variants (functionally identical)
-        val normalizedHash = hash.replace(Regex("^\\\$2[by]\\\$"), "\$2a\$")
+        val normalizedHash = when {
+            hash.startsWith("\$2b\$") -> "\$2a\$" + hash.removePrefix("\$2b\$")
+            hash.startsWith("\$2y\$") -> "\$2a\$" + hash.removePrefix("\$2y\$")
+            else -> hash
+        }
         return BCrypt.checkpw(plain, normalizedHash)
     }
 
