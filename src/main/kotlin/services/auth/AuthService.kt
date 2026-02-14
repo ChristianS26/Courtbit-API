@@ -28,7 +28,11 @@ class AuthService(
         userRepository.searchUsers(query, limit, offset).map { it.toMaskedSearchResult() }
 
     fun hashPassword(password: String): String = BCrypt.hashpw(password, BCrypt.gensalt())
-    fun verifyPassword(plain: String, hash: String): Boolean = BCrypt.checkpw(plain, hash)
+    fun verifyPassword(plain: String, hash: String): Boolean {
+        // jBCrypt 0.4 only supports $2a$ — normalize $2b$/$2y$ variants (functionally identical)
+        val normalizedHash = hash.replace(Regex("^\\\$2[by]\\\$"), "\$2a\$")
+        return BCrypt.checkpw(plain, normalizedHash)
+    }
 
     suspend fun register(request: RegisterRequest): AuthResponse {
         val validationErrors = request.validate()
@@ -117,7 +121,7 @@ class AuthService(
 
     suspend fun changePassword(uid: String, request: ChangePasswordRequest): Boolean {
         val user = userRepository.findByUid(uid) ?: throw IllegalArgumentException("Usuario no encontrado")
-        if (!BCrypt.checkpw(request.currentPassword, user.passwordHash)) {
+        if (!verifyPassword(request.currentPassword, user.passwordHash)) {
             throw IllegalArgumentException("La contraseña actual no es correcta")
         }
         val newHash = BCrypt.hashpw(request.newPassword, BCrypt.gensalt())
