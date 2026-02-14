@@ -54,11 +54,16 @@ AS $$
 DECLARE
   v_event_id UUID;
   v_tournament_name TEXT;
+  v_organizer_id UUID;
 BEGIN
-  -- Resolve tournament name: use provided name, or look it up
+  -- Resolve tournament name and organizer_id
   v_tournament_name := p_tournament_name;
-  IF v_tournament_name IS NULL AND p_tournament_id IS NOT NULL THEN
-    SELECT name INTO v_tournament_name FROM tournaments WHERE id = p_tournament_id;
+  IF p_tournament_id IS NOT NULL THEN
+    SELECT name, organizer_id INTO v_tournament_name, v_organizer_id
+    FROM tournaments WHERE id = p_tournament_id;
+    IF p_tournament_name IS NOT NULL THEN
+      v_tournament_name := p_tournament_name;
+    END IF;
   END IF;
 
   -- Insert ranking event
@@ -68,11 +73,12 @@ BEGIN
 
   -- Upsert ranking total (only for user-based entries)
   IF p_user_id IS NOT NULL THEN
-    INSERT INTO ranking (user_id, category_id, season, total_points)
-    VALUES (p_user_id, p_category_id, p_season, p_points)
+    INSERT INTO ranking (user_id, category_id, season, total_points, organizer_id)
+    VALUES (p_user_id, p_category_id, p_season, p_points, v_organizer_id)
     ON CONFLICT (user_id, category_id, season)
     DO UPDATE SET
       total_points = ranking.total_points + EXCLUDED.total_points,
+      organizer_id = COALESCE(EXCLUDED.organizer_id, ranking.organizer_id),
       updated_at = NOW();
   END IF;
 
@@ -103,11 +109,16 @@ DECLARE
   v_inserted_count INT := 0;
   v_skipped_count INT := 0;
   v_tournament_name TEXT;
+  v_organizer_id UUID;
 BEGIN
-  -- Resolve tournament name
+  -- Resolve tournament name and organizer_id
   v_tournament_name := p_tournament_name;
-  IF v_tournament_name IS NULL AND p_tournament_id IS NOT NULL THEN
-    SELECT name INTO v_tournament_name FROM tournaments WHERE id = p_tournament_id;
+  IF p_tournament_id IS NOT NULL THEN
+    SELECT name, organizer_id INTO v_tournament_name, v_organizer_id
+    FROM tournaments WHERE id = p_tournament_id;
+    IF p_tournament_name IS NOT NULL THEN
+      v_tournament_name := p_tournament_name;
+    END IF;
   END IF;
 
   FOR entry IN SELECT * FROM jsonb_array_elements(p_entries)
@@ -127,11 +138,12 @@ BEGIN
       v_inserted_count := v_inserted_count + 1;
 
       IF v_user_id IS NOT NULL THEN
-        INSERT INTO ranking (user_id, category_id, season, total_points)
-        VALUES (v_user_id, p_category_id, p_season, v_points)
+        INSERT INTO ranking (user_id, category_id, season, total_points, organizer_id)
+        VALUES (v_user_id, p_category_id, p_season, v_points, v_organizer_id)
         ON CONFLICT (user_id, category_id, season)
         DO UPDATE SET
           total_points = ranking.total_points + EXCLUDED.total_points,
+          organizer_id = COALESCE(EXCLUDED.organizer_id, ranking.organizer_id),
           updated_at = NOW();
       END IF;
 
