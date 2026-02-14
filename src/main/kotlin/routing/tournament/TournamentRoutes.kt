@@ -211,6 +211,28 @@ fun Route.tournamentRoutes(
                 }
             }
 
+            patch("{id}/show-registered-players") {
+                val id = call.validateOrganizerAndId() ?: return@patch
+                val payload = try { call.receive<Map<String, Boolean>>() }
+                catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato inválido"))
+                    return@patch
+                }
+
+                val showRegisteredPlayers = payload["show_registered_players"]
+                if (showRegisteredPlayers == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "El campo 'show_registered_players' es requerido"))
+                    return@patch
+                }
+
+                val updated = tournamentService.updateShowRegisteredPlayers(id, showRegisteredPlayers)
+                if (updated) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo actualizar 'show_registered_players'"))
+                }
+            }
+
             delete("{id}") {
                 val id = call.validateOrganizerAndId() ?: return@delete
 
