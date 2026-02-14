@@ -46,8 +46,23 @@ data class BatchRankingRequest(
 
 @Serializable
 data class BatchRankingEntry(
-    @SerialName("user_id") val userId: String,
+    @SerialName("user_id") val userId: String? = null,
+    @SerialName("team_member_id") val teamMemberId: String? = null,
     val points: Int,
     val position: String,
     @SerialName("team_result_id") val teamResultId: String? = null,
+)
+
+@Serializable
+data class BatchRankingRpcRequest(
+    @SerialName("p_tournament_id") val tournamentId: String,
+    @SerialName("p_category_id") val categoryId: Int,
+    @SerialName("p_season") val season: String,
+    @SerialName("p_entries") val entries: kotlinx.serialization.json.JsonArray,
+)
+
+@Serializable
+data class BatchRankingRpcResponse(
+    val inserted: Int = 0,
+    val skipped: Int = 0,
 )

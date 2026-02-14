@@ -10,7 +10,11 @@ import io.ktor.server.plugins.NotFoundException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import models.ranking.AddRankingEventRequest
+import models.ranking.BatchRankingRpcResponse
 import models.ranking.PlayerProfileResponse
 import models.ranking.PlayerTournamentHistoryItem
 import models.ranking.Ranking
@@ -37,6 +41,76 @@ class RankingRepositoryImpl(
             throw IllegalStateException("Error calling add_ranking_event_and_update: ${response.status} ${response.bodyAsText()}")
         }
         return response.bodyAsText().replace("\"", "")
+    }
+
+    override suspend fun getTournamentName(tournamentId: String): String? {
+        return try {
+            val response = client.get("$apiUrl/tournaments") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                parameter("select", "name")
+                parameter("id", "eq.$tournamentId")
+                parameter("limit", "1")
+            }
+            if (!response.status.isSuccess()) return null
+            val body = response.bodyAsText()
+            // Response is like [{"name":"Tournament Name"}]
+            val match = Regex(""""name"\s*:\s*"([^"]+)"""").find(body)
+            match?.groupValues?.get(1)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    override suspend fun batchAddRankingEvents(
+        tournamentId: String,
+        categoryId: Int,
+        season: String,
+        entries: List<Map<String, Any?>>,
+        tournamentName: String?
+    ): BatchRankingRpcResponse {
+        val entriesJson = JsonArray(entries.map { entry ->
+            buildJsonObject {
+                entry["user_id"]?.let { put("user_id", it as String) }
+                entry["team_member_id"]?.let { put("team_member_id", it as String) }
+                put("points", entry["points"] as Int)
+                put("position", entry["position"] as String)
+                entry["team_result_id"]?.let { put("team_result_id", it as String) }
+            }
+        })
+
+        val body = buildJsonObject {
+            put("p_tournament_id", tournamentId)
+            put("p_category_id", categoryId)
+            put("p_season", season)
+            put("p_entries", entriesJson)
+            tournamentName?.let { put("p_tournament_name", it) }
+        }
+
+        val response = client.post("$apiUrl/rpc/batch_add_ranking_events") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(body.toString())
+        }
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException("Error calling batch_add_ranking_events: ${response.status} ${response.bodyAsText()}")
+        }
+        return json.decodeFromString(BatchRankingRpcResponse.serializer(), response.bodyAsText())
+    }
+
+    override suspend fun checkExistingEvents(tournamentId: String, categoryId: Int): Boolean {
+        val response = client.get("$apiUrl/ranking_events") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "id")
+            parameter("tournament_id", "eq.$tournamentId")
+            parameter("category_id", "eq.$categoryId")
+            parameter("limit", "1")
+        }
+        if (!response.status.isSuccess()) return false
+        val body = response.bodyAsText()
+        return body != "[]" && body.isNotBlank()
     }
 
     override suspend fun getRanking(season: String?, categoryId: Int?, organizerId: String?): List<RankingItemResponse> {
@@ -76,16 +150,17 @@ class RankingRepositoryImpl(
         }
     }
 
-    override suspend fun getPlayerProfile(userId: String, categoryId: Int): PlayerProfileResponse {
-        // 1. Obtener datos de ranking ordenados por puntos
-        val rankingResponse = client.get("$apiUrl/ranking") { // <-- La tabla ya se llama ranking
+    override suspend fun getPlayerProfile(userId: String, categoryId: Int, season: String?): PlayerProfileResponse {
+        val effectiveSeason = season ?: java.time.Year.now().toString()
+
+        val rankingResponse = client.get("$apiUrl/ranking") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter(
                 "select",
                 "user:users!inner(uid,first_name,last_name,photo_url,phone),total_points,category:categories(*)"
             )
-            parameter("season", "eq.2025") // puedes hacerlo dinámico más adelante
+            parameter("season", "eq.$effectiveSeason")
             parameter("category_id", "eq.$categoryId")
             parameter("order", "total_points.desc,user_id.asc")
         }
@@ -106,7 +181,7 @@ class RankingRepositoryImpl(
             header("Authorization", "Bearer $apiKey")
             parameter(
                 "select",
-                "tournament:tournaments(id,name,start_date),tournament_id,position,created_at,points_earned"
+                "tournament:tournaments(id,name,start_date),tournament_id,tournament_name,position,created_at,points_earned"
             )
             parameter("user_id", "eq.$userId")
             parameter("category_id", "eq.$categoryId")
@@ -125,7 +200,7 @@ class RankingRepositoryImpl(
         val history = events.map {
             PlayerTournamentHistoryItem(
                 tournamentId = it.tournamentId.orEmpty(),
-                tournamentName = it.tournament?.name ?: "Torneo ${it.tournamentId}",
+                tournamentName = it.tournament?.name ?: it.tournamentName ?: "Torneo eliminado",
                 date = it.tournament?.startDate ?: it.createdAt,
                 result = when (it.position) {
                     "1" -> "Campeón"

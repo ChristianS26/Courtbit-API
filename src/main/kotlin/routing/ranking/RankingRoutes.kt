@@ -44,6 +44,7 @@ class RankingRoutes(
             get("/user/profile/{userId}") {
                 val userId = call.parameters["userId"]
                 val categoryId = call.request.queryParameters["category_id"]?.toIntOrNull()
+                val season = call.request.queryParameters["season"]
 
                 if (userId.isNullOrBlank()) {
                     call.respond(HttpStatusCode.BadRequest, "Missing userId")
@@ -55,7 +56,7 @@ class RankingRoutes(
                 }
 
                 try {
-                    val profile = service.getPlayerProfile(userId, categoryId)
+                    val profile = service.getPlayerProfile(userId, categoryId, season)
                     call.respond(profile)
                 } catch (e: Exception) {
                     call.respond(HttpStatusCode.InternalServerError, "Error al obtener perfil: ${e.message}")
@@ -63,7 +64,7 @@ class RankingRoutes(
             }
 
             // Admin: evento suelto por jugador (opcional, se mantiene)
-            route.authenticate("auth-jwt") {
+            authenticate("auth-jwt") {
                 post("/event") {
                     call.requireOrganizer() ?: return@post
 
@@ -75,22 +76,41 @@ class RankingRoutes(
                     )
                 }
 
+                // GET /api/ranking/check-existing?tournament_id=X&category_id=Y
+                get("/check-existing") {
+                    call.requireOrganizer() ?: return@get
+                    val tournamentId = call.request.queryParameters["tournament_id"]
+                    val categoryId = call.request.queryParameters["category_id"]?.toIntOrNull()
+                    if (tournamentId.isNullOrBlank() || categoryId == null) {
+                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing tournament_id or category_id"))
+                        return@get
+                    }
+                    val exists = service.checkExistingEvents(tournamentId, categoryId)
+                    call.respond(mapOf("exists" to exists))
+                }
+
                 // POST /api/ranking/batch — batch assign ranking points
                 post("/batch") {
                     call.requireOrganizer() ?: return@post
 
                     val request = call.receive<BatchRankingRequest>()
                     try {
-                        val eventIds = service.batchAddRankingEvents(request)
+                        val result = service.batchAddRankingEvents(request)
                         call.respond(
                             HttpStatusCode.Created,
                             mapOf(
                                 "message" to "Batch ranking events added",
-                                "count" to eventIds.size,
-                                "eventIds" to eventIds
+                                "inserted" to result.inserted,
+                                "skipped" to result.skipped
                             )
                         )
+                    } catch (e: IllegalArgumentException) {
+                        call.respond(
+                            HttpStatusCode.BadRequest,
+                            mapOf("error" to (e.message ?: "Invalid request"))
+                        )
                     } catch (e: Exception) {
+                        e.printStackTrace()
                         call.respond(
                             HttpStatusCode.InternalServerError,
                             mapOf("error" to (e.message ?: "Error adding batch ranking events"))
