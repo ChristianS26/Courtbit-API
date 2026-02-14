@@ -46,15 +46,33 @@ class UserRepositoryImpl(
         val q = query.trim()
         if (q.isEmpty()) return emptyList()
 
-        val safe = q.replace("%", "\\%").replace("_", "\\_")
-        val like = "%$safe%"
-        val filter = "(first_name.ilike.$like,last_name.ilike.$like,email.ilike.$like,phone.ilike.$like)"
+        val words = q.split("\\s+".toRegex()).filter { it.isNotBlank() }
+        val fields = listOf("first_name", "last_name", "email", "phone")
+
+        fun escapeWord(w: String) = w.replace("%", "\\%").replace("_", "\\_")
+
+        // Single word  → or(first_name.ilike.%word%,last_name.ilike.%word%,...)
+        // Multi-word   → and(or(..word1..),or(..word2..))
+        // Each word must match at least one field; all words must match.
+        val filter = if (words.size == 1) {
+            val like = "%${escapeWord(words[0])}%"
+            "(${fields.joinToString(",") { "$it.ilike.$like" }})"
+        } else {
+            val orClauses = words.map { word ->
+                val like = "%${escapeWord(word)}%"
+                "or(${fields.joinToString(",") { "$it.ilike.$like" }})"
+            }
+            "(${orClauses.joinToString(",")})"
+        }
+
+        // Single word uses "or" param; multi-word uses "and" param
+        val filterKey = if (words.size == 1) "or" else "and"
 
         return try {
             val response = client.get("$apiUrl/users") {
                 header("apikey", apiKey)
                 header("Authorization", "Bearer $apiKey")
-                parameter("or", filter)
+                parameter(filterKey, filter)
                 parameter("select", "*")
                 parameter("order", "first_name.asc,last_name.asc")
                 parameter("limit", limit.coerceIn(1, 100))
