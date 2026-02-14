@@ -1,6 +1,7 @@
 package routing.ranking
 
 import com.incodap.security.requireOrganizer
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.auth.authenticate
@@ -11,6 +12,8 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import models.ranking.AddRankingEventRequest
 import models.ranking.BatchRankingRequest
 import services.ranking.RankingService
@@ -86,7 +89,10 @@ class RankingRoutes(
                         return@get
                     }
                     val exists = service.checkExistingEvents(tournamentId, categoryId)
-                    call.respond(mapOf("exists" to exists))
+                    call.respondText(
+                        buildJsonObject { put("exists", exists) }.toString(),
+                        ContentType.Application.Json
+                    )
                 }
 
                 // POST /api/ranking/batch — batch assign ranking points
@@ -96,13 +102,14 @@ class RankingRoutes(
                     val request = call.receive<BatchRankingRequest>()
                     try {
                         val result = service.batchAddRankingEvents(request)
-                        call.respond(
-                            HttpStatusCode.Created,
-                            mapOf(
-                                "message" to "Batch ranking events added",
-                                "inserted" to result.inserted,
-                                "skipped" to result.skipped
-                            )
+                        call.respondText(
+                            buildJsonObject {
+                                put("message", "Batch ranking events added")
+                                put("inserted", result.inserted)
+                                put("skipped", result.skipped)
+                            }.toString(),
+                            ContentType.Application.Json,
+                            HttpStatusCode.Created
                         )
                     } catch (e: IllegalArgumentException) {
                         call.respond(
