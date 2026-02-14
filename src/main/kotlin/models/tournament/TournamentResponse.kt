@@ -27,4 +27,5 @@ data class TournamentResponse(
     @SerialName("allow_player_scores") val allowPlayerScores: Boolean = false,
     @SerialName("show_brackets") val showBrackets: Boolean = false,
     @SerialName("payments_enabled") val paymentsEnabled: Boolean = true,
+    @SerialName("show_registered_players") val showRegisteredPlayers: Boolean = true,
 )

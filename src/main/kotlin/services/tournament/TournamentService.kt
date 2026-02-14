@@ -144,6 +144,9 @@ class TournamentService(
     suspend fun updatePaymentsEnabled(id: String, paymentsEnabled: Boolean): Boolean =
         repository.patchField(id, mapOf("payments_enabled" to paymentsEnabled), "payments_enabled")
 
+    suspend fun updateShowRegisteredPlayers(id: String, show: Boolean): Boolean =
+        repository.patchField(id, mapOf("show_registered_players" to show), "show_registered_players")
+
     // Nuevo: resultado tipado con manejo de pagos
     suspend fun deleteTournament(id: String): DeleteTournamentResult {
 
