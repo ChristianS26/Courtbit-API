@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class AddRankingEventRequest(
     @SerialName("p_user_id")
-    val userId: String,
+    val userId: String? = null,
 
     @SerialName("p_season")
     val season: String,
@@ -21,6 +21,15 @@ data class AddRankingEventRequest(
     val tournamentId: String? = null,
 
     @SerialName("p_position")
-    val position: String? = null
+    val position: String? = null,
+
+    @SerialName("p_team_result_id")
+    val teamResultId: String? = null,
+
+    @SerialName("p_team_member_id")
+    val teamMemberId: String? = null,
+
+    @SerialName("p_tournament_name")
+    val tournamentName: String? = null
 )
 
