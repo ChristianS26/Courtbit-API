@@ -5,7 +5,6 @@ import models.ranking.AddRankingEventRequest
 import models.ranking.BatchRankingRequest
 import models.ranking.BatchRankingRpcResponse
 import models.ranking.PlayerProfileResponse
-import models.ranking.PublicUser
 import models.ranking.Ranking
 import models.ranking.RankingItemResponse
 import java.text.Collator
@@ -38,6 +37,7 @@ class RankingService(
                 put("points", entry.points)
                 put("position", entry.position)
                 entry.teamResultId?.let { put("team_result_id", it) }
+                entry.playerName?.let { put("player_name", it) }
             }
         }
 
@@ -70,8 +70,8 @@ class RankingService(
             .sortedWith(
                 compareByDescending<RankingItemResponse> { it.totalPoints }
                     .thenComparator { a, b ->
-                        val nameA = a.user.fullName()
-                        val nameB = b.user.fullName()
+                        val nameA = a.displayName()
+                        val nameB = b.displayName()
                         collator.compare(nameA, nameB)
                     }
             )
@@ -82,9 +82,10 @@ class RankingService(
         }
     }
 
-    // Helper para armar nombre (ajusta si prefieres "Apellido, Nombre")
-    private fun PublicUser.fullName(): String =
-        "${firstName.orEmpty()} ${lastName.orEmpty()}".trim()
+    private fun RankingItemResponse.displayName(): String =
+        user?.let { "${it.firstName.orEmpty()} ${it.lastName.orEmpty()}".trim() }
+            ?: playerName
+            ?: ""
 
 
     suspend fun getRankingByUser(userId: String, season: String?): List<Ranking> {

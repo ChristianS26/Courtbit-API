@@ -9,5 +9,7 @@ data class RankingItemResponse(
     val category: CategoryResponseDto,
     @SerialName("total_points") val totalPoints: Int,
     val position: Int? = null,
-    val user: PublicUser
+    val user: PublicUser? = null,
+    @SerialName("team_member_id") val teamMemberId: String? = null,
+    @SerialName("player_name") val playerName: String? = null,
 )

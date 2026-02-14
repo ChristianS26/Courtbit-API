@@ -120,11 +120,12 @@ class RankingRepositoryImpl(
                 header("Authorization", "Bearer $apiKey")
                 parameter(
                     "select",
-                    "category:categories(*),total_points,user:users!inner(uid,first_name,last_name,photo_url,phone)"
+                    "category:categories(*),total_points,team_member_id,player_name,user:users(uid,first_name,last_name,photo_url,phone)"
                 )
                 if (season != null) parameter("season", "eq.$season")
                 if (categoryId != null) parameter("category_id", "eq.$categoryId")
                 if (organizerId != null) parameter("organizer_id", "eq.$organizerId")
+                parameter("order", "total_points.desc")
             }
             json.decodeFromString(ListSerializer(RankingItemResponse.serializer()), response.bodyAsText())
         } catch (e: Exception) {
@@ -171,7 +172,7 @@ class RankingRepositoryImpl(
         )
 
         val indexed = rankingList.withIndex()
-        val (position, item) = indexed.firstOrNull { it.value.user.uid == userId }
+        val (position, item) = indexed.firstOrNull { it.value.user?.uid == userId }
             ?.let { it.index + 1 to it.value }
             ?: throw NotFoundException("Jugador no encontrado")
 
@@ -214,7 +215,7 @@ class RankingRepositoryImpl(
         }
 
         return PlayerProfileResponse(
-            user = item.user,
+            user = item.user ?: throw NotFoundException("Jugador no encontrado"),
             position = position,
             points = item.totalPoints,
             tournamentsWon = tournamentsWon,
