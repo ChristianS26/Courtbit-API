@@ -19,6 +19,7 @@ import models.bracket.StandingInput
 import models.bracket.StandingsResponse
 import models.bracket.TeamSeed
 import models.bracket.WithdrawTeamResponse
+import repositories.bracket.BracketAuditRepository
 import repositories.bracket.BracketRepository
 
 /**
@@ -204,8 +205,14 @@ object PadelScoreValidator {
  */
 class BracketService(
     private val repository: BracketRepository,
-    private val json: Json
+    private val json: Json,
+    private val auditLog: BracketAuditRepository
 ) {
+    companion object {
+        const val MAX_TEAMS_PER_BRACKET = 128
+        const val MAX_GROUPS = 16
+        const val MAX_SETS_PER_MATCH = 5
+    }
 
     /**
      * Get bracket with all matches for a tournament category
@@ -287,6 +294,9 @@ class BracketService(
         if (teamIds.size < 2) {
             return Result.failure(IllegalArgumentException("At least 2 teams required to generate bracket"))
         }
+        if (teamIds.size > MAX_TEAMS_PER_BRACKET) {
+            return Result.failure(IllegalArgumentException("Maximum $MAX_TEAMS_PER_BRACKET teams per bracket"))
+        }
 
         // Check if bracket already exists
         val existing = repository.getBracket(tournamentId, categoryId)
@@ -346,7 +356,7 @@ class BracketService(
     /**
      * Publish a bracket, locking its structure
      */
-    suspend fun publishBracket(tournamentId: String, categoryId: Int): Result<BracketResponse> {
+    suspend fun publishBracket(tournamentId: String, categoryId: Int, organizerId: String? = null): Result<BracketResponse> {
         val bracket = repository.getBracket(tournamentId, categoryId)
             ?: return Result.failure(IllegalArgumentException("Bracket not found"))
 
@@ -359,6 +369,8 @@ class BracketService(
             return Result.failure(IllegalStateException("Failed to publish bracket"))
         }
 
+        auditLog.log("bracket", bracket.id, "publish", organizerId)
+
         // Return updated bracket
         val result = repository.getBracket(tournamentId, categoryId)
             ?: return Result.failure(IllegalStateException("Failed to fetch updated bracket"))
@@ -369,7 +381,7 @@ class BracketService(
     /**
      * Unpublish a bracket, reverting to in_progress status
      */
-    suspend fun unpublishBracket(tournamentId: String, categoryId: Int): Result<BracketResponse> {
+    suspend fun unpublishBracket(tournamentId: String, categoryId: Int, organizerId: String? = null): Result<BracketResponse> {
         val bracket = repository.getBracket(tournamentId, categoryId)
             ?: return Result.failure(IllegalArgumentException("Bracket not found"))
 
@@ -382,6 +394,8 @@ class BracketService(
             return Result.failure(IllegalStateException("Failed to unpublish bracket"))
         }
 
+        auditLog.log("bracket", bracket.id, "unpublish", organizerId)
+
         // Return updated bracket
         val result = repository.getBracket(tournamentId, categoryId)
             ?: return Result.failure(IllegalStateException("Failed to fetch updated bracket"))
@@ -392,7 +406,7 @@ class BracketService(
     /**
      * Delete a bracket. Only allowed if no matches have been started or completed.
      */
-    suspend fun deleteBracket(bracketId: String): Result<Boolean> {
+    suspend fun deleteBracket(bracketId: String, organizerId: String? = null): Result<Boolean> {
         // Check if any matches have been played
         val bracketData = repository.getBracketById(bracketId)
             ?: return Result.failure(IllegalArgumentException("Bracket not found"))
@@ -408,6 +422,9 @@ class BracketService(
         }
 
         val deleted = repository.deleteBracket(bracketId)
+        if (deleted) {
+            auditLog.log("bracket", bracketId, "delete", organizerId)
+        }
         return if (deleted) Result.success(true)
         else Result.failure(IllegalStateException("Failed to delete bracket"))
     }
@@ -421,8 +438,18 @@ class BracketService(
      */
     suspend fun updateMatchScore(
         matchId: String,
-        setScores: List<SetScore>
+        setScores: List<SetScore>,
+        expectedVersion: Int? = null,
+        organizerId: String? = null
     ): Result<MatchResponse> {
+        // Validate set count
+        if (setScores.size > MAX_SETS_PER_MATCH) {
+            return Result.failure(IllegalArgumentException("Maximum $MAX_SETS_PER_MATCH sets per match"))
+        }
+        if (setScores.isEmpty()) {
+            return Result.failure(IllegalArgumentException("At least 1 set required"))
+        }
+
         // Get match to find its bracket
         val match = repository.getMatch(matchId)
             ?: return Result.failure(IllegalArgumentException("Match not found"))
@@ -463,17 +490,22 @@ class BracketService(
         val setsWonTeam1 = validResult.setsWon.first
         val setsWonTeam2 = validResult.setsWon.second
 
-        // Update the match score
+        // Update the match score (with optimistic locking if version provided)
         val updateResult = repository.updateMatchScore(
             matchId = matchId,
             scoreTeam1 = setsWonTeam1,
             scoreTeam2 = setsWonTeam2,
             setScores = setScores,
-            winnerTeam = validResult.winner
+            winnerTeam = validResult.winner,
+            expectedVersion = expectedVersion
         )
 
-        // If score update succeeded, recalculate standings and advance winner
+        // If score update succeeded, log audit, recalculate standings and advance winner
         if (updateResult.isSuccess) {
+            auditLog.log("match", matchId, "update_score", organizerId, mapOf(
+                "set_scores" to setScores.toString(),
+                "winner" to (validation as ScoreValidationResult.Valid).winner.toString()
+            ))
             val updatedMatch = updateResult.getOrNull()
             if (updatedMatch != null) {
                 // Get bracket info to recalculate standings
@@ -542,7 +574,7 @@ class BracketService(
     /**
      * Reset a match score: clears scores, reverses advancement, recalculates standings.
      */
-    suspend fun resetMatchScore(matchId: String): Result<MatchResponse> {
+    suspend fun resetMatchScore(matchId: String, organizerId: String? = null): Result<MatchResponse> {
         val match = repository.getMatch(matchId)
             ?: return Result.failure(IllegalArgumentException("Match not found"))
 
@@ -576,8 +608,11 @@ class BracketService(
         // Reset the match score
         val result = repository.resetMatchScore(matchId)
 
-        // Recalculate standings
+        // Recalculate standings and log audit
         if (result.isSuccess) {
+            auditLog.log("match", matchId, "reset_score", organizerId, mapOf(
+                "previous_score" to "${match.scoreTeam1}-${match.scoreTeam2}"
+            ))
             val bracket = repository.getBracketById(match.bracketId)
             if (bracket != null) {
                 when (bracket.format) {
@@ -720,8 +755,8 @@ class BracketService(
         val bracket = bracketWithMatches.bracket
         val matches = bracketWithMatches.matches
 
-        // Only calculate from completed matches
-        val completedMatches = matches.filter { it.status == "completed" }
+        // Calculate from completed and forfeited matches
+        val completedMatches = matches.filter { it.status in listOf("completed", "forfeit") }
 
         if (completedMatches.isEmpty()) {
             return Result.failure(IllegalArgumentException("No completed matches to calculate standings"))
@@ -869,6 +904,26 @@ class BracketService(
             return Result.failure(IllegalArgumentException(
                 "Expected ${config.groupCount} groups, got ${groups.size}"
             ))
+        }
+        if (config.groupCount > MAX_GROUPS) {
+            return Result.failure(IllegalArgumentException("Maximum $MAX_GROUPS groups allowed"))
+        }
+        val totalTeams = groups.sumOf { it.teamIds.size }
+        if (totalTeams > MAX_TEAMS_PER_BRACKET) {
+            return Result.failure(IllegalArgumentException("Maximum $MAX_TEAMS_PER_BRACKET teams per bracket"))
+        }
+
+        // Validate match format config if provided
+        config.matchFormat?.let { format ->
+            if (format.pointsPerSet != null && format.pointsPerSet <= 0) {
+                return Result.failure(IllegalArgumentException("pointsPerSet must be greater than 0"))
+            }
+            if (format.gamesPerSet != null && format.gamesPerSet <= 0) {
+                return Result.failure(IllegalArgumentException("gamesPerSet must be greater than 0"))
+            }
+            if (format.sets <= 0 || format.sets > MAX_SETS_PER_MATCH) {
+                return Result.failure(IllegalArgumentException("sets must be between 1 and $MAX_SETS_PER_MATCH"))
+            }
         }
 
         // Validate each group has at least 2 teams (allow uneven groups)
@@ -1062,8 +1117,8 @@ class BracketService(
             }
         }
 
-        // Process completed group matches
-        for (match in groupMatches.filter { it.status == "completed" }) {
+        // Process completed and forfeited group matches
+        for (match in groupMatches.filter { it.status in listOf("completed", "forfeit") }) {
             val team1Id = match.team1Id ?: continue
             val team2Id = match.team2Id ?: continue
 
@@ -1148,7 +1203,8 @@ class BracketService(
      */
     suspend fun generateKnockoutFromGroups(
         tournamentId: String,
-        categoryId: Int
+        categoryId: Int,
+        organizerId: String? = null
     ): Result<BracketWithMatchesResponse> {
         val bracketWithMatches = repository.getBracketWithMatches(tournamentId, categoryId)
             ?: return Result.failure(IllegalArgumentException("Bracket not found"))
@@ -1287,6 +1343,11 @@ class BracketService(
         // Auto-advance bye matches
         processByeMatches(createdMatches, matchNumberToId)
 
+        auditLog.log("bracket", bracket.id, "generate_knockout", organizerId, mapOf(
+            "knockout_matches" to createdMatches.size.toString(),
+            "advancing_teams" to seededTeams.size.toString()
+        ))
+
         // Return complete bracket
         val result = repository.getBracketWithMatches(tournamentId, categoryId)
             ?: return Result.failure(IllegalStateException("Failed to fetch updated bracket"))
@@ -1300,7 +1361,8 @@ class BracketService(
      */
     suspend fun deleteKnockoutPhase(
         tournamentId: String,
-        categoryId: Int
+        categoryId: Int,
+        organizerId: String? = null
     ): Result<Unit> {
         val bracketWithMatches = repository.getBracketWithMatches(tournamentId, categoryId)
             ?: return Result.failure(IllegalArgumentException("Bracket not found"))
@@ -1330,6 +1392,10 @@ class BracketService(
             return Result.failure(IllegalStateException("Failed to delete all knockout matches"))
         }
 
+        auditLog.log("bracket", bracket.id, "delete_knockout", organizerId, mapOf(
+            "deleted_matches" to deletedCount.toString()
+        ))
+
         return Result.success(Unit)
     }
 
@@ -1340,7 +1406,8 @@ class BracketService(
         tournamentId: String,
         categoryId: Int,
         team1Id: String,
-        team2Id: String
+        team2Id: String,
+        organizerId: String? = null
     ): Result<GroupsStateResponse> {
         val bracketWithMatches = repository.getBracketWithMatches(tournamentId, categoryId)
             ?: return Result.failure(IllegalArgumentException("Bracket not found"))
@@ -1398,6 +1465,17 @@ class BracketService(
         // Update standings group numbers
         repository.updateStandingGroupNumber(bracket.id, team1Id, team2Group)
         repository.updateStandingGroupNumber(bracket.id, team2Id, team1Group)
+
+        auditLog.log("bracket", bracket.id, "swap_teams", organizerId, mapOf(
+            "team1_id" to team1Id, "team2_id" to team2Id,
+            "team1_from_group" to team1Group.toString(), "team2_from_group" to team2Group.toString()
+        ))
+
+        // Recalculate standings if any matches have been played
+        val hasPlayedMatches = matches.any { it.status in listOf("completed", "forfeit") }
+        if (hasPlayedMatches) {
+            calculateGroupStandings(tournamentId, categoryId)
+        }
 
         return getGroupsState(tournamentId, categoryId)
     }
@@ -1979,7 +2057,8 @@ class BracketService(
         tournamentId: String,
         categoryId: Int,
         teamId: String,
-        reason: String?
+        reason: String?,
+        organizerId: String? = null
     ): Result<WithdrawTeamResponse> {
         return try {
             // Get bracket for this category
@@ -2015,6 +2094,17 @@ class BracketService(
                     }
                 }
             }
+
+            // Recalculate group standings if this is a groups_knockout bracket
+            if (bracket.format == "groups_knockout" && forfeitedIds.isNotEmpty()) {
+                calculateGroupStandings(tournamentId, categoryId)
+            }
+
+            auditLog.log("bracket", bracket.id, "withdraw", organizerId, mapOf(
+                "team_id" to teamId,
+                "reason" to (reason ?: ""),
+                "forfeited_matches" to forfeitedIds.size.toString()
+            ))
 
             Result.success(WithdrawTeamResponse(
                 forfeitedMatches = forfeitedIds,

@@ -312,7 +312,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                val result = bracketService.publishBracket(tournamentId, categoryId)
+                val result = bracketService.publishBracket(tournamentId, categoryId, organizerId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -337,7 +337,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                val result = bracketService.unpublishBracket(tournamentId, categoryId)
+                val result = bracketService.unpublishBracket(tournamentId, categoryId, organizerId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -369,7 +369,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@delete
                 }
 
-                val result = bracketService.deleteBracket(bracket.bracket.id)
+                val result = bracketService.deleteBracket(bracket.bracket.id, organizerId)
                 result.fold(
                     onSuccess = {
                         call.respond(HttpStatusCode.OK, mapOf("success" to true))
@@ -449,7 +449,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                val result = bracketService.withdrawTeam(tournamentId, categoryId, request.teamId, request.reason)
+                val result = bracketService.withdrawTeam(tournamentId, categoryId, request.teamId, request.reason, organizerId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -544,7 +544,8 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     tournamentId,
                     categoryId,
                     request.team1Id,
-                    request.team2Id
+                    request.team2Id,
+                    organizerId
                 )
 
                 result.fold(
@@ -618,7 +619,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                val result = bracketService.generateKnockoutFromGroups(tournamentId, categoryId)
+                val result = bracketService.generateKnockoutFromGroups(tournamentId, categoryId, organizerId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.Created, it) },
@@ -658,7 +659,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@delete
                 }
 
-                val result = bracketService.deleteKnockoutPhase(tournamentId, categoryId)
+                val result = bracketService.deleteKnockoutPhase(tournamentId, categoryId, organizerId)
 
                 result.fold(
                     onSuccess = {
@@ -755,13 +756,15 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@patch
                 }
 
-                val result = bracketService.updateMatchScore(matchId, request.sets)
+                val result = bracketService.updateMatchScore(matchId, request.sets, request.version, organizerId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
                     onFailure = { e ->
                         val message = e.message ?: "Update failed"
                         when {
+                            e is ConcurrentModificationException ->
+                                call.respond(HttpStatusCode.Conflict, mapOf("error" to message))
                             e is IllegalArgumentException && message.contains("not found", ignoreCase = true) ->
                                 call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
                             e is IllegalArgumentException ->
@@ -784,7 +787,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@delete
                 }
 
-                val result = bracketService.resetMatchScore(matchId)
+                val result = bracketService.resetMatchScore(matchId, organizerId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, SuccessResponse("Resultado eliminado")) },

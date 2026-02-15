@@ -87,14 +87,16 @@ interface BracketRepository {
     suspend fun getMatch(matchId: String): MatchResponse?
 
     /**
-     * Update match score, set scores, winner, and status
+     * Update match score, set scores, winner, and status.
+     * If expectedVersion is provided, uses optimistic locking (returns failure if version mismatch).
      */
     suspend fun updateMatchScore(
         matchId: String,
         scoreTeam1: Int,
         scoreTeam2: Int,
         setScores: List<SetScore>,
-        winnerTeam: Int
+        winnerTeam: Int,
+        expectedVersion: Int? = null
     ): Result<MatchResponse>
 
     /**

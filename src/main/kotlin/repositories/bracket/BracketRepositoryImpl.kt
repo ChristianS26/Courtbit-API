@@ -438,13 +438,22 @@ class BracketRepositoryImpl(
         scoreTeam1: Int,
         scoreTeam2: Int,
         setScores: List<SetScore>,
-        winnerTeam: Int
+        winnerTeam: Int,
+        expectedVersion: Int?
     ): Result<MatchResponse> {
         val setScoresJson = json.encodeToString(setScores)
+        val newVersion = (expectedVersion ?: 1) + 1
 
-        val jsonBody = """{"score_team1":$scoreTeam1,"score_team2":$scoreTeam2,"set_scores":$setScoresJson,"winner_team":$winnerTeam,"status":"completed"}"""
+        val jsonBody = """{"score_team1":$scoreTeam1,"score_team2":$scoreTeam2,"set_scores":$setScoresJson,"winner_team":$winnerTeam,"status":"completed","version":$newVersion}"""
 
-        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+        // If expectedVersion is provided, add version filter for optimistic locking
+        val queryFilter = if (expectedVersion != null) {
+            "$apiUrl/tournament_matches?id=eq.$matchId&version=eq.$expectedVersion"
+        } else {
+            "$apiUrl/tournament_matches?id=eq.$matchId"
+        }
+
+        val response = client.patch(queryFilter) {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
@@ -462,6 +471,10 @@ class BracketRepositoryImpl(
             }
 
             if (matches.isEmpty()) {
+                // If expectedVersion was provided and no rows matched, it's a version conflict
+                if (expectedVersion != null) {
+                    return Result.failure(ConcurrentModificationException("Match was updated by another user. Please refresh and try again."))
+                }
                 return Result.failure(IllegalArgumentException("Match not found with ID: $matchId"))
             }
 
