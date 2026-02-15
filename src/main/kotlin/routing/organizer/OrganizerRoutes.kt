@@ -22,26 +22,23 @@ fun Route.organizerRoutes(
             call.respond(HttpStatusCode.OK, organizers)
         }
 
-        // Public: Get organizer public profile (optionally reads JWT for is_following)
-        get("{id}/public") {
-            val id = call.parameters["id"]
-            if (id.isNullOrBlank()) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Organizer ID is required"))
-                return@get
-            }
+        // Public profile with optional JWT (reads is_following if authenticated)
+        authenticate("auth-jwt", optional = true) {
+            get("{id}/public") {
+                val id = call.parameters["id"]
+                if (id.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Organizer ID is required"))
+                    return@get
+                }
 
-            // Try to read JWT for is_following, but don't require it
-            val currentUserId = try {
-                call.principal<JWTPrincipal>()?.getClaim("uid", String::class)
-            } catch (e: Exception) {
-                null
-            }
+                val currentUserId = call.principal<JWTPrincipal>()?.getClaim("uid", String::class)
 
-            val profile = organizerService.getPublicProfile(id, currentUserId)
-            if (profile != null) {
-                call.respond(HttpStatusCode.OK, profile)
-            } else {
-                call.respond(HttpStatusCode.NotFound, mapOf("error" to "Organizer not found"))
+                val profile = organizerService.getPublicProfile(id, currentUserId)
+                if (profile != null) {
+                    call.respond(HttpStatusCode.OK, profile)
+                } else {
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Organizer not found"))
+                }
             }
         }
 
