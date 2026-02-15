@@ -471,6 +471,34 @@ class BracketRepositoryImpl(
         }
     }
 
+    override suspend fun resetMatchScore(matchId: String): Result<MatchResponse> {
+        val jsonBody = """{"score_team1":null,"score_team2":null,"set_scores":null,"winner_team":null,"status":"pending"}"""
+
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            setBody(jsonBody)
+        }
+
+        val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
+
+        return if (response.status.isSuccess()) {
+            val matches = runCatching {
+                json.decodeFromString<List<MatchResponse>>(bodyText)
+            }.getOrElse { e ->
+                return Result.failure(IllegalStateException("Failed to parse response: ${e.message}"))
+            }
+            if (matches.isEmpty()) {
+                return Result.failure(IllegalArgumentException("Match not found with ID: $matchId"))
+            }
+            Result.success(matches.first())
+        } else {
+            Result.failure(IllegalStateException("Failed to reset score: ${response.status.value} - $bodyText"))
+        }
+    }
+
     override suspend fun advanceWinner(matchId: String, winnerTeamId: String): Result<Unit> {
         // Get current match to find next_match_id and next_match_position
         val currentMatch = getMatch(matchId)

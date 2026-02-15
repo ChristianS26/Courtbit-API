@@ -98,6 +98,11 @@ interface BracketRepository {
     ): Result<MatchResponse>
 
     /**
+     * Reset match score: clear scores, set_scores, winner_team, and set status back to pending.
+     */
+    suspend fun resetMatchScore(matchId: String): Result<MatchResponse>
+
+    /**
      * Advance winner to next match.
      * Updates the next match's team1_id or team2_id based on next_match_position.
      */

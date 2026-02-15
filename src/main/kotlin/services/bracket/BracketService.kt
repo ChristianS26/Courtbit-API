@@ -38,28 +38,30 @@ object PadelScoreValidator {
      * Generate valid winning scores for a given gamesPerSet (G).
      * G-0, G-1, ..., G-(G-2), (G+1)-(G-1), (G+1)-G
      */
-    private fun getValidWinningScores(gamesPerSet: Int): List<Pair<Int, Int>> {
+    private fun getValidWinningScores(gamesPerSet: Int, allowTiebreak: Boolean = true): List<Pair<Int, Int>> {
         val scores = mutableListOf<Pair<Int, Int>>()
         // Regular wins: G-0 through G-(G-2)
         for (loser in 0..(gamesPerSet - 2)) {
             scores.add(gamesPerSet to loser)
         }
-        // Extended: (G+1)-(G-1)
-        scores.add((gamesPerSet + 1) to (gamesPerSet - 1))
-        // Tiebreak: (G+1)-G
-        scores.add((gamesPerSet + 1) to gamesPerSet)
+        if (allowTiebreak) {
+            // Extended: (G+1)-(G-1)
+            scores.add((gamesPerSet + 1) to (gamesPerSet - 1))
+            // Tiebreak: (G+1)-G
+            scores.add((gamesPerSet + 1) to gamesPerSet)
+        }
         return scores
     }
 
-    private fun getValidSetScores(gamesPerSet: Int): Set<Pair<Int, Int>> = buildSet {
-        getValidWinningScores(gamesPerSet).forEach { (a, b) ->
+    private fun getValidSetScores(gamesPerSet: Int, allowTiebreak: Boolean = true): Set<Pair<Int, Int>> = buildSet {
+        getValidWinningScores(gamesPerSet, allowTiebreak).forEach { (a, b) ->
             add(a to b)  // Team 1 wins
             add(b to a)  // Team 2 wins
         }
     }
 
-    fun isValidSetScore(team1Games: Int, team2Games: Int, gamesPerSet: Int = 6): Boolean {
-        return (team1Games to team2Games) in getValidSetScores(gamesPerSet)
+    fun isValidSetScore(team1Games: Int, team2Games: Int, gamesPerSet: Int = 6, allowTiebreak: Boolean = true): Boolean {
+        return (team1Games to team2Games) in getValidSetScores(gamesPerSet, allowTiebreak)
     }
 
     private fun isTiebreakScore(team1: Int, team2: Int, gamesPerSet: Int): Boolean {
@@ -132,7 +134,7 @@ object PadelScoreValidator {
      * @param gamesPerSet configurable games per set (default 6)
      * @param totalSets configurable total sets (default 3, best-of)
      */
-    fun validateMatchScore(setScores: List<SetScore>, gamesPerSet: Int = 6, totalSets: Int = 3): ScoreValidationResult {
+    fun validateMatchScore(setScores: List<SetScore>, gamesPerSet: Int = 6, totalSets: Int = 3, allowTiebreak: Boolean = true): ScoreValidationResult {
         if (setScores.isEmpty()) {
             return ScoreValidationResult.Invalid("At least one set required")
         }
@@ -145,8 +147,8 @@ object PadelScoreValidator {
         var team2SetsWon = 0
 
         for ((index, set) in setScores.withIndex()) {
-            if (!isValidSetScore(set.team1, set.team2, gamesPerSet)) {
-                val validScores = getValidWinningScores(gamesPerSet).joinToString(", ") { "${it.first}-${it.second}" }
+            if (!isValidSetScore(set.team1, set.team2, gamesPerSet, allowTiebreak)) {
+                val validScores = getValidWinningScores(gamesPerSet, allowTiebreak).joinToString(", ") { "${it.first}-${it.second}" }
                 return ScoreValidationResult.Invalid(
                     "Invalid set ${index + 1} score: ${set.team1}-${set.team2}. " +
                     "Valid scores: $validScores"
@@ -447,7 +449,8 @@ class BracketService(
             // Classic format validation
             val gamesPerSet = matchFormat?.gamesPerSet ?: 6
             val totalSets = matchFormat?.sets ?: 3
-            PadelScoreValidator.validateMatchScore(setScores, gamesPerSet, totalSets)
+            val allowTiebreak = matchFormat?.tieBreak == true || (matchFormat?.tieBreakAt != null && matchFormat.tieBreakAt > 0)
+            PadelScoreValidator.validateMatchScore(setScores, gamesPerSet, totalSets, allowTiebreak)
         }
 
         if (validation is ScoreValidationResult.Invalid) {
@@ -534,6 +537,57 @@ class BracketService(
         // Return updated match
         return repository.getMatch(matchId)?.let { Result.success(it) }
             ?: Result.failure(IllegalStateException("Match not found after advancement"))
+    }
+
+    /**
+     * Reset a match score: clears scores, reverses advancement, recalculates standings.
+     */
+    suspend fun resetMatchScore(matchId: String): Result<MatchResponse> {
+        val match = repository.getMatch(matchId)
+            ?: return Result.failure(IllegalArgumentException("Match not found"))
+
+        if (match.status != "completed") {
+            return Result.failure(IllegalStateException("El partido no tiene resultado para borrar"))
+        }
+
+        // If this match advanced a winner to a knockout match, reverse the advancement
+        val nextMatchId = match.nextMatchId
+        val nextMatchPosition = match.nextMatchPosition
+        if (nextMatchId != null && nextMatchPosition != null) {
+            val nextMatch = repository.getMatch(nextMatchId)
+            if (nextMatch != null) {
+                // Only reverse if the next match hasn't started
+                if (nextMatch.status == "pending") {
+                    val fieldToNull = if (nextMatchPosition == 1) "team1_id" else "team2_id"
+                    repository.updateMatchTeams(
+                        nextMatchId,
+                        team1Id = if (nextMatchPosition == 1) null else nextMatch.team1Id,
+                        team2Id = if (nextMatchPosition == 2) null else nextMatch.team2Id,
+                        groupNumber = null
+                    )
+                } else {
+                    return Result.failure(IllegalStateException(
+                        "No se puede borrar: el siguiente partido ya comenzó"
+                    ))
+                }
+            }
+        }
+
+        // Reset the match score
+        val result = repository.resetMatchScore(matchId)
+
+        // Recalculate standings
+        if (result.isSuccess) {
+            val bracket = repository.getBracketById(match.bracketId)
+            if (bracket != null) {
+                when (bracket.format) {
+                    "groups_knockout" -> calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
+                    "round_robin" -> calculateStandings(bracket.tournamentId, bracket.categoryId)
+                }
+            }
+        }
+
+        return result
     }
 
     // ============ Player Score Submission ============
@@ -1144,17 +1198,29 @@ class BracketService(
         val teamGroupMap = mutableMapOf<String, Int>() // teamId -> groupNumber
         var seedCounter = 1
 
-        // Collect advancing teams by position, tracking group origin
+        // Collect advancing teams by position, sorted by performance within each tier
         for (position in 1..config.advancingPerGroup) {
+            val teamsAtPosition = mutableListOf<Pair<StandingEntry, Int>>() // (standing, groupNum)
             for (groupNum in 1..config.groupCount) {
                 val groupTeams = groupStandings[groupNum]?.sortedBy { it.position } ?: emptyList()
                 val teamAtPosition = groupTeams.getOrNull(position - 1)
-                val teamId = teamAtPosition?.teamId
-                if (teamId == null) {
+                if (teamAtPosition?.teamId == null) {
                     return Result.failure(IllegalStateException(
                         "No team at position $position in group $groupNum"
                     ))
                 }
+                teamsAtPosition.add(teamAtPosition to groupNum)
+            }
+
+            // Within same position tier, sort by performance (points, point diff, games won)
+            val sorted = teamsAtPosition.sortedWith(
+                compareByDescending<Pair<StandingEntry, Int>> { it.first.totalPoints }
+                    .thenByDescending { it.first.pointDifference }
+                    .thenByDescending { it.first.gamesWon }
+            )
+
+            for ((standing, groupNum) in sorted) {
+                val teamId = standing.teamId!!
                 advancingTeams.add(TeamSeed(teamId, seedCounter++))
                 teamGroupMap[teamId] = groupNum
             }
@@ -1189,8 +1255,8 @@ class BracketService(
             }
         }
 
-        // Cross-group seeding: ensure no same-group matchups in first round
-        val seededTeams = resolveSameGroupConflicts(advancingTeams, teamGroupMap)
+        // Cross-group seeding: separate same-group teams across bracket halves/quarters
+        val seededTeams = placeTeamsAntiRematch(advancingTeams, teamGroupMap)
 
         // Get current max match number
         val maxMatchNumber = matches.maxOfOrNull { it.matchNumber } ?: 0
@@ -1578,11 +1644,19 @@ class BracketService(
     }
 
     /**
-     * Resolve same-group conflicts in knockout seeding.
-     * Ensures no two teams from the same group face each other in the first round.
-     * Uses bracket seed positions to determine matchups, then swaps seeds to fix conflicts.
+     * Place teams in the knockout bracket ensuring teams from the same group
+     * meet as late as possible (anti-rematch).
+     *
+     * Algorithm:
+     * 1. Map bracket positions into hierarchical sections (halves, quarters, eighths)
+     * 2. Group teams by their origin group
+     * 3. For each group with N classified teams, calculate required separation:
+     *    - N=2 → opposite halves (meet earliest at Final)
+     *    - N=3-4 → different quarters (meet earliest at Semis)
+     * 4. Place teams greedy: most-constrained groups first, respecting ranking
+     * 5. Fall back to first-round conflict resolution if perfect placement fails
      */
-    private fun resolveSameGroupConflicts(
+    private fun placeTeamsAntiRematch(
         teams: List<TeamSeed>,
         teamGroupMap: Map<String, Int>
     ): List<TeamSeed> {
@@ -1591,49 +1665,266 @@ class BracketService(
         val bracketSize = nextPowerOfTwo(teams.size)
         val seedPositions = generateSeedPositions(bracketSize)
 
+        // Map each seed position to its bracket slot index (0-based)
+        // seedPositions[slotIndex] = seedNumber
+        // We need: for each seed, which slot it occupies
+        val seedToSlot = mutableMapOf<Int, Int>()
+        seedPositions.forEachIndexed { slot, seed -> seedToSlot[seed] = slot }
+
+        // Build section assignments: for each slot, which half/quarter/eighth it belongs to
+        // Half: slot / (bracketSize/2)  → 0 or 1
+        // Quarter: slot / (bracketSize/4) → 0..3
+        // Eighth: slot / (bracketSize/8) → 0..7
+        fun slotHalf(slot: Int): Int = slot / (bracketSize / 2)
+        fun slotQuarter(slot: Int): Int = if (bracketSize >= 4) slot / (bracketSize / 4) else slot / 2
+
+        // Group teams by origin group
+        val teamsByGroup = mutableMapOf<Int, MutableList<TeamSeed>>()
+        for (team in teams) {
+            val group = teamGroupMap[team.teamId] ?: continue
+            teamsByGroup.getOrPut(group) { mutableListOf() }.add(team)
+        }
+
         // Build mutable seed-to-team mapping
         val seedToTeam = mutableMapOf<Int, TeamSeed>()
         teams.forEach { seedToTeam[it.seed] = it }
 
-        // Determine first-round match pairs (which seeds face each other)
+        // Sort groups by size descending (most constrained first)
+        val sortedGroups = teamsByGroup.entries.sortedByDescending { it.value.size }
+
+        // Track which sections are taken by which groups
+        val halfGroupCounts = mutableMapOf<Int, MutableMap<Int, Int>>() // half -> (group -> count)
+        val quarterGroupCounts = mutableMapOf<Int, MutableMap<Int, Int>>() // quarter -> (group -> count)
+
+        // Initialize counts from current placement
+        for (team in teams) {
+            val group = teamGroupMap[team.teamId] ?: continue
+            val slot = seedToSlot[team.seed] ?: continue
+            val half = slotHalf(slot)
+            val quarter = slotQuarter(slot)
+            halfGroupCounts.getOrPut(half) { mutableMapOf() }
+                .merge(group, 1) { a, b -> a + b }
+            quarterGroupCounts.getOrPut(quarter) { mutableMapOf() }
+                .merge(group, 1) { a, b -> a + b }
+        }
+
+        // Try to resolve conflicts by swapping teams between positions
+        // For each group with multiple teams, try to separate them
+        for ((group, groupTeams) in sortedGroups) {
+            if (groupTeams.size < 2) continue
+
+            val teamsInGroup = groupTeams.sortedBy { it.seed } // respect ranking order
+
+            if (teamsInGroup.size == 2) {
+                // Need to be in opposite halves
+                val t1 = teamsInGroup[0]
+                val t2 = teamsInGroup[1]
+                val slot1 = seedToSlot[t1.seed] ?: continue
+                val slot2 = seedToSlot[t2.seed] ?: continue
+
+                if (slotHalf(slot1) == slotHalf(slot2)) {
+                    // Find a team in the opposite half to swap with t2
+                    val targetHalf = 1 - slotHalf(slot1)
+                    val swapCandidate = findSwapCandidate(
+                        t2, group, targetHalf,
+                        seedToTeam, seedToSlot, teamGroupMap,
+                        ::slotHalf, ::slotQuarter, halfGroupCounts
+                    )
+                    if (swapCandidate != null) {
+                        performSwap(t2, swapCandidate, seedToTeam, seedToSlot,
+                            seedPositions, halfGroupCounts, quarterGroupCounts,
+                            teamGroupMap, ::slotHalf, ::slotQuarter)
+                    }
+                }
+            } else {
+                // 3+ teams: try to spread across quarters
+                for (i in 1 until teamsInGroup.size) {
+                    val t = teamsInGroup[i]
+                    val tSlot = seedToSlot[t.seed] ?: continue
+                    val tQuarter = slotQuarter(tSlot)
+
+                    // Check if any earlier team from same group is in same quarter
+                    val conflict = (0 until i).any { j ->
+                        val otherSlot = seedToSlot[teamsInGroup[j].seed] ?: -1
+                        slotQuarter(otherSlot) == tQuarter
+                    }
+
+                    if (conflict) {
+                        // Find a quarter with no team from this group
+                        val usedQuarters = (0 until i).mapNotNull { j ->
+                            seedToSlot[teamsInGroup[j].seed]?.let { slotQuarter(it) }
+                        }.toSet()
+                        val numQuarters = if (bracketSize >= 4) 4 else 2
+                        val freeQuarter = (0 until numQuarters).firstOrNull { it !in usedQuarters }
+
+                        if (freeQuarter != null) {
+                            // Find a team in that quarter to swap with
+                            val candidate = seedToTeam.values
+                                .filter { candidate ->
+                                    val cSlot = seedToSlot[candidate.seed] ?: -1
+                                    val cGroup = teamGroupMap[candidate.teamId]
+                                    slotQuarter(cSlot) == freeQuarter &&
+                                    cGroup != group &&
+                                    // Don't create a new conflict for the candidate's group
+                                    !wouldCreateConflict(candidate, tSlot, teamGroupMap, seedToTeam,
+                                        seedToSlot, ::slotHalf, ::slotQuarter)
+                                }
+                                .minByOrNull { it.seed } // prefer swapping lower-ranked teams
+
+                            if (candidate != null) {
+                                performSwap(t, candidate, seedToTeam, seedToSlot,
+                                    seedPositions, halfGroupCounts, quarterGroupCounts,
+                                    teamGroupMap, ::slotHalf, ::slotQuarter)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Final safety pass: resolve any remaining first-round conflicts
+        resolveFirstRoundConflicts(seedToTeam, seedPositions, bracketSize, teamGroupMap, seedToSlot)
+
+        return seedToTeam.values.sortedBy { it.seed }
+    }
+
+    /**
+     * Find a swap candidate in the target half that won't create new conflicts.
+     */
+    private fun findSwapCandidate(
+        teamToMove: TeamSeed,
+        teamGroup: Int,
+        targetHalf: Int,
+        seedToTeam: Map<Int, TeamSeed>,
+        seedToSlot: Map<Int, Int>,
+        teamGroupMap: Map<String, Int>,
+        slotHalf: (Int) -> Int,
+        slotQuarter: (Int) -> Int,
+        halfGroupCounts: Map<Int, Map<Int, Int>>
+    ): TeamSeed? {
+        return seedToTeam.values
+            .filter { candidate ->
+                val cSlot = seedToSlot[candidate.seed] ?: return@filter false
+                val cGroup = teamGroupMap[candidate.teamId]
+                slotHalf(cSlot) == targetHalf &&
+                cGroup != teamGroup &&
+                candidate.seed != teamToMove.seed
+            }
+            .minByOrNull { Math.abs(it.seed - teamToMove.seed) } // prefer similar ranking
+    }
+
+    /**
+     * Check if placing a candidate at a target slot would create a same-group
+     * conflict with another team already in that half/quarter.
+     */
+    private fun wouldCreateConflict(
+        candidate: TeamSeed,
+        targetSlot: Int,
+        teamGroupMap: Map<String, Int>,
+        seedToTeam: Map<Int, TeamSeed>,
+        seedToSlot: Map<Int, Int>,
+        slotHalf: (Int) -> Int,
+        slotQuarter: (Int) -> Int
+    ): Boolean {
+        val candidateGroup = teamGroupMap[candidate.teamId] ?: return false
+        val targetQuarter = slotQuarter(targetSlot)
+
+        // Check if any other team from candidate's group is in the target quarter
+        return seedToTeam.values.any { other ->
+            if (other.seed == candidate.seed) return@any false
+            val otherGroup = teamGroupMap[other.teamId]
+            val otherSlot = seedToSlot[other.seed] ?: return@any false
+            otherGroup == candidateGroup && slotQuarter(otherSlot) == targetQuarter
+        }
+    }
+
+    /**
+     * Swap two teams' seeds and update tracking maps.
+     */
+    private fun performSwap(
+        team1: TeamSeed,
+        team2: TeamSeed,
+        seedToTeam: MutableMap<Int, TeamSeed>,
+        seedToSlot: MutableMap<Int, Int>,
+        seedPositions: List<Int>,
+        halfGroupCounts: MutableMap<Int, MutableMap<Int, Int>>,
+        quarterGroupCounts: MutableMap<Int, MutableMap<Int, Int>>,
+        teamGroupMap: Map<String, Int>,
+        slotHalf: (Int) -> Int,
+        slotQuarter: (Int) -> Int
+    ) {
+        val seed1 = team1.seed
+        val seed2 = team2.seed
+
+        val group1 = teamGroupMap[team1.teamId] ?: return
+        val group2 = teamGroupMap[team2.teamId] ?: return
+
+        // Remove old counts
+        val oldSlot1 = seedToSlot[seed1] ?: return
+        val oldSlot2 = seedToSlot[seed2] ?: return
+
+        halfGroupCounts[slotHalf(oldSlot1)]?.merge(group1, -1) { a, b -> a + b }
+        halfGroupCounts[slotHalf(oldSlot2)]?.merge(group2, -1) { a, b -> a + b }
+        quarterGroupCounts[slotQuarter(oldSlot1)]?.merge(group1, -1) { a, b -> a + b }
+        quarterGroupCounts[slotQuarter(oldSlot2)]?.merge(group2, -1) { a, b -> a + b }
+
+        // Swap
+        val newTeam1 = TeamSeed(team2.teamId, seed1)
+        val newTeam2 = TeamSeed(team1.teamId, seed2)
+        seedToTeam[seed1] = newTeam1
+        seedToTeam[seed2] = newTeam2
+
+        // Add new counts
+        halfGroupCounts.getOrPut(slotHalf(oldSlot1)) { mutableMapOf() }
+            .merge(group2, 1) { a, b -> a + b }
+        halfGroupCounts.getOrPut(slotHalf(oldSlot2)) { mutableMapOf() }
+            .merge(group1, 1) { a, b -> a + b }
+        quarterGroupCounts.getOrPut(slotQuarter(oldSlot1)) { mutableMapOf() }
+            .merge(group2, 1) { a, b -> a + b }
+        quarterGroupCounts.getOrPut(slotQuarter(oldSlot2)) { mutableMapOf() }
+            .merge(group1, 1) { a, b -> a + b }
+    }
+
+    /**
+     * Final safety pass: resolve any remaining first-round same-group conflicts.
+     * This catches edge cases where the hierarchical placement couldn't fully resolve.
+     */
+    private fun resolveFirstRoundConflicts(
+        seedToTeam: MutableMap<Int, TeamSeed>,
+        seedPositions: List<Int>,
+        bracketSize: Int,
+        teamGroupMap: Map<String, Int>,
+        seedToSlot: MutableMap<Int, Int>
+    ) {
         val matchPairs = (0 until bracketSize step 2).map { i ->
             seedPositions[i] to seedPositions[i + 1]
         }
 
-        // Check each match pair for same-group conflicts
         for (i in matchPairs.indices) {
             val (s1, s2) = matchPairs[i]
             val t1 = seedToTeam[s1] ?: continue
             val t2 = seedToTeam[s2] ?: continue
-
             val g1 = teamGroupMap[t1.teamId]
             val g2 = teamGroupMap[t2.teamId]
 
             if (g1 != null && g1 == g2) {
-                // Conflict: find another match to swap with
-                var resolved = false
                 for (j in matchPairs.indices) {
-                    if (j == i || resolved) continue
+                    if (j == i) continue
                     val (os1, os2) = matchPairs[j]
 
-                    // Try swapping t2 with the second team from match j
                     val ot2 = seedToTeam[os2]
                     if (ot2 != null) {
                         val og2 = teamGroupMap[ot2.teamId]
                         val og1 = teamGroupMap[seedToTeam[os1]?.teamId ?: ""]
-                        // Swap is valid if: t1 vs ot2 are different groups AND ot1 vs t2 are different groups
                         if (og2 != g1 && (og1 == null || og1 != g2)) {
-                            // Swap seeds
                             val newT2 = TeamSeed(ot2.teamId, s2)
                             val newOt2 = TeamSeed(t2.teamId, os2)
                             seedToTeam[s2] = newT2
                             seedToTeam[os2] = newOt2
-                            resolved = true
-                            continue
+                            break
                         }
                     }
 
-                    // Try swapping t2 with the first team from match j
                     val ot1 = seedToTeam[os1]
                     if (ot1 != null) {
                         val og1 = teamGroupMap[ot1.teamId]
@@ -1643,15 +1934,12 @@ class BracketService(
                             val newOt1 = TeamSeed(t2.teamId, os1)
                             seedToTeam[s2] = newT2
                             seedToTeam[os1] = newOt1
-                            resolved = true
-                            continue
+                            break
                         }
                     }
                 }
             }
         }
-
-        return seedToTeam.values.sortedBy { it.seed }
     }
 
     // ============ Status and Withdrawal ============
