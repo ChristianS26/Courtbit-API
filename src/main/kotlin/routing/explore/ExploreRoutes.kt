@@ -24,5 +24,11 @@ fun Route.exploreRoutes(exploreService: ExploreService) {
             val result = exploreService.getExploreEvents(page, pageSize)
             call.respond(HttpStatusCode.OK, result)
         }
+
+        // Public: Get organizers for discovery carousel
+        get("/organizers") {
+            val organizers = exploreService.getExploreOrganizers()
+            call.respond(HttpStatusCode.OK, organizers)
+        }
     }
 }

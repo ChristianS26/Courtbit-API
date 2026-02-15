@@ -4,17 +4,20 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import models.explore.ExploreEvent
 import models.explore.ExploreEventsResponse
+import models.explore.ExploreOrganizer
 import models.organizer.OrganizerResponse
 import repositories.organizer.OrganizerRepository
 import repositories.league.SeasonRepository
 import repositories.tournament.TournamentRepository
+import services.follow.FollowService
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 class ExploreService(
     private val tournamentRepository: TournamentRepository,
     private val seasonRepository: SeasonRepository,
-    private val organizerRepository: OrganizerRepository
+    private val organizerRepository: OrganizerRepository,
+    private val followService: FollowService
 ) {
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
@@ -55,7 +58,8 @@ class ExploreService(
                     organizerId = t.organizerId,
                     organizerName = t.organizerName ?: org?.name,
                     organizerLogoUrl = t.organizerLogoUrl ?: org?.logoUrl,
-                    organizerIsVerified = org?.isVerified ?: false
+                    organizerIsVerified = org?.isVerified ?: false,
+                    organizerPrimaryColor = org?.primaryColor
                 )
             }
 
@@ -76,7 +80,8 @@ class ExploreService(
                     organizerId = s.organizerId,
                     organizerName = s.organizerName ?: org?.name,
                     organizerLogoUrl = s.organizerLogoURL ?: org?.logoUrl,
-                    organizerIsVerified = org?.isVerified ?: false
+                    organizerIsVerified = org?.isVerified ?: false,
+                    organizerPrimaryColor = org?.primaryColor
                 )
             }
 
@@ -98,5 +103,37 @@ class ExploreService(
             pageSize = pageSize,
             hasMore = hasMore
         )
+    }
+
+    suspend fun getExploreOrganizers(): List<ExploreOrganizer> = coroutineScope {
+        val organizersDeferred = async { organizerRepository.getAll() }
+        val tournamentsDeferred = async { tournamentRepository.getAll() }
+        val seasonsDeferred = async { seasonRepository.getAll() }
+
+        val organizers = organizersDeferred.await()
+        val tournaments = tournamentsDeferred.await()
+        val seasons = seasonsDeferred.await()
+
+        // Count active events per organizer
+        val eventCounts = mutableMapOf<String, Int>()
+        tournaments.filter { it.isEnabled }.forEach { t ->
+            t.organizerId?.let { eventCounts[it] = (eventCounts[it] ?: 0) + 1 }
+        }
+        seasons.filter { it.isActive }.forEach { s ->
+            s.organizerId?.let { eventCounts[it] = (eventCounts[it] ?: 0) + 1 }
+        }
+
+        organizers.map { org ->
+            val followerCount = try { followService.getFollowerCount(org.id) } catch (_: Exception) { 0L }
+            ExploreOrganizer(
+                id = org.id,
+                name = org.name,
+                logoUrl = org.logoUrl,
+                primaryColor = org.primaryColor,
+                isVerified = org.isVerified,
+                followerCount = followerCount,
+                eventCount = eventCounts[org.id] ?: 0
+            )
+        }.sortedByDescending { it.followerCount }
     }
 }

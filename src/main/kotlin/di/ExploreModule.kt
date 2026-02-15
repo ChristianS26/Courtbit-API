@@ -8,7 +8,8 @@ val ExploreModule = module {
         ExploreService(
             tournamentRepository = get(),
             seasonRepository = get(),
-            organizerRepository = get()
+            organizerRepository = get(),
+            followService = get()
         )
     }
 }

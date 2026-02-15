@@ -17,7 +17,8 @@ data class ExploreEvent(
     @SerialName("organizer_id") val organizerId: String?,
     @SerialName("organizer_name") val organizerName: String?,
     @SerialName("organizer_logo_url") val organizerLogoUrl: String? = null,
-    @SerialName("organizer_is_verified") val organizerIsVerified: Boolean = false
+    @SerialName("organizer_is_verified") val organizerIsVerified: Boolean = false,
+    @SerialName("organizer_primary_color") val organizerPrimaryColor: String? = null
 )
 
 @Serializable
@@ -26,4 +27,15 @@ data class ExploreEventsResponse(
     val page: Int,
     @SerialName("page_size") val pageSize: Int,
     @SerialName("has_more") val hasMore: Boolean
+)
+
+@Serializable
+data class ExploreOrganizer(
+    val id: String,
+    val name: String,
+    @SerialName("logo_url") val logoUrl: String? = null,
+    @SerialName("primary_color") val primaryColor: String = "#007AFF",
+    @SerialName("is_verified") val isVerified: Boolean = false,
+    @SerialName("follower_count") val followerCount: Long = 0,
+    @SerialName("event_count") val eventCount: Int = 0
 )
