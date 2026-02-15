@@ -16,7 +16,8 @@ val TeamModule = module {
             registrationCodeRepository = get(),
             rankingService = get(),
             categoryRepository = get(),
-            tournamentRepository = get()
+            tournamentRepository = get(),
+            rankingSeasonService = get()
         )
     }
 }

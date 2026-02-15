@@ -27,6 +27,7 @@ import models.teams.toTeamPlayerDto
 import repositories.category.CategoryRepository
 import repositories.registrationcode.RegistrationCodeRepository
 import repositories.tournament.TournamentRepository
+import services.ranking.RankingSeasonService
 import services.ranking.RankingService
 
 class TeamService(
@@ -35,6 +36,7 @@ class TeamService(
     private val rankingService: RankingService,
     private val categoryRepository: CategoryRepository,
     private val tournamentRepository: TournamentRepository,
+    private val rankingSeasonService: RankingSeasonService,
 ) {
     enum class PlayerType(val fieldName: String) {
         PLAYER_A("player_a_paid"),
@@ -92,9 +94,10 @@ class TeamService(
         val allCategoryIds = teams.map { it.category.id }.distinct()
         val userMap = teamRepository.findUsersByIds(allPlayerUids).associateBy { it.uid }
 
-        // Derive season dynamically from the tournament's start date
+        // Look up the active ranking season for the tournament's organizer
         val tournament = tournamentRepository.getById(tournamentId)
-        val season = tournament?.startDate?.take(4) ?: java.time.Year.now().toString()
+        val activeSeason = tournament?.organizerId?.let { rankingSeasonService.getActiveByOrganizer(it) }
+        val season = activeSeason?.id ?: java.time.Year.now().toString()
 
         // 1. Lookup by user_id (registered players)
         val pointsByUserAndCategory = if (allPlayerUids.isNotEmpty()) {
@@ -414,9 +417,10 @@ class TeamService(
     suspend fun getTeamWithFullPlayerInfo(teamId: String): TeamWithPlayerDto? {
         val team = teamRepository.findTeamById(teamId) ?: return null
 
-        // Derive season from tournament start date
+        // Look up the active ranking season for the tournament's organizer
         val tourn = tournamentRepository.getById(team.tournamentId)
-        val season = tourn?.startDate?.take(4) ?: java.time.Year.now().toString()
+        val activeSeason = tourn?.organizerId?.let { rankingSeasonService.getActiveByOrganizer(it) }
+        val season = activeSeason?.id ?: java.time.Year.now().toString()
 
         // Only fetch users for linked players (non-null UIDs)
         val userUids = listOfNotNull(team.playerAUid, team.playerBUid)
