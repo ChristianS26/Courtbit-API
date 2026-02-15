@@ -5,7 +5,6 @@ import kotlinx.coroutines.coroutineScope
 import models.explore.ExploreEvent
 import models.explore.ExploreEventsResponse
 import models.explore.ExploreOrganizer
-import models.explore.ExploreOrganizersResponse
 import models.organizer.OrganizerResponse
 import repositories.organizer.OrganizerRepository
 import repositories.league.SeasonRepository
@@ -22,7 +21,7 @@ class ExploreService(
 ) {
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
-    suspend fun getExploreEvents(page: Int, pageSize: Int, followedOrganizerIds: List<String>? = null): ExploreEventsResponse = coroutineScope {
+    suspend fun getExploreEvents(page: Int, pageSize: Int): ExploreEventsResponse = coroutineScope {
         val tournamentsDeferred = async { tournamentRepository.getAll() }
         val seasonsDeferred = async { seasonRepository.getAll() }
         val organizersDeferred = async { organizerRepository.getAll() }
@@ -86,18 +85,12 @@ class ExploreService(
                 )
             }
 
-        var allEvents = (tournamentEvents + seasonEvents).sortedBy { event ->
+        val allEvents = (tournamentEvents + seasonEvents).sortedBy { event ->
             try {
                 LocalDate.parse(event.startDate, dateFormatter)
             } catch (e: Exception) {
                 LocalDate.MAX
             }
-        }
-
-        // Filter by followed organizers if provided
-        if (followedOrganizerIds != null) {
-            val followedSet = followedOrganizerIds.toSet()
-            allEvents = allEvents.filter { it.organizerId in followedSet }
         }
 
         val offset = (page - 1) * pageSize
@@ -112,32 +105,7 @@ class ExploreService(
         )
     }
 
-    suspend fun getExploreOrganizers(limit: Int = 10): List<ExploreOrganizer> = coroutineScope {
-        val allOrganizers = buildOrganizerList()
-        allOrganizers.take(limit)
-    }
-
-    suspend fun getExploreOrganizersPaginated(page: Int, pageSize: Int, search: String? = null): ExploreOrganizersResponse = coroutineScope {
-        var allOrganizers = buildOrganizerList()
-
-        if (!search.isNullOrBlank()) {
-            val searchLower = search.lowercase()
-            allOrganizers = allOrganizers.filter { it.name.lowercase().contains(searchLower) }
-        }
-
-        val offset = (page - 1) * pageSize
-        val paginatedOrganizers = allOrganizers.drop(offset).take(pageSize)
-        val hasMore = offset + pageSize < allOrganizers.size
-
-        ExploreOrganizersResponse(
-            organizers = paginatedOrganizers,
-            page = page,
-            pageSize = pageSize,
-            hasMore = hasMore
-        )
-    }
-
-    private suspend fun buildOrganizerList(): List<ExploreOrganizer> = coroutineScope {
+    suspend fun getExploreOrganizers(): List<ExploreOrganizer> = coroutineScope {
         val organizersDeferred = async { organizerRepository.getAll() }
         val tournamentsDeferred = async { tournamentRepository.getAll() }
         val seasonsDeferred = async { seasonRepository.getAll() }
