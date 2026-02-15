@@ -8,6 +8,6 @@ import services.bracket.BracketService
 
 val BracketModule = module {
     single<BracketRepository> { BracketRepositoryImpl(get(), get(), get()) }
-    single { BracketAuditRepository(get(), get(), get()) }
+    single { BracketAuditRepository(get(), get()) }
     single { BracketService(get(), get(), get()) }  // repository + json + audit
 }
