@@ -84,6 +84,15 @@ data class MatchResponse(
 )
 
 /**
+ * Wrapper for score update results — includes the updated match and any warnings
+ * (e.g., auto-advance failure). Warnings are non-fatal and don't block the score update.
+ */
+data class MatchScoreResult(
+    val match: MatchResponse,
+    val warnings: List<String> = emptyList()
+)
+
+/**
  * Player info for bracket response
  */
 @Serializable
@@ -280,6 +289,7 @@ data class StandingInsertRequest(
     @SerialName("games_won") val gamesWon: Int,
     @SerialName("games_lost") val gamesLost: Int,
     @SerialName("point_difference") val pointDifference: Int,
+    @SerialName("round_reached") val roundReached: String? = null,
     @SerialName("group_number") val groupNumber: Int? = null
 )
 

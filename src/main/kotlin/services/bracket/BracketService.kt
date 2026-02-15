@@ -12,6 +12,7 @@ import models.bracket.GroupsKnockoutConfig
 import models.bracket.GroupsStateResponse
 import models.bracket.GroupState
 import models.bracket.MatchResponse
+import models.bracket.MatchScoreResult
 import models.bracket.ScoreValidationResult
 import models.bracket.SetScore
 import models.bracket.StandingEntry
@@ -19,6 +20,7 @@ import models.bracket.StandingInput
 import models.bracket.StandingsResponse
 import models.bracket.TeamSeed
 import models.bracket.WithdrawTeamResponse
+import org.slf4j.LoggerFactory
 import repositories.bracket.BracketAuditRepository
 import repositories.bracket.BracketRepository
 
@@ -208,6 +210,8 @@ class BracketService(
     private val json: Json,
     private val auditLog: BracketAuditRepository
 ) {
+    private val logger = LoggerFactory.getLogger(BracketService::class.java)
+
     companion object {
         const val MAX_TEAMS_PER_BRACKET = 128
         const val MAX_GROUPS = 16
@@ -441,7 +445,7 @@ class BracketService(
         setScores: List<SetScore>,
         expectedVersion: Int? = null,
         organizerId: String? = null
-    ): Result<MatchResponse> {
+    ): Result<MatchScoreResult> {
         // Validate set count
         if (setScores.size > MAX_SETS_PER_MATCH) {
             return Result.failure(IllegalArgumentException("Maximum $MAX_SETS_PER_MATCH sets per match"))
@@ -501,6 +505,8 @@ class BracketService(
         )
 
         // If score update succeeded, log audit, recalculate standings and advance winner
+        val warnings = mutableListOf<String>()
+
         if (updateResult.isSuccess) {
             auditLog.log("match", matchId, "update_score", organizerId, mapOf(
                 "set_scores" to setScores.toString(),
@@ -527,15 +533,16 @@ class BracketService(
                     if (bracket.format == "knockout" || bracket.format == "groups_knockout") {
                         try {
                             advanceWinner(matchId)
-                        } catch (_: Exception) {
-                            // Non-critical: advance may fail if no next match exists (e.g. final)
+                        } catch (e: Exception) {
+                            logger.error("Failed to auto-advance winner for match $matchId", e)
+                            warnings.add("El ganador no pudo avanzar automáticamente al siguiente partido. Verifique el bracket.")
                         }
                     }
                 }
             }
         }
 
-        return updateResult
+        return updateResult.map { MatchScoreResult(match = it, warnings = warnings) }
     }
 
     /**
@@ -635,7 +642,7 @@ class BracketService(
         matchId: String,
         userId: String,
         setScores: List<SetScore>
-    ): Result<MatchResponse> {
+    ): Result<MatchScoreResult> {
         // Get match
         val match = repository.getMatch(matchId)
             ?: return Result.failure(IllegalArgumentException("Match not found"))
@@ -699,6 +706,8 @@ class BracketService(
         )
 
         // Recalculate standings and auto-advance
+        val warnings = mutableListOf<String>()
+
         if (updateResult.isSuccess) {
             when (bracket.format) {
                 "groups_knockout" -> calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
@@ -706,11 +715,16 @@ class BracketService(
             }
 
             if (bracket.format == "knockout" || bracket.format == "groups_knockout") {
-                try { advanceWinner(matchId) } catch (_: Exception) {}
+                try {
+                    advanceWinner(matchId)
+                } catch (e: Exception) {
+                    logger.error("Failed to auto-advance winner for match $matchId", e)
+                    warnings.add("El ganador no pudo avanzar automáticamente al siguiente partido. Verifique el bracket.")
+                }
             }
         }
 
-        return updateResult
+        return updateResult.map { MatchScoreResult(match = it, warnings = warnings) }
     }
 
     // ============ Standings ============

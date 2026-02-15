@@ -718,7 +718,12 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 val result = bracketService.submitPlayerScore(matchId, userId, request.sets)
 
                 result.fold(
-                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onSuccess = { scoreResult ->
+                        if (scoreResult.warnings.isNotEmpty()) {
+                            call.response.headers.append("X-Bracket-Warnings", scoreResult.warnings.joinToString("|"))
+                        }
+                        call.respond(HttpStatusCode.OK, scoreResult.match)
+                    },
                     onFailure = { e ->
                         val message = e.message ?: "Update failed"
                         when {
@@ -759,7 +764,12 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 val result = bracketService.updateMatchScore(matchId, request.sets, request.version, organizerId)
 
                 result.fold(
-                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onSuccess = { scoreResult ->
+                        if (scoreResult.warnings.isNotEmpty()) {
+                            call.response.headers.append("X-Bracket-Warnings", scoreResult.warnings.joinToString("|"))
+                        }
+                        call.respond(HttpStatusCode.OK, scoreResult.match)
+                    },
                     onFailure = { e ->
                         val message = e.message ?: "Update failed"
                         when {

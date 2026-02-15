@@ -17,5 +17,6 @@ fun Application.configureCors() {
         allowMethod(io.ktor.http.HttpMethod.Patch)
         allowHeader(io.ktor.http.HttpHeaders.Authorization)
         allowHeader(io.ktor.http.HttpHeaders.ContentType)
+        exposeHeader("X-Bracket-Warnings")
     }
 }

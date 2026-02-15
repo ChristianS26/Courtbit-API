@@ -7,6 +7,9 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.SerialName
@@ -561,37 +564,40 @@ class BracketRepositoryImpl(
     override suspend fun upsertStandings(standings: List<StandingInput>): Boolean {
         if (standings.isEmpty()) return true
 
-        // Delete existing standings for this bracket first (simple approach for upsert)
         val bracketId = standings.first().bracketId
-        deleteStandings(bracketId)
 
-        // Convert to serializable insert requests
-        val insertRequests = standings.map { s ->
-            StandingInsertRequest(
-                bracketId = s.bracketId,
-                teamId = s.teamId,
-                playerId = s.playerId,
-                position = s.position,
-                totalPoints = s.totalPoints,
-                matchesPlayed = s.matchesPlayed,
-                matchesWon = s.matchesWon,
-                matchesLost = s.matchesLost,
-                gamesWon = s.gamesWon,
-                gamesLost = s.gamesLost,
-                pointDifference = s.pointDifference,
-                groupNumber = s.groupNumber
-            )
+        // Build standings JSON array for the RPC function
+        val standingsJson = buildJsonArray {
+            standings.forEach { s ->
+                addJsonObject {
+                    s.teamId?.let { put("team_id", it) } ?: put("team_id", JsonNull)
+                    s.playerId?.let { put("player_id", it) } ?: put("player_id", JsonNull)
+                    put("position", s.position)
+                    put("total_points", s.totalPoints)
+                    put("matches_played", s.matchesPlayed)
+                    put("matches_won", s.matchesWon)
+                    put("matches_lost", s.matchesLost)
+                    put("games_won", s.gamesWon)
+                    put("games_lost", s.gamesLost)
+                    put("point_difference", s.pointDifference)
+                    s.roundReached?.let { put("round_reached", it) } ?: put("round_reached", JsonNull)
+                    s.groupNumber?.let { put("group_number", it) } ?: put("group_number", JsonNull)
+                }
+            }
         }
 
-        // Use jsonForBulkInsert to ensure all objects have the same keys
-        val jsonBody = jsonForBulkInsert.encodeToString(insertRequests)
+        // Call RPC function — atomic delete+insert in a single transaction
+        val body = buildJsonObject {
+            put("p_bracket_id", bracketId)
+            put("p_standings", standingsJson)
+        }
 
-        val response = client.post("$apiUrl/tournament_standings") {
+        val response = client.post("$apiUrl/rpc/upsert_bracket_standings") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=minimal")
             contentType(ContentType.Application.Json)
-            setBody(jsonBody)
+            setBody(body.toString())
         }
 
         return response.status.isSuccess()
