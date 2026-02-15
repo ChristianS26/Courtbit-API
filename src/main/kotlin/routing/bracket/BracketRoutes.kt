@@ -774,7 +774,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@patch
                 }
 
-                val result = bracketService.submitPlayerScore(matchId, userId, request.sets)
+                val result = bracketService.submitPlayerScore(matchId, userId, request.sets, request.version)
 
                 result.fold(
                     onSuccess = { scoreResult ->

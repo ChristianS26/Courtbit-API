@@ -9,6 +9,7 @@ import models.bracket.BracketWithMatchesResponse
 import models.bracket.GeneratedMatch
 import models.bracket.GroupAssignment
 import models.bracket.GroupsKnockoutConfig
+import models.bracket.MatchFormatConfig
 import models.bracket.GroupsStateResponse
 import models.bracket.GroupState
 import models.bracket.MatchResponse
@@ -216,6 +217,47 @@ class BracketService(
         const val MAX_TEAMS_PER_BRACKET = 128
         const val MAX_GROUPS = 16
         const val MAX_SETS_PER_MATCH = 5
+    }
+
+    // ============ Private Helpers ============
+
+    /**
+     * Parse match format from bracket config. Returns null if config is missing or unparseable.
+     */
+    private fun parseMatchFormat(bracket: BracketResponse): MatchFormatConfig? {
+        return bracket.config?.let {
+            try {
+                val config = json.decodeFromString<GroupsKnockoutConfig>(it.toString())
+                config.matchFormat
+            } catch (e: Exception) {
+                logger.warn("Failed to parse bracket config for bracket ${bracket.id}: ${e.message}")
+                null
+            }
+        }
+    }
+
+    /**
+     * Validate set scores based on match format (express or classic).
+     */
+    private fun validateSetScores(setScores: List<SetScore>, matchFormat: MatchFormatConfig?): ScoreValidationResult {
+        return if (matchFormat?.pointsPerSet != null) {
+            PadelScoreValidator.validateExpressScore(setScores, matchFormat.pointsPerSet, matchFormat.sets)
+        } else {
+            val gamesPerSet = matchFormat?.gamesPerSet ?: 6
+            val totalSets = matchFormat?.sets ?: 3
+            val allowTiebreak = matchFormat?.tieBreak == true || (matchFormat?.tieBreakAt != null && matchFormat.tieBreakAt > 0)
+            PadelScoreValidator.validateMatchScore(setScores, gamesPerSet, totalSets, allowTiebreak)
+        }
+    }
+
+    /**
+     * Recalculate standings based on bracket format.
+     */
+    private suspend fun recalculateStandings(bracket: BracketResponse) {
+        when (bracket.format) {
+            "groups_knockout" -> calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
+            "round_robin" -> calculateStandings(bracket.tournamentId, bracket.categoryId)
+        }
     }
 
     /**
@@ -469,40 +511,19 @@ class BracketService(
         val bracket = repository.getBracketById(match.bracketId)
             ?: return Result.failure(IllegalArgumentException("Bracket not found"))
 
-        // Parse match format from bracket config
-        val matchFormat = bracket.config?.let {
-            try {
-                val config = json.decodeFromString<GroupsKnockoutConfig>(it.toString())
-                config.matchFormat
-            } catch (e: Exception) { null }
-        }
-
-        // Validate based on format
-        val validation = if (matchFormat?.pointsPerSet != null) {
-            // Express format validation
-            val maxPoints = matchFormat.pointsPerSet
-            val totalSets = matchFormat.sets
-            PadelScoreValidator.validateExpressScore(setScores, maxPoints, totalSets)
-        } else {
-            // Classic format validation
-            val gamesPerSet = matchFormat?.gamesPerSet ?: 6
-            val totalSets = matchFormat?.sets ?: 3
-            val allowTiebreak = matchFormat?.tieBreak == true || (matchFormat?.tieBreakAt != null && matchFormat.tieBreakAt > 0)
-            PadelScoreValidator.validateMatchScore(setScores, gamesPerSet, totalSets, allowTiebreak)
-        }
+        val matchFormat = parseMatchFormat(bracket)
+        val validation = validateSetScores(setScores, matchFormat)
 
         if (validation is ScoreValidationResult.Invalid) {
             return Result.failure(IllegalArgumentException(validation.message))
         }
 
         val validResult = validation as ScoreValidationResult.Valid
-
-        // Use sets won (not total games) for scoreTeam1/scoreTeam2
         val setsWonTeam1 = validResult.setsWon.first
         val setsWonTeam2 = validResult.setsWon.second
 
-        // Update the match score (with optimistic locking if version provided)
-        val updateResult = repository.updateMatchScore(
+        // Atomically update score and advance winner in a single DB transaction
+        val atomicResult = repository.updateMatchScoreAndAdvance(
             matchId = matchId,
             scoreTeam1 = setsWonTeam1,
             scoreTeam2 = setsWonTeam2,
@@ -511,45 +532,17 @@ class BracketService(
             expectedVersion = expectedVersion
         )
 
-        // If score update succeeded, log audit, recalculate standings and advance winner
         val warnings = mutableListOf<String>()
 
-        if (updateResult.isSuccess) {
+        if (atomicResult.isSuccess) {
             auditLog.log("match", matchId, "update_score", organizerId, mapOf(
                 "set_scores" to setScores.toString(),
-                "winner" to (validation as ScoreValidationResult.Valid).winner.toString()
+                "winner" to validResult.winner.toString()
             ))
-            val updatedMatch = updateResult.getOrNull()
-            if (updatedMatch != null) {
-                // Get bracket info to recalculate standings
-                val bracket = repository.getBracketById(updatedMatch.bracketId)
-                if (bracket != null) {
-                    // Recalculate standings based on bracket format
-                    when (bracket.format) {
-                        "groups_knockout" -> {
-                            // Recalculate group standings
-                            calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
-                        }
-                        "round_robin" -> {
-                            // Recalculate standings for round robin
-                            calculateStandings(bracket.tournamentId, bracket.categoryId)
-                        }
-                    }
-
-                    // Auto-advance winner for knockout matches
-                    if (bracket.format == "knockout" || bracket.format == "groups_knockout") {
-                        try {
-                            advanceWinner(matchId)
-                        } catch (e: Exception) {
-                            logger.error("Failed to auto-advance winner for match $matchId", e)
-                            warnings.add("El ganador no pudo avanzar automáticamente al siguiente partido. Verifique el bracket.")
-                        }
-                    }
-                }
-            }
+            recalculateStandings(bracket)
         }
 
-        return updateResult.map { MatchScoreResult(match = it, warnings = warnings) }
+        return atomicResult.map { (updatedMatch, _) -> MatchScoreResult(match = updatedMatch, warnings = warnings) }
     }
 
     /**
@@ -587,52 +580,22 @@ class BracketService(
 
     /**
      * Reset a match score: clears scores, reverses advancement, recalculates standings.
+     * Uses an atomic RPC to prevent TOCTOU race conditions on the next match status check.
      */
     suspend fun resetMatchScore(matchId: String, organizerId: String? = null): Result<MatchResponse> {
         val match = repository.getMatch(matchId)
             ?: return Result.failure(IllegalArgumentException("Match not found"))
 
-        if (match.status != "completed") {
-            return Result.failure(IllegalStateException("El partido no tiene resultado para borrar"))
-        }
+        // Atomically reset score and reverse advancement in a single DB transaction
+        val result = repository.resetMatchScoreAtomic(matchId)
 
-        // If this match advanced a winner to a knockout match, reverse the advancement
-        val nextMatchId = match.nextMatchId
-        val nextMatchPosition = match.nextMatchPosition
-        if (nextMatchId != null && nextMatchPosition != null) {
-            val nextMatch = repository.getMatch(nextMatchId)
-            if (nextMatch != null) {
-                // Only reverse if the next match hasn't started
-                if (nextMatch.status == "pending") {
-                    val fieldToNull = if (nextMatchPosition == 1) "team1_id" else "team2_id"
-                    repository.updateMatchTeams(
-                        nextMatchId,
-                        team1Id = if (nextMatchPosition == 1) null else nextMatch.team1Id,
-                        team2Id = if (nextMatchPosition == 2) null else nextMatch.team2Id,
-                        groupNumber = null
-                    )
-                } else {
-                    return Result.failure(IllegalStateException(
-                        "No se puede borrar: el siguiente partido ya comenzó"
-                    ))
-                }
-            }
-        }
-
-        // Reset the match score
-        val result = repository.resetMatchScore(matchId)
-
-        // Recalculate standings and log audit
         if (result.isSuccess) {
             auditLog.log("match", matchId, "reset_score", organizerId, mapOf(
                 "previous_score" to "${match.scoreTeam1}-${match.scoreTeam2}"
             ))
             val bracket = repository.getBracketById(match.bracketId)
             if (bracket != null) {
-                when (bracket.format) {
-                    "groups_knockout" -> calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
-                    "round_robin" -> calculateStandings(bracket.tournamentId, bracket.categoryId)
-                }
+                recalculateStandings(bracket)
             }
         }
 
@@ -648,7 +611,8 @@ class BracketService(
     suspend fun submitPlayerScore(
         matchId: String,
         userId: String,
-        setScores: List<SetScore>
+        setScores: List<SetScore>,
+        expectedVersion: Int? = null
     ): Result<MatchScoreResult> {
         // Get match
         val match = repository.getMatch(matchId)
@@ -669,30 +633,21 @@ class BracketService(
             return Result.failure(IllegalAccessException("Tournament does not allow player score submission"))
         }
 
+        // Ensure both teams are assigned (prevents scoring BYE matches or unassigned slots)
+        if (match.team1Id == null || match.team2Id == null) {
+            return Result.failure(IllegalStateException("Cannot submit score: match has unassigned teams"))
+        }
+
         // Verify player is in the match
-        val team1Uids = match.team1Id?.let { repository.getTeamPlayerUids(it) } ?: emptyList()
-        val team2Uids = match.team2Id?.let { repository.getTeamPlayerUids(it) } ?: emptyList()
+        val team1Uids = repository.getTeamPlayerUids(match.team1Id)
+        val team2Uids = repository.getTeamPlayerUids(match.team2Id)
         val allPlayerUids = team1Uids + team2Uids
         if (userId !in allPlayerUids) {
             return Result.failure(IllegalAccessException("User is not a player in this match"))
         }
 
-        // Parse match format from bracket config
-        val matchFormat = bracket.config?.let {
-            try {
-                val config = json.decodeFromString<GroupsKnockoutConfig>(it.toString())
-                config.matchFormat
-            } catch (e: Exception) { null }
-        }
-
-        // Validate score
-        val validation = if (matchFormat?.pointsPerSet != null) {
-            PadelScoreValidator.validateExpressScore(setScores, matchFormat.pointsPerSet, matchFormat.sets)
-        } else {
-            val gamesPerSet = matchFormat?.gamesPerSet ?: 6
-            val totalSets = matchFormat?.sets ?: 3
-            PadelScoreValidator.validateMatchScore(setScores, gamesPerSet, totalSets)
-        }
+        val matchFormat = parseMatchFormat(bracket)
+        val validation = validateSetScores(setScores, matchFormat)
 
         if (validation is ScoreValidationResult.Invalid) {
             return Result.failure(IllegalArgumentException(validation.message))
@@ -702,36 +657,24 @@ class BracketService(
         val setsWonTeam1 = validResult.setsWon.first
         val setsWonTeam2 = validResult.setsWon.second
 
-        // Update with audit trail
-        val updateResult = repository.updateMatchScoreWithAudit(
+        // Atomically update score and advance winner in a single DB transaction
+        val atomicResult = repository.updateMatchScoreAndAdvance(
             matchId = matchId,
             scoreTeam1 = setsWonTeam1,
             scoreTeam2 = setsWonTeam2,
             setScores = setScores,
             winnerTeam = validResult.winner,
+            expectedVersion = expectedVersion,
             submittedByUserId = userId
         )
 
-        // Recalculate standings and auto-advance
         val warnings = mutableListOf<String>()
 
-        if (updateResult.isSuccess) {
-            when (bracket.format) {
-                "groups_knockout" -> calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
-                "round_robin" -> calculateStandings(bracket.tournamentId, bracket.categoryId)
-            }
-
-            if (bracket.format == "knockout" || bracket.format == "groups_knockout") {
-                try {
-                    advanceWinner(matchId)
-                } catch (e: Exception) {
-                    logger.error("Failed to auto-advance winner for match $matchId", e)
-                    warnings.add("El ganador no pudo avanzar automáticamente al siguiente partido. Verifique el bracket.")
-                }
-            }
+        if (atomicResult.isSuccess) {
+            recalculateStandings(bracket)
         }
 
-        return updateResult.map { MatchScoreResult(match = it, warnings = warnings) }
+        return atomicResult.map { (updatedMatch, _) -> MatchScoreResult(match = updatedMatch, warnings = warnings) }
     }
 
     // ============ Standings ============
@@ -1477,60 +1420,14 @@ class BracketService(
         val bracket = bracketWithMatches.bracket
         val matches = bracketWithMatches.matches
 
-        // Check if the specific teams being swapped have played matches
-        val team1HasPlayedMatches = matches.any {
-            (it.team1Id == team1Id || it.team2Id == team1Id) &&
-            it.status in listOf("in_progress", "completed")
+        // Atomically swap teams in a single DB transaction
+        val swapResult = repository.swapTeamsInGroupsAtomic(bracket.id, team1Id, team2Id)
+        if (swapResult.isFailure) {
+            return Result.failure(swapResult.exceptionOrNull()!!)
         }
-        val team2HasPlayedMatches = matches.any {
-            (it.team1Id == team2Id || it.team2Id == team2Id) &&
-            it.status in listOf("in_progress", "completed")
-        }
-
-        if (team1HasPlayedMatches) {
-            return Result.failure(IllegalStateException(
-                "El primer equipo ya tiene partidos jugados y no puede ser movido"
-            ))
-        }
-        if (team2HasPlayedMatches) {
-            return Result.failure(IllegalStateException(
-                "El segundo equipo ya tiene partidos jugados y no puede ser movido"
-            ))
-        }
-
-        // Find which groups these teams are in
-        val team1Matches = matches.filter { it.team1Id == team1Id || it.team2Id == team1Id }
-        val team2Matches = matches.filter { it.team1Id == team2Id || it.team2Id == team2Id }
-
-        val team1Group = team1Matches.firstOrNull()?.groupNumber
-            ?: return Result.failure(IllegalArgumentException("Team 1 not found in any group"))
-        val team2Group = team2Matches.firstOrNull()?.groupNumber
-            ?: return Result.failure(IllegalArgumentException("Team 2 not found in any group"))
-
-        if (team1Group == team2Group) {
-            return Result.failure(IllegalArgumentException("Teams are already in the same group"))
-        }
-
-        // Swap teams in all affected matches
-        for (match in team1Matches) {
-            val newTeam1Id = if (match.team1Id == team1Id) team2Id else match.team1Id
-            val newTeam2Id = if (match.team2Id == team1Id) team2Id else match.team2Id
-            repository.updateMatchTeams(match.id, newTeam1Id, newTeam2Id, team2Group)
-        }
-
-        for (match in team2Matches) {
-            val newTeam1Id = if (match.team1Id == team2Id) team1Id else match.team1Id
-            val newTeam2Id = if (match.team2Id == team2Id) team1Id else match.team2Id
-            repository.updateMatchTeams(match.id, newTeam1Id, newTeam2Id, team1Group)
-        }
-
-        // Update standings group numbers
-        repository.updateStandingGroupNumber(bracket.id, team1Id, team2Group)
-        repository.updateStandingGroupNumber(bracket.id, team2Id, team1Group)
 
         auditLog.log("bracket", bracket.id, "swap_teams", organizerId, mapOf(
-            "team1_id" to team1Id, "team2_id" to team2Id,
-            "team1_from_group" to team1Group.toString(), "team2_from_group" to team2Group.toString()
+            "team1_id" to team1Id, "team2_id" to team2Id
         ))
 
         // Recalculate standings if any matches have been played

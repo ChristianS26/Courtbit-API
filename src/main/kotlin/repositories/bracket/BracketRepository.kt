@@ -105,9 +105,30 @@ interface BracketRepository {
     ): Result<MatchResponse>
 
     /**
+     * Atomically update match score AND advance winner to next match in a single transaction.
+     * Uses a Supabase RPC function to prevent race conditions between score update and advancement.
+     * Returns the updated match and whether the winner was advanced.
+     */
+    suspend fun updateMatchScoreAndAdvance(
+        matchId: String,
+        scoreTeam1: Int,
+        scoreTeam2: Int,
+        setScores: List<SetScore>,
+        winnerTeam: Int,
+        expectedVersion: Int? = null,
+        submittedByUserId: String? = null
+    ): Result<Pair<MatchResponse, Boolean>>
+
+    /**
      * Reset match score: clear scores, set_scores, winner_team, and set status back to pending.
      */
     suspend fun resetMatchScore(matchId: String): Result<MatchResponse>
+
+    /**
+     * Atomically reset match score AND reverse advancement to next match.
+     * Locks both the current and next match to prevent TOCTOU race conditions.
+     */
+    suspend fun resetMatchScoreAtomic(matchId: String): Result<MatchResponse>
 
     /**
      * Advance winner to next match.
@@ -172,6 +193,12 @@ interface BracketRepository {
     suspend fun updateStandingGroupNumber(bracketId: String, teamId: String, groupNumber: Int): Boolean
 
     /**
+     * Atomically swap two teams between groups: updates all match references and standings.
+     * Uses a Supabase RPC to ensure all-or-nothing swap.
+     */
+    suspend fun swapTeamsInGroupsAtomic(bracketId: String, team1Id: String, team2Id: String): Result<Unit>
+
+    /**
      * Update match schedule (court number and scheduled time)
      * Pass null values to clear the schedule
      */
@@ -198,6 +225,7 @@ interface BracketRepository {
         scoreTeam2: Int,
         setScores: List<SetScore>,
         winnerTeam: Int,
-        submittedByUserId: String
+        submittedByUserId: String,
+        expectedVersion: Int? = null
     ): Result<MatchResponse>
 }
