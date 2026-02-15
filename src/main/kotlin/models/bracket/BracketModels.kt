@@ -78,6 +78,7 @@ data class MatchResponse(
     @SerialName("scheduled_time") val scheduledTime: String? = null,
     @SerialName("court_number") val courtNumber: Int? = null,
     @SerialName("is_bye") val isBye: Boolean = false,
+    val version: Int = 1,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
 )
@@ -167,7 +168,8 @@ data class MatchInsertRequest(
  */
 @Serializable
 data class UpdateScoreRequest(
-    val sets: List<SetScore>
+    val sets: List<SetScore>,
+    val version: Int? = null  // Optimistic locking: current version of the match
 )
 
 /**
