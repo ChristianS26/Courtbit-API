@@ -233,6 +233,13 @@ class BracketService(
     }
 
     /**
+     * Get all brackets with matches, standings, and players for a tournament (bulk fetch)
+     */
+    suspend fun getAllBracketsWithMatches(tournamentId: String): List<BracketWithMatchesResponse> {
+        return repository.getAllBracketsWithMatches(tournamentId)
+    }
+
+    /**
      * Update bracket config (e.g. match format) without regenerating matches.
      */
     suspend fun updateBracketConfig(
@@ -1171,6 +1178,12 @@ class BracketService(
                 } else {
                     matchesLost++
                 }
+                // H2H record vs team2
+                headToHead.getOrPut(team2Id) { H2HRecord() }.apply {
+                    gamesFor += team1Games
+                    gamesAgainst += team2Games
+                    if (match.winnerTeam == 1) wins++ else losses++
+                }
             }
 
             // Update team2 stats
@@ -1184,17 +1197,37 @@ class BracketService(
                 } else {
                     matchesLost++
                 }
+                // H2H record vs team1
+                headToHead.getOrPut(team1Id) { H2HRecord() }.apply {
+                    gamesFor += team2Games
+                    gamesAgainst += team1Games
+                    if (match.winnerTeam == 2) wins++ else losses++
+                }
             }
         }
 
-        // Sort by group, then by points, then by game difference
+        // Sort by group, then by: points → H2H → game difference → games won
         val sortedStandings = standingsMap.values
             .groupBy { it.groupNumber }
             .flatMap { (_, groupTeams) ->
                 groupTeams.sortedWith(
-                    compareByDescending<GroupStandingBuilder> { it.totalPoints }
-                        .thenByDescending { it.gamesWon - it.gamesLost }
-                        .thenByDescending { it.gamesWon }
+                    Comparator<GroupStandingBuilder> { a, b ->
+                        // 1. Total points (descending)
+                        val pointsDiff = b.totalPoints - a.totalPoints
+                        if (pointsDiff != 0) return@Comparator pointsDiff
+
+                        // 2. Head-to-head: team with more H2H wins ranks higher
+                        val aWinsVsB = a.headToHead[b.teamId]?.wins ?: 0
+                        val bWinsVsA = b.headToHead[a.teamId]?.wins ?: 0
+                        if (aWinsVsB != bWinsVsA) return@Comparator bWinsVsA - aWinsVsB  // descending: more wins = smaller value
+
+                        // 3. Game difference (descending)
+                        val gdDiff = (b.gamesWon - b.gamesLost) - (a.gamesWon - a.gamesLost)
+                        if (gdDiff != 0) return@Comparator gdDiff
+
+                        // 4. Games won (descending)
+                        b.gamesWon - a.gamesWon
+                    }
                 ).mapIndexed { index, builder ->
                     StandingInput(
                         bracketId = bracket.id,
@@ -1510,6 +1543,92 @@ class BracketService(
     }
 
     /**
+     * Compute group formation: how many groups and their sizes.
+     * Uses groups of 3 and 4 to minimize variance.
+     */
+    private fun computeGroupFormation(teamCount: Int): Pair<Int, List<Int>> {
+        if (teamCount < 4) return 0 to emptyList()
+        if (teamCount == 4) return 1 to listOf(4)
+        if (teamCount == 5) return 1 to listOf(5)
+
+        val remainder = teamCount % 3
+        val groupsOf4 = when (remainder) { 0 -> 0; 1 -> 1; else -> 2 }
+        val groupsOf3 = (teamCount - groupsOf4 * 4) / 3
+
+        val sizes = List(groupsOf3) { 3 } + List(groupsOf4) { 4 }
+        return (groupsOf3 + groupsOf4) to sizes
+    }
+
+    /**
+     * Snake-seed teams into groups respecting exact group sizes.
+     * Serpentine pattern alternates L→R and R→L per row.
+     */
+    private fun snakeSeedTeamsWithSizes(teamIds: List<String>, groupSizes: List<Int>): List<List<String>> {
+        val groupCount = groupSizes.size
+        if (groupCount < 1 || teamIds.isEmpty()) return emptyList()
+
+        val groups = List(groupCount) { mutableListOf<String>() }
+        var teamIndex = 0
+        var row = 0
+
+        while (teamIndex < teamIds.size) {
+            val indices = (0 until groupCount).toList()
+            val ordered = if (row % 2 == 0) indices else indices.reversed()
+
+            for (gi in ordered) {
+                if (teamIndex >= teamIds.size) break
+                if (groups[gi].size < groupSizes[gi]) {
+                    groups[gi].add(teamIds[teamIndex])
+                    teamIndex++
+                }
+            }
+            row++
+        }
+
+        return groups
+    }
+
+    /**
+     * Generate group stage with server-side group computation.
+     * Backend computes group formation + snake seeding from team IDs and config.
+     */
+    suspend fun generateGroupStageAuto(
+        tournamentId: String,
+        categoryId: Int,
+        teamIds: List<String>,
+        config: GroupsKnockoutConfig
+    ): Result<BracketWithMatchesResponse> {
+        // Compute group sizes from config or auto-detect
+        val (_, groupSizes) = if (config.groupCount > 0 && config.teamsPerGroup > 0) {
+            // Use explicit config
+            val sizes = List(config.groupCount) { config.teamsPerGroup }
+            config.groupCount to sizes
+        } else {
+            computeGroupFormation(teamIds.size)
+        }
+
+        if (groupSizes.isEmpty()) {
+            return Result.failure(IllegalArgumentException("Cannot form groups from ${teamIds.size} teams"))
+        }
+
+        // Snake-seed teams into groups
+        val groupedTeams = snakeSeedTeamsWithSizes(teamIds, groupSizes)
+
+        // Build AssignGroupsRequest
+        val groups = groupedTeams.mapIndexed { index, teams ->
+            GroupAssignment(groupNumber = index + 1, teamIds = teams)
+        }
+
+        val actualConfig = config.copy(
+            groupCount = groupSizes.size,
+            teamsPerGroup = groupSizes.maxOrNull() ?: 0
+        )
+
+        val request = AssignGroupsRequest(groups = groups, config = actualConfig)
+        return generateGroupStage(tournamentId, categoryId, request)
+    }
+
+    /**
      * Helper class for building group standings
      */
     private data class GroupStandingBuilder(
@@ -1520,7 +1639,16 @@ class BracketService(
         var matchesLost: Int = 0,
         var gamesWon: Int = 0,
         var gamesLost: Int = 0,
-        var totalPoints: Int = 0
+        var totalPoints: Int = 0,
+        // Head-to-head: opponentTeamId → (wins, losses, gamesFor, gamesAgainst)
+        val headToHead: MutableMap<String, H2HRecord> = mutableMapOf()
+    )
+
+    private data class H2HRecord(
+        var wins: Int = 0,
+        var losses: Int = 0,
+        var gamesFor: Int = 0,
+        var gamesAgainst: Int = 0
     )
 
     /**

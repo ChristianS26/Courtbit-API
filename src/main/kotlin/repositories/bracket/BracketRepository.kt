@@ -33,6 +33,11 @@ interface BracketRepository {
     suspend fun getBracketsByTournament(tournamentId: String): List<BracketResponse>
 
     /**
+     * Get all brackets with matches, standings, and players for a tournament (bulk fetch)
+     */
+    suspend fun getAllBracketsWithMatches(tournamentId: String): List<BracketWithMatchesResponse>
+
+    /**
      * Create a new bracket
      */
     suspend fun createBracket(

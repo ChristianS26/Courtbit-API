@@ -15,6 +15,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.bracket.AssignGroupsRequest
 import models.bracket.CreateBracketRequest
+import models.bracket.GenerateGroupStageAutoRequest
 import models.bracket.ErrorResponse
 import models.bracket.GenerateBracketRequest
 import models.bracket.SuccessResponse
@@ -42,6 +43,19 @@ fun Route.bracketRoutes(bracketService: BracketService) {
             }
 
             val brackets = bracketService.getBracketsByTournament(tournamentId)
+            call.respond(HttpStatusCode.OK, brackets)
+        }
+
+        // GET /api/brackets/all?tournament_id=xxx
+        // Public - get all brackets with matches, standings, and players (bulk)
+        get("/all") {
+            val tournamentId = call.request.queryParameters["tournament_id"]
+            if (tournamentId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                return@get
+            }
+
+            val brackets = bracketService.getAllBracketsWithMatches(tournamentId)
             call.respond(HttpStatusCode.OK, brackets)
         }
 
@@ -506,6 +520,51 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                             is IllegalArgumentException -> call.respond(
                                 HttpStatusCode.BadRequest,
                                 mapOf("error" to (e.message ?: "Invalid group assignment"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Group generation failed"))
+                            )
+                        }
+                    }
+                )
+            }
+
+            // POST /api/brackets/{categoryId}/groups/generate?tournament_id=xxx
+            // Generate group stage with server-side computation (backend computes groups)
+            post("/{categoryId}/groups/generate") {
+                val organizerId = call.getOrganizerId() ?: return@post
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@post
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@post
+                }
+
+                val request = try {
+                    call.receive<GenerateGroupStageAutoRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid request: ${e.localizedMessage}"))
+                    return@post
+                }
+
+                val result = bracketService.generateGroupStageAuto(
+                    tournamentId, categoryId, request.teamIds, request.config
+                )
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.Created, it) },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (e.message ?: "Invalid request"))
                             )
                             else -> call.respond(
                                 HttpStatusCode.InternalServerError,

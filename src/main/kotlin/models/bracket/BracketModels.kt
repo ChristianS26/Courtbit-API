@@ -396,6 +396,16 @@ data class AssignGroupsRequest(
 )
 
 /**
+ * Request to generate group stage with server-side computation.
+ * Backend computes group formation + snake seeding.
+ */
+@Serializable
+data class GenerateGroupStageAutoRequest(
+    @SerialName("team_ids") val teamIds: List<String>,
+    val config: GroupsKnockoutConfig
+)
+
+/**
  * Request to swap two teams between groups
  */
 @Serializable

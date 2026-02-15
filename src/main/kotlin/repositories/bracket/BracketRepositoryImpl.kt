@@ -253,6 +253,87 @@ class BracketRepositoryImpl(
         return allPlayers
     }
 
+    override suspend fun getAllBracketsWithMatches(tournamentId: String): List<BracketWithMatchesResponse> {
+        val brackets = getBracketsByTournament(tournamentId)
+        if (brackets.isEmpty()) return emptyList()
+
+        // Fetch all matches for all brackets in one query
+        val bracketIds = brackets.map { it.id }
+        val bracketIdsFilter = bracketIds.joinToString(",") { "\"$it\"" }
+
+        val matchesResponse = client.get("$apiUrl/tournament_matches") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("bracket_id", "in.($bracketIdsFilter)")
+            parameter("select", "*")
+            parameter("order", "round_number.asc,match_number.asc")
+        }
+
+        val allMatches = if (matchesResponse.status.isSuccess()) {
+            json.decodeFromString<List<MatchResponse>>(matchesResponse.bodyAsText())
+        } else {
+            emptyList()
+        }
+
+        // Fetch all teams referenced in matches (one query)
+        val teamsMap = getTeamsMap(allMatches)
+
+        // Enrich matches with player IDs
+        fun getPlayerId(team: TeamDto?, playerType: Char): String? {
+            if (team == null) return null
+            return when (playerType) {
+                'a' -> team.playerAUid ?: if (!team.playerAName.isNullOrBlank()) "manual-${team.id}-a" else null
+                'b' -> team.playerBUid ?: if (!team.playerBName.isNullOrBlank()) "manual-${team.id}-b" else null
+                else -> null
+            }
+        }
+
+        val enrichedMatches = allMatches.map { match ->
+            val team1 = match.team1Id?.let { teamsMap[it] }
+            val team2 = match.team2Id?.let { teamsMap[it] }
+            match.copy(
+                team1Player1Id = getPlayerId(team1, 'a'),
+                team1Player2Id = getPlayerId(team1, 'b'),
+                team2Player1Id = getPlayerId(team2, 'a'),
+                team2Player2Id = getPlayerId(team2, 'b')
+            )
+        }
+
+        // Group matches by bracket ID
+        val matchesByBracket = enrichedMatches.groupBy { it.bracketId }
+
+        // Fetch all standings in one query
+        val standingsResponse = client.get("$apiUrl/tournament_standings") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("bracket_id", "in.($bracketIdsFilter)")
+            parameter("select", "*")
+            parameter("order", "group_number.asc.nullsfirst,position.asc")
+        }
+
+        val allStandings = if (standingsResponse.status.isSuccess()) {
+            json.decodeFromString<List<StandingEntry>>(standingsResponse.bodyAsText())
+        } else {
+            emptyList()
+        }
+        val standingsByBracket = allStandings.groupBy { it.bracketId }
+
+        // Fetch all players in one pass
+        val allPlayers = getPlayersForBracket("bulk", enrichedMatches)
+
+        // Assemble per-bracket responses
+        return brackets.map { bracket ->
+            val bracketMatches = matchesByBracket[bracket.id] ?: emptyList()
+            val bracketStandings = standingsByBracket[bracket.id] ?: emptyList()
+            BracketWithMatchesResponse(
+                bracket = bracket,
+                matches = bracketMatches,
+                standings = bracketStandings,
+                players = allPlayers
+            )
+        }
+    }
+
     override suspend fun getBracketsByTournament(tournamentId: String): List<BracketResponse> {
         val response = client.get("$apiUrl/tournament_brackets") {
             header("apikey", apiKey)
