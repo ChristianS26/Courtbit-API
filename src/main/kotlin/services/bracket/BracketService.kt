@@ -769,6 +769,13 @@ class BracketService(
         val bracket = bracketWithMatches.bracket
         val matches = bracketWithMatches.matches
 
+        // Parse config for configurable points
+        val config = bracket.config?.let {
+            try { json.decodeFromString<GroupsKnockoutConfig>(it.toString()) }
+            catch (e: Exception) { null }
+        }
+        val kp = config?.knockoutPoints ?: GroupsKnockoutConfig.KnockoutPointsConfig()
+
         // Calculate from completed and forfeited matches
         val completedMatches = matches.filter { it.status in listOf("completed", "forfeit") }
 
@@ -841,19 +848,19 @@ class BracketService(
                 .thenByDescending { it.gamesWon - it.gamesLost }  // Tiebreaker: game difference
         ).mapIndexed { index, builder ->
             val roundReached = when {
-                builder.matchesLost == 0 && finalMatch != null -> "Winner"
-                builder.roundNameLost == "Final" -> "Finalist"
-                builder.roundNameLost == "Semifinals" -> "Semi-finalist"
-                builder.roundNameLost == "Quarterfinals" -> "Quarter-finalist"
-                else -> "Round ${builder.lastRoundLost ?: 1}"
+                builder.matchesLost == 0 && finalMatch != null -> "Campeón"
+                builder.roundNameLost == "Final" -> "Finalista"
+                builder.roundNameLost == "Semifinales" -> "Semifinalista"
+                builder.roundNameLost == "Cuartos de final" -> "Cuartofinalista"
+                else -> "Ronda ${builder.lastRoundLost ?: 1}"
             }
 
             val points = when (roundReached) {
-                "Winner" -> 100
-                "Finalist" -> 70
-                "Semi-finalist" -> 50
-                "Quarter-finalist" -> 30
-                else -> 10 + ((builder.lastRoundLost ?: 1) * 5)
+                "Campeón" -> kp.winner
+                "Finalista" -> kp.finalist
+                "Semifinalista" -> kp.semiFinalist
+                "Cuartofinalista" -> kp.quarterFinalist
+                else -> kp.basePoints + ((builder.lastRoundLost ?: 1) * kp.perRoundBonus)
             }
 
             StandingInput(
@@ -1097,6 +1104,12 @@ class BracketService(
         val bracket = bracketWithMatches.bracket
         val matches = bracketWithMatches.matches
 
+        // Parse config for configurable points
+        val config = bracket.config?.let {
+            try { json.decodeFromString<GroupsKnockoutConfig>(it.toString()) }
+            catch (e: Exception) { null }
+        }
+
         // Get group matches only
         val groupMatches = matches.filter { it.groupNumber != null }
 
@@ -1145,6 +1158,8 @@ class BracketService(
             val team1Games = setScores.sumOf { it.team1 }
             val team2Games = setScores.sumOf { it.team2 }
 
+            val winPoints = config?.groupWinPoints ?: 3
+
             // Update team1 stats
             standingsMap[team1Id]?.apply {
                 matchesPlayed++
@@ -1152,7 +1167,7 @@ class BracketService(
                 gamesLost += team2Games
                 if (match.winnerTeam == 1) {
                     matchesWon++
-                    totalPoints += 3  // 3 points for win
+                    totalPoints += winPoints
                 } else {
                     matchesLost++
                 }
@@ -1165,7 +1180,7 @@ class BracketService(
                 gamesLost += team1Games
                 if (match.winnerTeam == 2) {
                     matchesWon++
-                    totalPoints += 3
+                    totalPoints += winPoints
                 } else {
                     matchesLost++
                 }
@@ -1729,9 +1744,11 @@ class BracketService(
         val roundsFromEnd = totalRounds - round + 1
         return when (roundsFromEnd) {
             1 -> "Final"
-            2 -> "Semifinals"
-            3 -> "Quarterfinals"
-            else -> "Round $round"
+            2 -> "Semifinales"
+            3 -> "Cuartos de final"
+            4 -> "Octavos de final"
+            5 -> "Dieciseisavos"
+            else -> "Ronda $round"
         }
     }
 

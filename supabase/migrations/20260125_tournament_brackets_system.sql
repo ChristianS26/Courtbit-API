@@ -118,6 +118,9 @@ CREATE INDEX idx_tournament_matches_team1_player2_id ON tournament_matches(team1
 CREATE INDEX idx_tournament_matches_team2_player1_id ON tournament_matches(team2_player1_id);
 CREATE INDEX idx_tournament_matches_team2_player2_id ON tournament_matches(team2_player2_id);
 
+-- Unique constraint: no duplicate match numbers within a bracket
+ALTER TABLE tournament_matches ADD CONSTRAINT unique_bracket_match_number UNIQUE (bracket_id, match_number);
+
 -- Standings indexes
 CREATE INDEX idx_tournament_standings_bracket ON tournament_standings(bracket_id);
 CREATE INDEX idx_tournament_standings_position ON tournament_standings(bracket_id, position);

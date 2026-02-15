@@ -362,8 +362,20 @@ data class GroupsKnockoutConfig(
     @SerialName("third_place_match") val thirdPlaceMatch: Boolean = false,
     @SerialName("wildcard_count") val wildcardCount: Int = 0,  // Best runners-up to fill bracket (0, 1, 2, etc.)
     @SerialName("wildcard_source") val wildcardSource: String? = null,  // "second" or "third"
-    @SerialName("match_format") val matchFormat: MatchFormatConfig? = null  // Match format configuration
-)
+    @SerialName("match_format") val matchFormat: MatchFormatConfig? = null,  // Match format configuration
+    @SerialName("group_win_points") val groupWinPoints: Int = 3,  // Points for winning a group match (default: 3)
+    @SerialName("knockout_points") val knockoutPoints: KnockoutPointsConfig? = null  // Points for knockout placement
+) {
+    @Serializable
+    data class KnockoutPointsConfig(
+        val winner: Int = 100,
+        val finalist: Int = 70,
+        @SerialName("semi_finalist") val semiFinalist: Int = 50,
+        @SerialName("quarter_finalist") val quarterFinalist: Int = 30,
+        @SerialName("base_points") val basePoints: Int = 10,
+        @SerialName("per_round_bonus") val perRoundBonus: Int = 5
+    )
+}
 
 /**
  * Assignment of teams to a single group
