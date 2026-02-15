@@ -4,6 +4,7 @@ import org.koin.dsl.module
 import repositories.organization.OrganizationTeamRepository
 import repositories.organizer.OrganizerRepository
 import repositories.organizer.OrganizerRepositoryImpl
+import services.follow.FollowService
 import services.organizer.OrganizerService
 
 val OrganizerModule = module {
@@ -20,7 +21,10 @@ val OrganizerModule = module {
     single {
         OrganizerService(
             repository = get(),  // OrganizerRepository
-            organizationTeamRepository = get<OrganizationTeamRepository>()
+            organizationTeamRepository = get<OrganizationTeamRepository>(),
+            followService = get<FollowService>(),
+            tournamentRepository = get(),
+            seasonRepository = get()
         )
     }
 }

@@ -1,16 +1,27 @@
 package services.organizer
 
+import models.explore.ExploreEvent
 import models.organizer.CreateOrganizerRequest
+import models.organizer.OrganizerPublicProfileResponse
 import models.organizer.OrganizerResponse
 import models.organizer.OrganizerStatisticsResponse
 import models.organizer.UpdateOrganizerRequest
+import repositories.league.SeasonRepository
 import repositories.organization.OrganizationTeamRepository
 import repositories.organizer.OrganizerRepository
+import repositories.tournament.TournamentRepository
+import services.follow.FollowService
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 class OrganizerService(
     private val repository: OrganizerRepository,
-    private val organizationTeamRepository: OrganizationTeamRepository? = null
+    private val organizationTeamRepository: OrganizationTeamRepository? = null,
+    private val followService: FollowService? = null,
+    private val tournamentRepository: TournamentRepository? = null,
+    private val seasonRepository: SeasonRepository? = null
 ) {
+    private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
     /**
      * Get all organizers
@@ -170,5 +181,113 @@ class OrganizerService(
      */
     suspend fun getOrganizerStatistics(organizerId: String): OrganizerStatisticsResponse? {
         return repository.getStatistics(organizerId)
+    }
+
+    /**
+     * Get public profile for an organizer.
+     * Includes follower count, follow status, and upcoming/past events.
+     */
+    suspend fun getPublicProfile(organizerId: String, currentUserId: String?): OrganizerPublicProfileResponse? {
+        val organizer = repository.getById(organizerId) ?: return null
+
+        val followerCount = followService?.getFollowerCount(organizerId) ?: 0L
+        val isFollowing = if (currentUserId != null) {
+            followService?.isFollowing(currentUserId, organizerId) ?: false
+        } else {
+            false
+        }
+
+        val today = LocalDate.now()
+
+        val tournaments = tournamentRepository?.getByOrganizerId(organizerId) ?: emptyList()
+        val seasons = seasonRepository?.getByOrganizerId(organizerId) ?: emptyList()
+
+        val tournamentEvents = tournaments
+            .filter { it.isEnabled }
+            .map { t ->
+                ExploreEvent(
+                    id = t.id,
+                    name = t.name,
+                    type = "tournament",
+                    startDate = t.startDate,
+                    endDate = t.endDate,
+                    location = t.location,
+                    flyerUrl = t.flyerUrl,
+                    registrationOpen = t.registrationOpen,
+                    isActive = true,
+                    organizerId = t.organizerId,
+                    organizerName = t.organizerName ?: organizer.name,
+                    organizerLogoUrl = t.organizerLogoUrl ?: organizer.logoUrl,
+                    organizerIsVerified = organizer.isVerified
+                )
+            }
+
+        val seasonEvents = seasons.map { s ->
+            ExploreEvent(
+                id = s.id,
+                name = s.name,
+                type = "league",
+                startDate = s.startDate,
+                endDate = s.endDate,
+                location = null,
+                flyerUrl = null,
+                registrationOpen = s.registrationsOpen,
+                isActive = s.isActive,
+                organizerId = s.organizerId,
+                organizerName = s.organizerName ?: organizer.name,
+                organizerLogoUrl = s.organizerLogoURL ?: organizer.logoUrl,
+                organizerIsVerified = organizer.isVerified
+            )
+        }
+
+        val allEvents = tournamentEvents + seasonEvents
+
+        val upcomingEvents = allEvents.filter { event ->
+            try {
+                val endDate = if (event.endDate != null) {
+                    LocalDate.parse(event.endDate, dateFormatter)
+                } else {
+                    LocalDate.parse(event.startDate, dateFormatter)
+                }
+                !endDate.isBefore(today)
+            } catch (e: Exception) {
+                true
+            }
+        }.sortedBy {
+            try { LocalDate.parse(it.startDate, dateFormatter) } catch (e: Exception) { LocalDate.MAX }
+        }
+
+        val pastEvents = allEvents.filter { event ->
+            try {
+                val endDate = if (event.endDate != null) {
+                    LocalDate.parse(event.endDate, dateFormatter)
+                } else {
+                    LocalDate.parse(event.startDate, dateFormatter)
+                }
+                endDate.isBefore(today)
+            } catch (e: Exception) {
+                false
+            }
+        }.sortedByDescending {
+            try { LocalDate.parse(it.startDate, dateFormatter) } catch (e: Exception) { LocalDate.MIN }
+        }
+
+        return OrganizerPublicProfileResponse(
+            id = organizer.id,
+            name = organizer.name,
+            description = organizer.description,
+            logoUrl = organizer.logoUrl,
+            primaryColor = organizer.primaryColor,
+            secondaryColor = organizer.secondaryColor,
+            contactEmail = organizer.contactEmail,
+            contactPhone = organizer.contactPhone,
+            instagram = organizer.instagram,
+            facebook = organizer.facebook,
+            isVerified = organizer.isVerified,
+            followerCount = followerCount,
+            isFollowing = isFollowing,
+            upcomingEvents = upcomingEvents,
+            pastEvents = pastEvents
+        )
     }
 }

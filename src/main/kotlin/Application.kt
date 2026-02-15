@@ -43,6 +43,8 @@ fun Application.module() {
             ClubModule,
             CityPadelClubModule,
             DiscountCodeModule,
+            FollowModule,
+            ExploreModule,
         )
     }
 

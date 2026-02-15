@@ -56,6 +56,8 @@ import com.incodap.routing.club.clubRoutes
 import com.incodap.routing.city.cityRoutes
 import com.incodap.routing.padelclub.padelClubRoutes
 import com.incodap.routing.discountcode.discountCodeRoutes
+import routing.explore.exploreRoutes
+import routing.follow.followRoutes
 import com.incodap.services.club.ClubService
 import services.city.CityService
 import services.padelclub.PadelClubService
@@ -74,6 +76,8 @@ import services.organization.OrganizationTeamService
 import services.organizer.OrganizerService
 import services.registrationcode.RegistrationCodeService
 import services.discountcode.DiscountCodeService
+import services.explore.ExploreService
+import services.follow.FollowService
 import services.remoteconfig.RemoteConfigService
 import services.teams.TeamService
 
@@ -137,6 +141,12 @@ fun Application.configureRouting() {
 
             // Categorías
             categoryRoutes(get())
+
+            // Follow system (organizer followers)
+            followRoutes(get<FollowService>())
+
+            // Explore events feed
+            exploreRoutes(get<ExploreService>())
 
             // Organizers
             organizerRoutes(get<OrganizerService>())
