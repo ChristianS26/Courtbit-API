@@ -10,7 +10,7 @@ data class Ranking(
     val id: String? = null,
 
     @SerialName("user_id")
-    val userId: String,
+    val userId: String? = null,
 
     @SerialName("category")
     val category: CategoryResponseDto,
@@ -23,4 +23,10 @@ data class Ranking(
 
     @SerialName("updated_at")
     val updatedAt: String? = null,
+
+    @SerialName("player_email")
+    val playerEmail: String? = null,
+
+    @SerialName("player_phone")
+    val playerPhone: String? = null,
 )

@@ -26,6 +26,7 @@ import models.teams.createManualPlayerDto
 import models.teams.toTeamPlayerDto
 import repositories.category.CategoryRepository
 import repositories.registrationcode.RegistrationCodeRepository
+import repositories.tournament.TournamentRepository
 import services.ranking.RankingService
 
 class TeamService(
@@ -33,6 +34,7 @@ class TeamService(
     private val registrationCodeRepository: RegistrationCodeRepository,
     private val rankingService: RankingService,
     private val categoryRepository: CategoryRepository,
+    private val tournamentRepository: TournamentRepository,
 ) {
     enum class PlayerType(val fieldName: String) {
         PLAYER_A("player_a_paid"),
@@ -90,13 +92,43 @@ class TeamService(
         val allCategoryIds = teams.map { it.category.id }.distinct()
         val userMap = teamRepository.findUsersByIds(allPlayerUids).associateBy { it.uid }
 
-        val allRankings = if (allPlayerUids.isNotEmpty()) {
+        // Derive season dynamically from the tournament's start date
+        val tournament = tournamentRepository.getById(tournamentId)
+        val season = tournament?.startDate?.take(4) ?: java.time.Year.now().toString()
+
+        // 1. Lookup by user_id (registered players)
+        val pointsByUserAndCategory = if (allPlayerUids.isNotEmpty()) {
             rankingService.getRankingForMultipleUsersAndCategories(
-                allPlayerUids, allCategoryIds, "2025"
-            )
-        } else emptyList()
-        val pointsByUserAndCategory =
-            allRankings.associate { (it.userId to it.category.id) to it.totalPoints }
+                allPlayerUids, allCategoryIds, season
+            ).filter { it.userId != null }
+                .associate { (it.userId!! to it.category.id) to it.totalPoints }
+        } else emptyMap()
+
+        // 2. Collect emails from manual players (no user_id)
+        val manualEmails = teams.flatMap { listOfNotNull(
+            if (it.playerAUid == null && !it.playerAEmail.isNullOrBlank()) it.playerAEmail else null,
+            if (it.playerBUid == null && !it.playerBEmail.isNullOrBlank()) it.playerBEmail else null,
+        ) }.distinct()
+
+        // 3. Collect phones from manual players with no user_id AND no email
+        val manualPhones = teams.flatMap { listOfNotNull(
+            if (it.playerAUid == null && it.playerAEmail.isNullOrBlank() && !it.playerAPhone.isNullOrBlank()) it.playerAPhone else null,
+            if (it.playerBUid == null && it.playerBEmail.isNullOrBlank() && !it.playerBPhone.isNullOrBlank()) it.playerBPhone else null,
+        ) }.distinct()
+
+        // 4. Lookup by email
+        val pointsByEmailAndCategory = if (manualEmails.isNotEmpty()) {
+            rankingService.getRankingByEmails(manualEmails, allCategoryIds, season)
+                .groupBy { (it.playerEmail to it.category.id) }
+                .mapValues { (_, rankings) -> rankings.sumOf { it.totalPoints } }
+        } else emptyMap()
+
+        // 5. Lookup by phone
+        val pointsByPhoneAndCategory = if (manualPhones.isNotEmpty()) {
+            rankingService.getRankingByPhones(manualPhones, allCategoryIds, season)
+                .groupBy { (it.playerPhone to it.category.id) }
+                .mapValues { (_, rankings) -> rankings.sumOf { it.totalPoints } }
+        } else emptyMap()
 
         val statusList: List<TeamWithResultStatusDto> =
             teamRepository.getTeamsWithResultStatus(tournamentId)
@@ -116,8 +148,15 @@ class TeamService(
 
             val sortedTeams = teamsInCategory
                 .map { team ->
-                    val aPts = team.playerAUid?.let { pointsByUserAndCategory[(it to team.category.id)] } ?: 0
-                    val bPts = team.playerBUid?.let { pointsByUserAndCategory[(it to team.category.id)] } ?: 0
+                    val catId = team.category.id
+                    val aPts = team.playerAUid?.let { pointsByUserAndCategory[(it to catId)] }
+                        ?: team.playerAEmail?.let { pointsByEmailAndCategory[(it to catId)] }
+                        ?: team.playerAPhone?.let { pointsByPhoneAndCategory[(it to catId)] }
+                        ?: 0
+                    val bPts = team.playerBUid?.let { pointsByUserAndCategory[(it to catId)] }
+                        ?: team.playerBEmail?.let { pointsByEmailAndCategory[(it to catId)] }
+                        ?: team.playerBPhone?.let { pointsByPhoneAndCategory[(it to catId)] }
+                        ?: 0
                     Triple(team, aPts, bPts)
                 }
                 .sortedByDescending { it.second + it.third }
@@ -375,6 +414,10 @@ class TeamService(
     suspend fun getTeamWithFullPlayerInfo(teamId: String): TeamWithPlayerDto? {
         val team = teamRepository.findTeamById(teamId) ?: return null
 
+        // Derive season from tournament start date
+        val tourn = tournamentRepository.getById(team.tournamentId)
+        val season = tourn?.startDate?.take(4) ?: java.time.Year.now().toString()
+
         // Only fetch users for linked players (non-null UIDs)
         val userUids = listOfNotNull(team.playerAUid, team.playerBUid)
         val users = teamRepository.findUsersByIds(userUids).associateBy { it.uid }
@@ -383,11 +426,12 @@ class TeamService(
             rankingService.getRankingForMultipleUsersAndCategories(
                 userUids,
                 listOf(team.category.id),
-                "2025"
-            ).associateBy(
-                { it.userId to it.category.id },
-                { it.totalPoints }
-            )
+                season
+            ).filter { it.userId != null }
+                .associateBy(
+                    { it.userId!! to it.category.id },
+                    { it.totalPoints }
+                )
         } else emptyMap()
 
         val base = mapTeamToPlayerDtoWithPoints(team, users, points)

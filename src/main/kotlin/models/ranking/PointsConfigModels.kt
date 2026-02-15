@@ -52,6 +52,8 @@ data class BatchRankingEntry(
     val position: String,
     @SerialName("team_result_id") val teamResultId: String? = null,
     @SerialName("player_name") val playerName: String? = null,
+    @SerialName("player_email") val playerEmail: String? = null,
+    @SerialName("player_phone") val playerPhone: String? = null,
 )
 
 @Serializable

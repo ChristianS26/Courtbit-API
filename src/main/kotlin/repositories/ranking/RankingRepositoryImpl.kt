@@ -76,6 +76,9 @@ class RankingRepositoryImpl(
                 put("points", entry["points"] as Int)
                 put("position", entry["position"] as String)
                 entry["team_result_id"]?.let { put("team_result_id", it as String) }
+                entry["player_name"]?.let { put("player_name", it as String) }
+                entry["player_email"]?.let { put("player_email", it as String) }
+                entry["player_phone"]?.let { put("player_phone", it as String) }
             }
         })
 
@@ -243,7 +246,63 @@ class RankingRepositoryImpl(
             if (season != null) {
                 parameter("season", "eq.$season")
             }
-            parameter("select", "*,category:category_id(*)") // ¡ESTE ES EL JOIN!
+            parameter("select", "*,category:category_id(*)")
+        }
+
+        return if (response.status.isSuccess()) {
+            json.decodeFromString(ListSerializer(Ranking.serializer()), response.bodyAsText())
+        } else {
+            emptyList()
+        }
+    }
+
+    override suspend fun getRankingByEmails(
+        emails: List<String>,
+        categoryIds: List<Int>,
+        season: String?
+    ): List<Ranking> {
+        if (emails.isEmpty() || categoryIds.isEmpty()) return emptyList()
+
+        val emailClause = emails.joinToString(",") { "\"$it\"" }
+        val categoryClause = categoryIds.joinToString(",") { "\"$it\"" }
+
+        val response = client.get("$apiUrl/ranking") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("player_email", "in.($emailClause)")
+            parameter("category_id", "in.($categoryClause)")
+            if (season != null) {
+                parameter("season", "eq.$season")
+            }
+            parameter("select", "*,category:category_id(*)")
+        }
+
+        return if (response.status.isSuccess()) {
+            json.decodeFromString(ListSerializer(Ranking.serializer()), response.bodyAsText())
+        } else {
+            emptyList()
+        }
+    }
+
+    override suspend fun getRankingByPhones(
+        phones: List<String>,
+        categoryIds: List<Int>,
+        season: String?
+    ): List<Ranking> {
+        if (phones.isEmpty() || categoryIds.isEmpty()) return emptyList()
+
+        val phoneClause = phones.joinToString(",") { "\"$it\"" }
+        val categoryClause = categoryIds.joinToString(",") { "\"$it\"" }
+
+        val response = client.get("$apiUrl/ranking") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("player_phone", "in.($phoneClause)")
+            parameter("category_id", "in.($categoryClause)")
+            if (season != null) {
+                parameter("season", "eq.$season")
+            }
+            parameter("select", "*,category:category_id(*)")
         }
 
         return if (response.status.isSuccess()) {

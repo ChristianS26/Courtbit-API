@@ -14,5 +14,7 @@ interface RankingRepository {
     suspend fun getRankingByUser(userId: String, season: String?): List<Ranking>
     suspend fun getPlayerProfile(userId: String, categoryId: Int, season: String? = null): PlayerProfileResponse
     suspend fun getRankingForMultipleUsersAndCategories(userIds: List<String>, categoryIds: List<Int>, season: String?): List<Ranking>
+    suspend fun getRankingByEmails(emails: List<String>, categoryIds: List<Int>, season: String?): List<Ranking>
+    suspend fun getRankingByPhones(phones: List<String>, categoryIds: List<Int>, season: String?): List<Ranking>
     suspend fun checkExistingEvents(tournamentId: String, categoryId: Int): Boolean
 }

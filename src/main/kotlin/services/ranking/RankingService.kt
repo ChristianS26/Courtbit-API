@@ -38,6 +38,8 @@ class RankingService(
                 put("position", entry.position)
                 entry.teamResultId?.let { put("team_result_id", it) }
                 entry.playerName?.let { put("player_name", it) }
+                entry.playerEmail?.let { put("player_email", it) }
+                entry.playerPhone?.let { put("player_phone", it) }
             }
         }
 
@@ -98,5 +100,13 @@ class RankingService(
 
     suspend fun getRankingForMultipleUsersAndCategories(userIds: List<String>, categoryIds: List<Int>, season: String?): List<Ranking> {
         return repository.getRankingForMultipleUsersAndCategories(userIds, categoryIds, season)
+    }
+
+    suspend fun getRankingByEmails(emails: List<String>, categoryIds: List<Int>, season: String?): List<Ranking> {
+        return repository.getRankingByEmails(emails, categoryIds, season)
+    }
+
+    suspend fun getRankingByPhones(phones: List<String>, categoryIds: List<Int>, season: String?): List<Ranking> {
+        return repository.getRankingByPhones(phones, categoryIds, season)
     }
 }
