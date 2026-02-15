@@ -343,17 +343,12 @@ fun Route.tournamentRoutes(
                 }
 
                 val config = tournamentService.getSchedulingConfig(id)
-                if (config != null) {
-                    call.respond(HttpStatusCode.OK, config)
-                } else {
-                    // Return default config if none exists
-                    call.respond(HttpStatusCode.OK, mapOf(
-                        "tournament_id" to id,
-                        "courts" to emptyList<Any>(),
-                        "match_duration_minutes" to 45,
-                        "tournament_days" to emptyList<String>()
-                    ))
-                }
+                call.respond(HttpStatusCode.OK, config ?: models.tournament.SchedulingConfigResponse(
+                    tournamentId = id,
+                    courts = emptyList(),
+                    matchDurationMinutes = 45,
+                    tournamentDays = emptyList()
+                ))
             }
 
             // PUT /tournaments/{id}/scheduling-config - Save scheduling configuration

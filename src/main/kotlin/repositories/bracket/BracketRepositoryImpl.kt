@@ -5,6 +5,7 @@ import io.ktor.client.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.ktor.http.content.TextContent
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -405,8 +406,7 @@ class BracketRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
-            contentType(ContentType.Application.Json)
-            setBody(jsonBody)
+            setBody(TextContent(jsonBody, ContentType.Application.Json))
         }
 
         if (!response.status.isSuccess()) return emptyList()
@@ -423,8 +423,7 @@ class BracketRepositoryImpl(
         val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            contentType(ContentType.Application.Json)
-            setBody(jsonBody)
+            setBody(TextContent(jsonBody, ContentType.Application.Json))
         }
 
         return response.status.isSuccess()
@@ -541,8 +540,7 @@ class BracketRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
-            contentType(ContentType.Application.Json)
-            setBody(jsonBody)
+            setBody(TextContent(jsonBody, ContentType.Application.Json))
         }
 
         val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
@@ -575,8 +573,7 @@ class BracketRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
-            contentType(ContentType.Application.Json)
-            setBody(jsonBody)
+            setBody(TextContent(jsonBody, ContentType.Application.Json))
         }
 
         val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
@@ -677,8 +674,7 @@ class BracketRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=minimal")
-            contentType(ContentType.Application.Json)
-            setBody(body.toString())
+            setBody(TextContent(body.toString(), ContentType.Application.Json))
         }
 
         return response.status.isSuccess()
@@ -738,8 +734,7 @@ class BracketRepositoryImpl(
         val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            contentType(ContentType.Application.Json)
-            setBody(jsonBody)
+            setBody(TextContent(jsonBody, ContentType.Application.Json))
         }
 
         return response.status.isSuccess()
@@ -764,8 +759,7 @@ class BracketRepositoryImpl(
         val response = client.patch("$apiUrl/tournament_brackets?id=eq.$bracketId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            contentType(ContentType.Application.Json)
-            setBody("""{"config":$configJson}""")
+            setBody(TextContent("""{"config":$configJson}""", ContentType.Application.Json))
         }
 
         return response.status.isSuccess()
@@ -783,8 +777,7 @@ class BracketRepositoryImpl(
         val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            contentType(ContentType.Application.Json)
-            setBody(body.toString())
+            setBody(TextContent(body.toString(), ContentType.Application.Json))
         }
 
         return response.status.isSuccess()
@@ -809,8 +802,7 @@ class BracketRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
-            contentType(ContentType.Application.Json)
-            setBody(bodyJson)
+            setBody(TextContent(bodyJson, ContentType.Application.Json))
         }
 
         val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
@@ -886,8 +878,7 @@ class BracketRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
-            contentType(ContentType.Application.Json)
-            setBody(bodyJson)
+            setBody(TextContent(bodyJson, ContentType.Application.Json))
         }
 
         return if (response.status.isSuccess()) {
