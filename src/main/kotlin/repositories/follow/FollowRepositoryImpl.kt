@@ -8,6 +8,8 @@ import io.ktor.http.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 
 class FollowRepositoryImpl(
     private val client: HttpClient,
@@ -99,6 +101,30 @@ class FollowRepositoryImpl(
             }
         } catch (e: Exception) {
             false
+        }
+    }
+
+    override suspend fun getFollowedOrganizerIds(userId: String): List<String> {
+        return try {
+            @Serializable
+            data class RpcPayload(@SerialName("p_user_id") val userId: String)
+
+            val response = client.post("$apiUrl/rpc/get_followed_organizer_ids") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(RpcPayload.serializer(), RpcPayload(userId)))
+            }
+
+            if (response.status.isSuccess()) {
+                val body = response.bodyAsText().trim()
+                val jsonArray = json.parseToJsonElement(body).jsonArray
+                jsonArray.map { it.jsonPrimitive.content }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 }

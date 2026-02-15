@@ -39,3 +39,11 @@ data class ExploreOrganizer(
     @SerialName("follower_count") val followerCount: Long = 0,
     @SerialName("event_count") val eventCount: Int = 0
 )
+
+@Serializable
+data class ExploreOrganizersResponse(
+    val organizers: List<ExploreOrganizer>,
+    val page: Int,
+    @SerialName("page_size") val pageSize: Int,
+    @SerialName("has_more") val hasMore: Boolean
+)

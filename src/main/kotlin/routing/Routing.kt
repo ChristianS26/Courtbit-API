@@ -146,7 +146,7 @@ fun Application.configureRouting() {
             followRoutes(get<FollowService>())
 
             // Explore events feed
-            exploreRoutes(get<ExploreService>())
+            exploreRoutes(get<ExploreService>(), get<FollowService>())
 
             // Organizers
             organizerRoutes(get<OrganizerService>())

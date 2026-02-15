@@ -20,4 +20,8 @@ class FollowService(
     suspend fun isFollowing(userId: String, organizerId: String): Boolean {
         return repository.isFollowing(userId, organizerId)
     }
+
+    suspend fun getFollowedOrganizerIds(userId: String): List<String> {
+        return repository.getFollowedOrganizerIds(userId)
+    }
 }
