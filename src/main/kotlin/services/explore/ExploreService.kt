@@ -75,6 +75,14 @@ class ExploreService(
 
         val seasonEvents = seasons
             .filter { it.isActive }
+            .filter {
+                try {
+                    val endDate = it.endDate?.let { d -> LocalDate.parse(d, dateFormatter) }
+                    endDate == null || !endDate.isBefore(today)
+                } catch (e: Exception) {
+                    true
+                }
+            }
             .map { s ->
                 val org = s.organizerId?.let { organizerMap[it] }
                 ExploreEvent(
