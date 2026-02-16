@@ -25,12 +25,20 @@ import models.bracket.UpdateStatusRequest
 import models.bracket.UpdateBracketConfigRequest
 import models.bracket.UpdateScheduleRequest
 import models.bracket.WithdrawTeamRequest
+import services.bracket.BracketGenerationService
+import services.bracket.BracketScoringService
 import services.bracket.BracketService
+import services.bracket.BracketStandingsService
 
 /**
  * Bracket API routes
  */
-fun Route.bracketRoutes(bracketService: BracketService) {
+fun Route.bracketRoutes(
+    bracketService: BracketService,
+    scoringService: BracketScoringService,
+    standingsService: BracketStandingsService,
+    generationService: BracketGenerationService
+) {
     route("/brackets") {
 
         // GET /api/brackets?tournament_id=xxx
@@ -120,7 +128,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 return@get
             }
 
-            val result = bracketService.getStandings(tournamentId, categoryId)
+            val result = standingsService.getStandings(tournamentId, categoryId)
 
             result.fold(
                 onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -143,7 +151,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 return@get
             }
 
-            val result = bracketService.getGroupsState(tournamentId, categoryId)
+            val result = generationService.getGroupsState(tournamentId, categoryId)
 
             result.fold(
                 onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -296,7 +304,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                val result = bracketService.generateBracket(
+                val result = generationService.generateBracket(
                     tournamentId = tournamentId,
                     categoryId = categoryId,
                     seedingMethod = request.seedingMethod,
@@ -420,7 +428,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                val result = bracketService.calculateStandings(tournamentId, categoryId)
+                val result = standingsService.calculateStandings(tournamentId, categoryId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -511,7 +519,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 request.groups.forEach { group ->
                 }
 
-                val result = bracketService.generateGroupStage(tournamentId, categoryId, request)
+                val result = generationService.generateGroupStage(tournamentId, categoryId, request)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.Created, it) },
@@ -554,7 +562,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                val result = bracketService.generateGroupStageAuto(
+                val result = generationService.generateGroupStageAuto(
                     tournamentId, categoryId, request.teamIds, request.config
                 )
 
@@ -599,7 +607,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                val result = bracketService.swapTeamsInGroups(
+                val result = generationService.swapTeamsInGroups(
                     tournamentId,
                     categoryId,
                     request.team1Id,
@@ -648,7 +656,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                val result = bracketService.calculateGroupStandings(tournamentId, categoryId)
+                val result = standingsService.calculateGroupStandings(tournamentId, categoryId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -678,7 +686,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                val result = bracketService.generateKnockoutFromGroups(tournamentId, categoryId, organizerId)
+                val result = generationService.generateKnockoutFromGroups(tournamentId, categoryId, organizerId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.Created, it) },
@@ -718,7 +726,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@delete
                 }
 
-                val result = bracketService.deleteKnockoutPhase(tournamentId, categoryId, organizerId)
+                val result = generationService.deleteKnockoutPhase(tournamentId, categoryId, organizerId)
 
                 result.fold(
                     onSuccess = {
@@ -774,7 +782,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@patch
                 }
 
-                val result = bracketService.submitPlayerScore(matchId, userId, request.sets, request.version)
+                val result = scoringService.submitPlayerScore(matchId, userId, request.sets, request.version)
 
                 result.fold(
                     onSuccess = { scoreResult ->
@@ -820,7 +828,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@patch
                 }
 
-                val result = bracketService.updateMatchScore(matchId, request.sets, request.version, organizerId)
+                val result = scoringService.updateMatchScore(matchId, request.sets, request.version, organizerId)
 
                 result.fold(
                     onSuccess = { scoreResult ->
@@ -856,7 +864,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@delete
                 }
 
-                val result = bracketService.resetMatchScore(matchId, organizerId)
+                val result = scoringService.resetMatchScore(matchId, organizerId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, SuccessResponse("Resultado eliminado")) },
@@ -887,7 +895,7 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     return@post
                 }
 
-                val result = bracketService.advanceWinner(matchId)
+                val result = scoringService.advanceWinner(matchId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
