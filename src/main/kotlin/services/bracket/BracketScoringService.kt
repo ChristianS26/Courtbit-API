@@ -1,5 +1,7 @@
 package services.bracket
 
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import models.bracket.BracketResponse
 import models.bracket.GroupsKnockoutConfig
@@ -11,6 +13,7 @@ import models.bracket.SetScore
 import org.slf4j.LoggerFactory
 import repositories.bracket.BracketAuditRepository
 import repositories.bracket.BracketRepository
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Service for bracket match scoring operations.
@@ -22,6 +25,9 @@ class BracketScoringService(
     private val standingsService: BracketStandingsService
 ) {
     private val logger = LoggerFactory.getLogger(BracketScoringService::class.java)
+
+    /** Per-bracket mutex to serialize standings recalculations and prevent race conditions. */
+    private val recalcLocks = ConcurrentHashMap<String, Mutex>()
 
     companion object {
         const val MAX_SETS_PER_MATCH = 5
@@ -58,11 +64,16 @@ class BracketScoringService(
 
     /**
      * Recalculate standings based on bracket format.
+     * Uses a per-bracket mutex to prevent concurrent recalculations from
+     * overwriting each other (the last one to finish always has fresh data).
      */
     private suspend fun recalculateStandings(bracket: BracketResponse) {
-        when (bracket.format) {
-            "groups_knockout" -> standingsService.calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
-            else -> standingsService.calculateStandings(bracket.tournamentId, bracket.categoryId)
+        val mutex = recalcLocks.getOrPut(bracket.id) { Mutex() }
+        mutex.withLock {
+            when (bracket.format) {
+                "groups_knockout" -> standingsService.calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
+                else -> standingsService.calculateStandings(bracket.tournamentId, bracket.categoryId)
+            }
         }
     }
 
