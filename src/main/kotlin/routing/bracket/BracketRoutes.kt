@@ -729,46 +729,53 @@ fun Route.bracketRoutes(
             // DELETE /api/brackets/{categoryId}/groups/knockout?tournament_id=xxx
             // Delete knockout phase (keeps group stage intact)
             delete("/{categoryId}/groups/knockout") {
-                val organizerId = call.getOrganizerId() ?: return@delete
+                try {
+                    val organizerId = call.getOrganizerId() ?: return@delete
 
-                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
-                if (categoryId == null) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
-                    return@delete
-                }
-
-                val tournamentId = call.request.queryParameters["tournament_id"]
-                if (tournamentId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
-                    return@delete
-                }
-
-                val result = generationService.deleteKnockoutPhase(tournamentId, categoryId, organizerId)
-
-                result.fold(
-                    onSuccess = {
-                        call.respond(HttpStatusCode.OK, mapOf(
-                            "success" to true,
-                            "message" to "Knockout phase deleted successfully"
-                        ))
-                    },
-                    onFailure = { e ->
-                        when (e) {
-                            is IllegalArgumentException -> call.respond(
-                                HttpStatusCode.NotFound,
-                                mapOf("error" to (e.message ?: "No knockout phase found"))
-                            )
-                            is IllegalStateException -> call.respond(
-                                HttpStatusCode.Conflict,
-                                mapOf("error" to (e.message ?: "Cannot delete knockout phase"))
-                            )
-                            else -> call.respond(
-                                HttpStatusCode.InternalServerError,
-                                mapOf("error" to (e.message ?: "Deletion failed"))
-                            )
-                        }
+                    val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                    if (categoryId == null) {
+                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                        return@delete
                     }
-                )
+
+                    val tournamentId = call.request.queryParameters["tournament_id"]
+                    if (tournamentId.isNullOrBlank()) {
+                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                        return@delete
+                    }
+
+                    val result = generationService.deleteKnockoutPhase(tournamentId, categoryId, organizerId)
+
+                    result.fold(
+                        onSuccess = {
+                            call.respond(HttpStatusCode.OK, mapOf(
+                                "success" to true,
+                                "message" to "Knockout phase deleted successfully"
+                            ))
+                        },
+                        onFailure = { e ->
+                            when (e) {
+                                is IllegalArgumentException -> call.respond(
+                                    HttpStatusCode.NotFound,
+                                    mapOf("error" to (e.message ?: "No knockout phase found"))
+                                )
+                                is IllegalStateException -> call.respond(
+                                    HttpStatusCode.Conflict,
+                                    mapOf("error" to (e.message ?: "Cannot delete knockout phase"))
+                                )
+                                else -> call.respond(
+                                    HttpStatusCode.InternalServerError,
+                                    mapOf("error" to (e.message ?: "Deletion failed"))
+                                )
+                            }
+                        }
+                    )
+                } catch (e: Exception) {
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Delete knockout failed: ${e::class.simpleName}: ${e.message}")
+                    )
+                }
             }
         }
     }

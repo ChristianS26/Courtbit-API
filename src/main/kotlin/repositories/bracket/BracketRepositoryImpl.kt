@@ -500,8 +500,21 @@ class BracketRepositoryImpl(
     override suspend fun deleteMatchesByIds(matchIds: List<String>): Int {
         if (matchIds.isEmpty()) return 0
 
+        val idFilter = matchIds.joinToString(",")
+
+        // Null out self-referencing FKs (next_match_id, loser_next_match_id) before deleting
+        // to avoid NO ACTION foreign key violations between matches
+        client.patch("$apiUrl/tournament_matches?id=in.($idFilter)") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            setBody(TextContent(
+                """{"next_match_id":null,"loser_next_match_id":null}""",
+                ContentType.Application.Json
+            ))
+        }
+
         // Delete matches using IN query
-        val response = client.delete("$apiUrl/tournament_matches?id=in.(${matchIds.joinToString(",")})") {
+        val response = client.delete("$apiUrl/tournament_matches?id=in.($idFilter)") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
