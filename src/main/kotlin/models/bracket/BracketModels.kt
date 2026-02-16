@@ -270,7 +270,7 @@ data class StandingInput(
     val gamesLost: Int,
     val pointDifference: Int,
     val roundReached: String?,
-    val groupNumber: Int? = null
+    val groupNumber: Int = 0
 )
 
 /**
@@ -290,7 +290,7 @@ data class StandingInsertRequest(
     @SerialName("games_lost") val gamesLost: Int,
     @SerialName("point_difference") val pointDifference: Int,
     @SerialName("round_reached") val roundReached: String? = null,
-    @SerialName("group_number") val groupNumber: Int? = null
+    @SerialName("group_number") val groupNumber: Int = 0
 )
 
 // ============ Status Update DTOs ============

@@ -739,19 +739,12 @@ class BracketRepositoryImpl(
 
         val bracketId = standings.first().bracketId
 
-        // Step 1: Delete existing standings for this bracket
-        val deleteResponse = client.delete("$apiUrl/tournament_standings?bracket_id=eq.$bracketId") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-        }
+        // Determine conflict columns based on tournament type (team vs player)
+        val isTeamBased = standings.any { it.teamId != null }
+        val onConflict = if (isTeamBased) "bracket_id,team_id,group_number" else "bracket_id,player_id,group_number"
 
-        if (!deleteResponse.status.isSuccess()) {
-            println("[upsertStandings] Failed to delete standings for bracket $bracketId: ${deleteResponse.status}")
-            return false
-        }
-
-        // Step 2: Insert new standings
-        val insertPayload = standings.map { s ->
+        // Step 1: UPSERT standings (atomic — no gap where standings are missing)
+        val payload = standings.map { s ->
             StandingInsertRequest(
                 bracketId = s.bracketId,
                 teamId = s.teamId,
@@ -769,18 +762,35 @@ class BracketRepositoryImpl(
             )
         }
 
-        val insertBody = json.encodeToString(insertPayload)
-        val insertResponse = client.post("$apiUrl/tournament_standings") {
+        val body = json.encodeToString(payload)
+        val upsertResponse = client.post("$apiUrl/tournament_standings?on_conflict=$onConflict") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            header("Prefer", "return=minimal")
-            setBody(TextContent(insertBody, ContentType.Application.Json))
+            header("Prefer", "resolution=merge-duplicates,return=minimal")
+            setBody(TextContent(body, ContentType.Application.Json))
         }
 
-        if (!insertResponse.status.isSuccess()) {
-            val errorBody = runCatching { insertResponse.bodyAsText() }.getOrElse { "(no body)" }
-            println("[upsertStandings] Failed to insert standings for bracket $bracketId: ${insertResponse.status} - $errorBody")
+        if (!upsertResponse.status.isSuccess()) {
+            val errorBody = runCatching { upsertResponse.bodyAsText() }.getOrElse { "(no body)" }
+            println("[upsertStandings] UPSERT failed for bracket $bracketId: ${upsertResponse.status} - $errorBody")
             return false
+        }
+
+        // Step 2: Remove orphaned standings (teams/players no longer in the bracket)
+        val idColumn = if (isTeamBased) "team_id" else "player_id"
+        val activeIds = standings.mapNotNull { if (isTeamBased) it.teamId else it.playerId }
+        if (activeIds.isNotEmpty()) {
+            val idList = activeIds.joinToString(",") { "\"$it\"" }
+            val cleanupResponse = client.delete(
+                "$apiUrl/tournament_standings?bracket_id=eq.$bracketId&$idColumn=not.in.($idList)"
+            ) {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+            }
+            if (!cleanupResponse.status.isSuccess()) {
+                println("[upsertStandings] Orphan cleanup failed for bracket $bracketId: ${cleanupResponse.status}")
+                // Non-critical: stale rows remain but standings are correct
+            }
         }
 
         return true
