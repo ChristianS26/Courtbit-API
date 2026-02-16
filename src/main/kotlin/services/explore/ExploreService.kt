@@ -188,8 +188,10 @@ class ExploreService(
         var allOrganizers = getExploreOrganizers()
 
         // Featured: top 8 by mixed score, only on page 1 and without query
+        // Only include orgs that have at least 1 event or 1 follower
         val featured = if (page == 1 && query.isNullOrBlank()) {
             allOrganizers
+                .filter { it.eventCount > 0 || it.followerCount > 0 }
                 .sortedByDescending { (it.eventCount * 2.0) + (it.followerCount * 1.0) }
                 .take(8)
         } else {
