@@ -187,12 +187,11 @@ class ExploreService(
     ): ExploreOrganizersResponse {
         var allOrganizers = getExploreOrganizers()
 
-        // Featured: top 8 by mixed score, only on page 1 and without query
-        // Respects verifiedOnly filter; only includes orgs with activity
+        // Featured: top 8 verified orgs by mixed score, only on page 1 and without query
         val featured = if (page == 1 && query.isNullOrBlank()) {
             allOrganizers
+                .filter { it.isVerified }
                 .filter { it.eventCount > 0 || it.followerCount > 0 }
-                .let { list -> if (verifiedOnly) list.filter { it.isVerified } else list }
                 .sortedByDescending { (it.eventCount * 2.0) + (it.followerCount * 1.0) }
                 .take(8)
         } else {
