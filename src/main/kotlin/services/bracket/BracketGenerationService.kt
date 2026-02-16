@@ -853,6 +853,15 @@ class BracketGenerationService(
         val bracketSize = nextPowerOfTwo(teams.size)
         val seedPositions = generateSeedPositions(bracketSize)
 
+        // Compute which real seeds face BYEs in round 1 (their opponent seed > teams.size)
+        val byeSeeds = mutableSetOf<Int>()
+        for (i in 0 until bracketSize / 2) {
+            val s1 = seedPositions[i * 2]
+            val s2 = seedPositions[i * 2 + 1]
+            if (s1 <= teams.size && s2 > teams.size) byeSeeds.add(s1)
+            if (s2 <= teams.size && s1 > teams.size) byeSeeds.add(s2)
+        }
+
         // Map each seed position to its bracket slot index (0-based)
         val seedToSlot = mutableMapOf<Int, Int>()
         seedPositions.forEachIndexed { slot, seed -> seedToSlot[seed] = slot }
@@ -909,7 +918,7 @@ class BracketGenerationService(
                     val swapCandidate = findSwapCandidate(
                         t2, group, targetHalf,
                         seedToTeam, seedToSlot, teamGroupMap,
-                        ::slotHalf, ::slotQuarter, halfGroupCounts
+                        ::slotHalf, ::slotQuarter, halfGroupCounts, byeSeeds
                     )
                     if (swapCandidate != null) {
                         performSwap(t2, swapCandidate, seedToTeam, seedToSlot,
@@ -943,6 +952,8 @@ class BracketGenerationService(
                                     val cGroup = teamGroupMap[candidate.teamId]
                                     slotQuarter(cSlot) == freeQuarter &&
                                     cGroup != group &&
+                                    // Only swap within the same BYE tier
+                                    (candidate.seed in byeSeeds) == (t.seed in byeSeeds) &&
                                     !wouldCreateConflict(candidate, tSlot, teamGroupMap, seedToTeam,
                                         seedToSlot, ::slotHalf, ::slotQuarter)
                                 }
@@ -977,7 +988,8 @@ class BracketGenerationService(
         teamGroupMap: Map<String, Int>,
         slotHalf: (Int) -> Int,
         slotQuarter: (Int) -> Int,
-        halfGroupCounts: Map<Int, Map<Int, Int>>
+        halfGroupCounts: Map<Int, Map<Int, Int>>,
+        byeSeeds: Set<Int>
     ): TeamSeed? {
         return seedToTeam.values
             .filter { candidate ->
@@ -985,7 +997,9 @@ class BracketGenerationService(
                 val cGroup = teamGroupMap[candidate.teamId]
                 slotHalf(cSlot) == targetHalf &&
                 cGroup != teamGroup &&
-                candidate.seed != teamToMove.seed
+                candidate.seed != teamToMove.seed &&
+                // Only swap within the same BYE tier: BYE↔BYE or play↔play
+                (candidate.seed in byeSeeds) == (teamToMove.seed in byeSeeds)
             }
             .minByOrNull { Math.abs(it.seed - teamToMove.seed) }
     }
@@ -1085,6 +1099,9 @@ class BracketGenerationService(
                 for (j in matchPairs.indices) {
                     if (j == i) continue
                     val (os1, os2) = matchPairs[j]
+
+                    // Don't use BYE matches as swap targets — preserve BYE assignments
+                    if (seedToTeam[os1] == null || seedToTeam[os2] == null) continue
 
                     val ot2 = seedToTeam[os2]
                     if (ot2 != null) {
