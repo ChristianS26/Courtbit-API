@@ -12,6 +12,7 @@
 
     <!-- App logs at INFO level -->
     <logger name="com.incodap" level="INFO"/>
+    <logger name="services" level="INFO"/>
 
     <!-- Suppress noisy libraries -->
     <logger name="org.eclipse.jetty" level="WARN"/>

@@ -8,6 +8,7 @@ import models.bracket.SetScore
 import models.bracket.StandingEntry
 import models.bracket.StandingInput
 import models.bracket.StandingsResponse
+import org.slf4j.LoggerFactory
 import repositories.bracket.BracketRepository
 
 /**
@@ -17,6 +18,7 @@ class BracketStandingsService(
     private val repository: BracketRepository,
     private val json: Json
 ) {
+    private val logger = LoggerFactory.getLogger(BracketStandingsService::class.java)
     /**
      * Get existing standings for a bracket
      */
@@ -170,7 +172,7 @@ class BracketStandingsService(
         // Persist standings
         val upsertSuccess = repository.upsertStandings(standings)
         if (!upsertSuccess) {
-            println("[calculateStandings] Failed to persist standings for bracket ${bracket.id}")
+            logger.error("[calculateStandings] Failed to persist standings for bracket ${bracket.id}")
         }
 
         // Return calculated standings
@@ -204,6 +206,8 @@ class BracketStandingsService(
 
         // Get group matches only
         val groupMatches = matches.filter { it.groupNumber != null }
+        val completedGroupMatches = groupMatches.filter { it.status in listOf("completed", "forfeit") }
+        logger.info("[calculateGroupStandings] bracket=${bracket.id} totalMatches=${matches.size} groupMatches=${groupMatches.size} completedGroup=${completedGroupMatches.size}")
 
         // Build standings map by team — always initialize from match participants
         // (this is the source of truth for group assignments and ensures self-healing)
@@ -320,9 +324,12 @@ class BracketStandingsService(
             }
 
         // Persist standings
+        logger.info("[calculateGroupStandings] Upserting ${sortedStandings.size} standings for bracket ${bracket.id}")
         val upsertSuccess = repository.upsertStandings(sortedStandings)
         if (!upsertSuccess) {
-            println("[calculateGroupStandings] Failed to persist standings for bracket ${bracket.id}")
+            logger.error("[calculateGroupStandings] UPSERT FAILED for bracket ${bracket.id}")
+        } else {
+            logger.info("[calculateGroupStandings] Upsert succeeded for bracket ${bracket.id}")
         }
 
         val savedStandings = repository.getStandings(bracket.id)
