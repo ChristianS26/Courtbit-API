@@ -28,7 +28,9 @@ data class SeasonResponse(
     val latitude: Double? = null,
     val longitude: Double? = null,
     @SerialName("created_at") val createdAt: String,
-    @SerialName("updated_at") val updatedAt: String
+    @SerialName("updated_at") val updatedAt: String,
+    @SerialName("is_featured") val isFeatured: Boolean = false,
+    @SerialName("featured_zone") val featuredZone: String? = null,
 )
 
 @Serializable

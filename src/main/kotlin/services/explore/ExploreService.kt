@@ -69,7 +69,8 @@ class ExploreService(
                     organizerName = t.organizerName ?: org?.name,
                     organizerLogoUrl = t.organizerLogoUrl ?: org?.logoUrl,
                     organizerIsVerified = org?.isVerified ?: false,
-                    organizerPrimaryColor = org?.primaryColor
+                    organizerPrimaryColor = org?.primaryColor,
+                    isFeatured = t.isFeatured
                 )
             }
 
@@ -101,48 +102,49 @@ class ExploreService(
                     organizerName = s.organizerName ?: org?.name,
                     organizerLogoUrl = s.organizerLogoURL ?: org?.logoUrl,
                     organizerIsVerified = org?.isVerified ?: false,
-                    organizerPrimaryColor = org?.primaryColor
+                    organizerPrimaryColor = org?.primaryColor,
+                    isFeatured = s.isFeatured
                 )
             }
 
         var allEvents = tournamentEvents + seasonEvents
 
-        if (userLat != null && userLng != null) {
-            if (radiusKm != null) {
-                // Filter events within the radius
-                allEvents = allEvents.filter { event ->
-                    val eLat = event.latitude ?: return@filter false
-                    val eLng = event.longitude ?: return@filter false
-                    GeoUtils.isWithinRadius(userLat, userLng, eLat, eLng, radiusKm)
-                }
-            }
-            // Sort by distance (closest first), events without coords go to the end
-            allEvents = allEvents.sortedBy { event ->
-                val eLat = event.latitude
-                val eLng = event.longitude
-                if (eLat != null && eLng != null) {
-                    GeoUtils.haversineDistance(userLat, userLng, eLat, eLng)
-                } else {
-                    Double.MAX_VALUE
-                }
-            }
-        } else {
-            // Default: sort by start date
-            allEvents = allEvents.sortedBy { event ->
-                try {
-                    LocalDate.parse(event.startDate, dateFormatter)
-                } catch (e: Exception) {
-                    LocalDate.MAX
-                }
+        // Filter by radius if location provided
+        if (userLat != null && userLng != null && radiusKm != null) {
+            allEvents = allEvents.filter { event ->
+                val eLat = event.latitude ?: return@filter false
+                val eLng = event.longitude ?: return@filter false
+                GeoUtils.isWithinRadius(userLat, userLng, eLat, eLng, radiusKm)
             }
         }
 
+        // Always sort by start date ascending (closest date first)
+        allEvents = allEvents.sortedBy { event ->
+            try {
+                LocalDate.parse(event.startDate, dateFormatter)
+            } catch (e: Exception) {
+                LocalDate.MAX
+            }
+        }
+
+        // Separate featured events (max 2, only on page 1)
+        val featuredEvents = if (page == 1) {
+            allEvents.filter { it.isFeatured }.take(2)
+        } else {
+            emptyList()
+        }
+
+        // Regular events exclude featured
+        val featuredIds = featuredEvents.map { "${it.type}_${it.id}" }.toSet()
+        val regularEvents = allEvents.filter { "${it.type}_${it.id}" !in featuredIds }
+
         val offset = (page - 1) * pageSize
-        val paginatedEvents = allEvents.drop(offset).take(pageSize)
-        val hasMore = offset + pageSize < allEvents.size
+        val paginatedEvents = regularEvents.drop(offset).take(pageSize)
+        val hasMore = offset + pageSize < regularEvents.size
 
         ExploreEventsResponse(
             events = paginatedEvents,
+            featured = featuredEvents,
             page = page,
             pageSize = pageSize,
             hasMore = hasMore

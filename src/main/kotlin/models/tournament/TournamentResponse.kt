@@ -27,4 +27,6 @@ data class TournamentResponse(
     @SerialName("allow_player_scores") val allowPlayerScores: Boolean = false,
     @SerialName("payments_enabled") val paymentsEnabled: Boolean = true,
     @SerialName("show_registered_players") val showRegisteredPlayers: Boolean = true,
+    @SerialName("is_featured") val isFeatured: Boolean = false,
+    @SerialName("featured_zone") val featuredZone: String? = null,
 )

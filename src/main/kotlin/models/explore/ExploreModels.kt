@@ -20,12 +20,14 @@ data class ExploreEvent(
     @SerialName("organizer_name") val organizerName: String?,
     @SerialName("organizer_logo_url") val organizerLogoUrl: String? = null,
     @SerialName("organizer_is_verified") val organizerIsVerified: Boolean = false,
-    @SerialName("organizer_primary_color") val organizerPrimaryColor: String? = null
+    @SerialName("organizer_primary_color") val organizerPrimaryColor: String? = null,
+    @SerialName("is_featured") val isFeatured: Boolean = false
 )
 
 @Serializable
 data class ExploreEventsResponse(
     val events: List<ExploreEvent>,
+    val featured: List<ExploreEvent> = emptyList(),
     val page: Int,
     @SerialName("page_size") val pageSize: Int,
     @SerialName("has_more") val hasMore: Boolean
