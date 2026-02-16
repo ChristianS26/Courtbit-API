@@ -52,5 +52,34 @@ fun Route.exploreRoutes(exploreService: ExploreService) {
             val organizers = exploreService.getExploreOrganizers()
             call.respond(HttpStatusCode.OK, organizers)
         }
+
+        // Public: Search/browse organizers with pagination
+        get("/organizers/search") {
+            val query = call.request.queryParameters["q"]
+            val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
+            val pageSize = call.request.queryParameters["page_size"]?.toIntOrNull() ?: 20
+
+            if (page < 1 || pageSize < 1 || pageSize > 50) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("error" to "Invalid pagination parameters")
+                )
+                return@get
+            }
+
+            val lat = call.request.queryParameters["lat"]?.toDoubleOrNull()
+            val lng = call.request.queryParameters["lng"]?.toDoubleOrNull()
+
+            if ((lat != null) != (lng != null)) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("error" to "Both 'lat' and 'lng' are required when using geo filtering")
+                )
+                return@get
+            }
+
+            val result = exploreService.searchOrganizers(query, page, pageSize, lat, lng)
+            call.respond(HttpStatusCode.OK, result)
+        }
     }
 }

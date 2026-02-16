@@ -5,6 +5,7 @@ import kotlinx.coroutines.coroutineScope
 import models.explore.ExploreEvent
 import models.explore.ExploreEventsResponse
 import models.explore.ExploreOrganizer
+import models.explore.ExploreOrganizersResponse
 import models.organizer.OrganizerResponse
 import repositories.organizer.OrganizerRepository
 import repositories.league.SeasonRepository
@@ -173,5 +174,44 @@ class ExploreService(
                 eventCount = eventCounts[org.id] ?: 0
             )
         }.sortedByDescending { it.followerCount }
+    }
+
+    suspend fun searchOrganizers(
+        query: String? = null,
+        page: Int = 1,
+        pageSize: Int = 20,
+        userLat: Double? = null,
+        userLng: Double? = null,
+    ): ExploreOrganizersResponse {
+        var allOrganizers = getExploreOrganizers()
+
+        // Filter by name if query provided
+        if (!query.isNullOrBlank()) {
+            allOrganizers = allOrganizers.filter { it.name.contains(query, ignoreCase = true) }
+        }
+
+        // Sort by distance if lat/lng provided, otherwise keep default (by followers)
+        if (userLat != null && userLng != null) {
+            allOrganizers = allOrganizers.sortedBy { org ->
+                val oLat = org.latitude
+                val oLng = org.longitude
+                if (oLat != null && oLng != null) {
+                    GeoUtils.haversineDistance(userLat, userLng, oLat, oLng)
+                } else {
+                    Double.MAX_VALUE
+                }
+            }
+        }
+
+        val offset = (page - 1) * pageSize
+        val paginatedOrganizers = allOrganizers.drop(offset).take(pageSize)
+        val hasMore = offset + pageSize < allOrganizers.size
+
+        return ExploreOrganizersResponse(
+            organizers = paginatedOrganizers,
+            page = page,
+            pageSize = pageSize,
+            hasMore = hasMore,
+        )
     }
 }
