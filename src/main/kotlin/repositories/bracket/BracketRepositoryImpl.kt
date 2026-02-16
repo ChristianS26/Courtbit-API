@@ -8,9 +8,6 @@ import io.ktor.http.*
 import io.ktor.http.content.TextContent
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.addJsonObject
-import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
@@ -742,40 +739,51 @@ class BracketRepositoryImpl(
 
         val bracketId = standings.first().bracketId
 
-        // Build standings JSON array for the RPC function
-        val standingsJson = buildJsonArray {
-            standings.forEach { s ->
-                addJsonObject {
-                    s.teamId?.let { put("team_id", it) } ?: put("team_id", JsonNull)
-                    s.playerId?.let { put("player_id", it) } ?: put("player_id", JsonNull)
-                    put("position", s.position)
-                    put("total_points", s.totalPoints)
-                    put("matches_played", s.matchesPlayed)
-                    put("matches_won", s.matchesWon)
-                    put("matches_lost", s.matchesLost)
-                    put("games_won", s.gamesWon)
-                    put("games_lost", s.gamesLost)
-                    put("point_difference", s.pointDifference)
-                    s.roundReached?.let { put("round_reached", it) } ?: put("round_reached", JsonNull)
-                    s.groupNumber?.let { put("group_number", it) } ?: put("group_number", JsonNull)
-                }
-            }
+        // Step 1: Delete existing standings for this bracket
+        val deleteResponse = client.delete("$apiUrl/tournament_standings?bracket_id=eq.$bracketId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
         }
 
-        // Call RPC function — atomic delete+insert in a single transaction
-        val body = buildJsonObject {
-            put("p_bracket_id", bracketId)
-            put("p_standings", standingsJson)
+        if (!deleteResponse.status.isSuccess()) {
+            println("[upsertStandings] Failed to delete standings for bracket $bracketId: ${deleteResponse.status}")
+            return false
         }
 
-        val response = client.post("$apiUrl/rpc/upsert_bracket_standings") {
+        // Step 2: Insert new standings
+        val insertPayload = standings.map { s ->
+            StandingInsertRequest(
+                bracketId = s.bracketId,
+                teamId = s.teamId,
+                playerId = s.playerId,
+                position = s.position,
+                totalPoints = s.totalPoints,
+                matchesPlayed = s.matchesPlayed,
+                matchesWon = s.matchesWon,
+                matchesLost = s.matchesLost,
+                gamesWon = s.gamesWon,
+                gamesLost = s.gamesLost,
+                pointDifference = s.pointDifference,
+                roundReached = s.roundReached,
+                groupNumber = s.groupNumber
+            )
+        }
+
+        val insertBody = json.encodeToString(insertPayload)
+        val insertResponse = client.post("$apiUrl/tournament_standings") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=minimal")
-            setBody(TextContent(body.toString(), ContentType.Application.Json))
+            setBody(TextContent(insertBody, ContentType.Application.Json))
         }
 
-        return response.status.isSuccess()
+        if (!insertResponse.status.isSuccess()) {
+            val errorBody = runCatching { insertResponse.bodyAsText() }.getOrElse { "(no body)" }
+            println("[upsertStandings] Failed to insert standings for bracket $bracketId: ${insertResponse.status} - $errorBody")
+            return false
+        }
+
+        return true
     }
 
     override suspend fun deleteStandings(bracketId: String): Boolean {

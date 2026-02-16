@@ -168,7 +168,10 @@ class BracketStandingsService(
         }
 
         // Persist standings
-        repository.upsertStandings(standings)
+        val upsertSuccess = repository.upsertStandings(standings)
+        if (!upsertSuccess) {
+            println("[calculateStandings] Failed to persist standings for bracket ${bracket.id}")
+        }
 
         // Return calculated standings
         val savedStandings = repository.getStandings(bracket.id)
@@ -202,33 +205,20 @@ class BracketStandingsService(
         // Get group matches only
         val groupMatches = matches.filter { it.groupNumber != null }
 
-        // Build standings map by team
+        // Build standings map by team — always initialize from match participants
+        // (this is the source of truth for group assignments and ensures self-healing)
         val standingsMap = mutableMapOf<String, GroupStandingBuilder>()
 
-        // Initialize from existing standings to get group numbers
-        val existingStandings = repository.getStandings(bracket.id)
-        for (standing in existingStandings) {
-            val teamId = standing.teamId ?: continue
-            val groupNumber = standing.groupNumber ?: continue
-            standingsMap[teamId] = GroupStandingBuilder(
-                teamId = teamId,
-                groupNumber = groupNumber
-            )
-        }
-
-        // If no standings exist, initialize from match participants
-        if (standingsMap.isEmpty() && groupMatches.isNotEmpty()) {
-            for (match in groupMatches) {
-                val groupNumber = match.groupNumber ?: continue
-                match.team1Id?.let { teamId ->
-                    if (teamId !in standingsMap) {
-                        standingsMap[teamId] = GroupStandingBuilder(teamId = teamId, groupNumber = groupNumber)
-                    }
+        for (match in groupMatches) {
+            val groupNumber = match.groupNumber ?: continue
+            match.team1Id?.let { teamId ->
+                if (teamId !in standingsMap) {
+                    standingsMap[teamId] = GroupStandingBuilder(teamId = teamId, groupNumber = groupNumber)
                 }
-                match.team2Id?.let { teamId ->
-                    if (teamId !in standingsMap) {
-                        standingsMap[teamId] = GroupStandingBuilder(teamId = teamId, groupNumber = groupNumber)
-                    }
+            }
+            match.team2Id?.let { teamId ->
+                if (teamId !in standingsMap) {
+                    standingsMap[teamId] = GroupStandingBuilder(teamId = teamId, groupNumber = groupNumber)
                 }
             }
         }
@@ -330,7 +320,10 @@ class BracketStandingsService(
             }
 
         // Persist standings
-        repository.upsertStandings(sortedStandings)
+        val upsertSuccess = repository.upsertStandings(sortedStandings)
+        if (!upsertSuccess) {
+            println("[calculateGroupStandings] Failed to persist standings for bracket ${bracket.id}")
+        }
 
         val savedStandings = repository.getStandings(bracket.id)
         return Result.success(StandingsResponse(
