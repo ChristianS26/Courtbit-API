@@ -467,8 +467,10 @@ class BracketRepositoryImpl(
         client.patch("$apiUrl/tournament_matches?bracket_id=eq.$bracketId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
-            contentType(io.ktor.http.ContentType.Application.Json)
-            setBody("""{"next_match_id":null,"loser_next_match_id":null}""")
+            setBody(TextContent(
+                """{"next_match_id":null,"loser_next_match_id":null}""",
+                ContentType.Application.Json
+            ))
         }
 
         // Delete matches (foreign key constraint)
