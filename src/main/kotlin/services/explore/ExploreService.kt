@@ -182,25 +182,49 @@ class ExploreService(
         pageSize: Int = 20,
         userLat: Double? = null,
         userLng: Double? = null,
+        sortBy: String = "followers",
+        verifiedOnly: Boolean = false,
     ): ExploreOrganizersResponse {
         var allOrganizers = getExploreOrganizers()
+
+        // Featured: top 8 by mixed score, only on page 1 and without query
+        val featured = if (page == 1 && query.isNullOrBlank()) {
+            allOrganizers
+                .sortedByDescending { (it.eventCount * 2.0) + (it.followerCount * 1.0) }
+                .take(8)
+        } else {
+            emptyList()
+        }
 
         // Filter by name if query provided
         if (!query.isNullOrBlank()) {
             allOrganizers = allOrganizers.filter { it.name.contains(query, ignoreCase = true) }
         }
 
-        // Sort by distance if lat/lng provided, otherwise keep default (by followers)
-        if (userLat != null && userLng != null) {
-            allOrganizers = allOrganizers.sortedBy { org ->
-                val oLat = org.latitude
-                val oLng = org.longitude
-                if (oLat != null && oLng != null) {
-                    GeoUtils.haversineDistance(userLat, userLng, oLat, oLng)
+        // Filter verified only
+        if (verifiedOnly) {
+            allOrganizers = allOrganizers.filter { it.isVerified }
+        }
+
+        // Sort
+        allOrganizers = when (sortBy) {
+            "events" -> allOrganizers.sortedByDescending { it.eventCount }
+            "distance" -> {
+                if (userLat != null && userLng != null) {
+                    allOrganizers.sortedBy { org ->
+                        val oLat = org.latitude
+                        val oLng = org.longitude
+                        if (oLat != null && oLng != null) {
+                            GeoUtils.haversineDistance(userLat, userLng, oLat, oLng)
+                        } else {
+                            Double.MAX_VALUE
+                        }
+                    }
                 } else {
-                    Double.MAX_VALUE
+                    allOrganizers.sortedByDescending { it.followerCount }
                 }
             }
+            else -> allOrganizers.sortedByDescending { it.followerCount }
         }
 
         val offset = (page - 1) * pageSize
@@ -209,6 +233,7 @@ class ExploreService(
 
         return ExploreOrganizersResponse(
             organizers = paginatedOrganizers,
+            featured = featured,
             page = page,
             pageSize = pageSize,
             hasMore = hasMore,

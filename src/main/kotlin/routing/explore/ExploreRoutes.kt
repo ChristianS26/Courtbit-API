@@ -69,6 +69,8 @@ fun Route.exploreRoutes(exploreService: ExploreService) {
 
             val lat = call.request.queryParameters["lat"]?.toDoubleOrNull()
             val lng = call.request.queryParameters["lng"]?.toDoubleOrNull()
+            val sortBy = call.request.queryParameters["sort_by"] ?: "followers"
+            val verifiedOnly = call.request.queryParameters["verified_only"]?.toBooleanStrictOrNull() ?: false
 
             if ((lat != null) != (lng != null)) {
                 call.respond(
@@ -78,7 +80,7 @@ fun Route.exploreRoutes(exploreService: ExploreService) {
                 return@get
             }
 
-            val result = exploreService.searchOrganizers(query, page, pageSize, lat, lng)
+            val result = exploreService.searchOrganizers(query, page, pageSize, lat, lng, sortBy, verifiedOnly)
             call.respond(HttpStatusCode.OK, result)
         }
     }

@@ -48,6 +48,7 @@ data class ExploreOrganizer(
 @Serializable
 data class ExploreOrganizersResponse(
     val organizers: List<ExploreOrganizer>,
+    val featured: List<ExploreOrganizer> = emptyList(),
     val page: Int,
     @SerialName("page_size") val pageSize: Int,
     @SerialName("has_more") val hasMore: Boolean,
