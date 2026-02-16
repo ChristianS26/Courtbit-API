@@ -62,7 +62,7 @@ class BracketScoringService(
     private suspend fun recalculateStandings(bracket: BracketResponse) {
         when (bracket.format) {
             "groups_knockout" -> standingsService.calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
-            "round_robin" -> standingsService.calculateStandings(bracket.tournamentId, bracket.categoryId)
+            else -> standingsService.calculateStandings(bracket.tournamentId, bracket.categoryId)
         }
     }
 

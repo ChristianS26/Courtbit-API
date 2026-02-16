@@ -428,7 +428,17 @@ fun Route.bracketRoutes(
                     return@post
                 }
 
-                val result = standingsService.calculateStandings(tournamentId, categoryId)
+                // Choose calculation method based on bracket format
+                val bracket = bracketService.getBracket(tournamentId, categoryId)
+                if (bracket == null) {
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Bracket not found"))
+                    return@post
+                }
+
+                val result = when (bracket.bracket.format) {
+                    "groups_knockout" -> standingsService.calculateGroupStandings(tournamentId, categoryId)
+                    else -> standingsService.calculateStandings(tournamentId, categoryId)
+                }
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
