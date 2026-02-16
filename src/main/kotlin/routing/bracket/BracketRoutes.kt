@@ -370,45 +370,52 @@ fun Route.bracketRoutes(
             // DELETE /api/brackets/{categoryId}?tournament_id=xxx
             // Requires authentication - deletes bracket and all matches
             delete("/{categoryId}") {
-                val organizerId = call.getOrganizerId() ?: return@delete
+                try {
+                    val organizerId = call.getOrganizerId() ?: return@delete
 
-                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
-                if (categoryId == null) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
-                    return@delete
-                }
-
-                val tournamentId = call.request.queryParameters["tournament_id"]
-                if (tournamentId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
-                    return@delete
-                }
-
-                // Get bracket to find its ID
-                val bracket = bracketService.getBracket(tournamentId, categoryId)
-                if (bracket == null) {
-                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Bracket not found"))
-                    return@delete
-                }
-
-                val result = bracketService.deleteBracket(bracket.bracket.id, organizerId)
-                result.fold(
-                    onSuccess = {
-                        call.respond(HttpStatusCode.OK, mapOf("success" to true))
-                    },
-                    onFailure = { error ->
-                        when (error) {
-                            is IllegalStateException -> call.respond(
-                                HttpStatusCode.Conflict,
-                                mapOf("error" to (error.message ?: "Cannot delete bracket"))
-                            )
-                            else -> call.respond(
-                                HttpStatusCode.BadRequest,
-                                mapOf("error" to (error.message ?: "Failed to delete bracket"))
-                            )
-                        }
+                    val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                    if (categoryId == null) {
+                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                        return@delete
                     }
-                )
+
+                    val tournamentId = call.request.queryParameters["tournament_id"]
+                    if (tournamentId.isNullOrBlank()) {
+                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                        return@delete
+                    }
+
+                    // Get bracket to find its ID
+                    val bracket = bracketService.getBracket(tournamentId, categoryId)
+                    if (bracket == null) {
+                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Bracket not found"))
+                        return@delete
+                    }
+
+                    val result = bracketService.deleteBracket(bracket.bracket.id, organizerId)
+                    result.fold(
+                        onSuccess = {
+                            call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                        },
+                        onFailure = { error ->
+                            when (error) {
+                                is IllegalStateException -> call.respond(
+                                    HttpStatusCode.Conflict,
+                                    mapOf("error" to (error.message ?: "Cannot delete bracket"))
+                                )
+                                else -> call.respond(
+                                    HttpStatusCode.BadRequest,
+                                    mapOf("error" to (error.message ?: "Failed to delete bracket"))
+                                )
+                            }
+                        }
+                    )
+                } catch (e: Exception) {
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Delete bracket failed: ${e::class.simpleName}: ${e.message}")
+                    )
+                }
             }
 
             // POST /api/brackets/{categoryId}/standings/calculate?tournament_id=xxx
