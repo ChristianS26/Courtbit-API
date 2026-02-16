@@ -167,6 +167,9 @@ data class SeasonRawResponse(
     @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int = 12,
     @SerialName("requires_shirt_size") val requiresShirtSize: Boolean = false,
     @SerialName("requires_shirt_name") val requiresShirtName: Boolean = false,
+    val location: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String
 ) {
@@ -189,6 +192,9 @@ data class SeasonRawResponse(
         forfeitLoserPoints = forfeitLoserPoints,
         requiresShirtSize = requiresShirtSize,
         requiresShirtName = requiresShirtName,
+        location = location,
+        latitude = latitude,
+        longitude = longitude,
         createdAt = createdAt,
         updatedAt = updatedAt
     )

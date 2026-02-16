@@ -19,5 +19,8 @@ data class OrganizerResponse(
     @SerialName("created_by_uid") val createdByUid: String,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String,
-    @SerialName("stripe_account_id") val stripeAccountId: String? = null
+    @SerialName("stripe_account_id") val stripeAccountId: String? = null,
+    val location: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )

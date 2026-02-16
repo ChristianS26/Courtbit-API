@@ -10,6 +10,7 @@ import repositories.organizer.OrganizerRepository
 import repositories.league.SeasonRepository
 import repositories.tournament.TournamentRepository
 import services.follow.FollowService
+import utils.GeoUtils
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -21,7 +22,13 @@ class ExploreService(
 ) {
     private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
-    suspend fun getExploreEvents(page: Int, pageSize: Int): ExploreEventsResponse = coroutineScope {
+    suspend fun getExploreEvents(
+        page: Int,
+        pageSize: Int,
+        userLat: Double? = null,
+        userLng: Double? = null,
+        radiusKm: Double? = null
+    ): ExploreEventsResponse = coroutineScope {
         val tournamentsDeferred = async { tournamentRepository.getAll() }
         val seasonsDeferred = async { seasonRepository.getAll() }
         val organizersDeferred = async { organizerRepository.getAll() }
@@ -52,6 +59,8 @@ class ExploreService(
                     startDate = t.startDate,
                     endDate = t.endDate,
                     location = t.location,
+                    latitude = t.latitude,
+                    longitude = t.longitude,
                     flyerUrl = t.flyerUrl,
                     registrationOpen = t.registrationOpen,
                     isActive = true,
@@ -73,7 +82,9 @@ class ExploreService(
                     type = "league",
                     startDate = s.startDate,
                     endDate = s.endDate,
-                    location = null,
+                    location = s.location,
+                    latitude = s.latitude,
+                    longitude = s.longitude,
                     flyerUrl = null,
                     registrationOpen = s.registrationsOpen,
                     isActive = true,
@@ -85,11 +96,35 @@ class ExploreService(
                 )
             }
 
-        val allEvents = (tournamentEvents + seasonEvents).sortedBy { event ->
-            try {
-                LocalDate.parse(event.startDate, dateFormatter)
-            } catch (e: Exception) {
-                LocalDate.MAX
+        var allEvents = tournamentEvents + seasonEvents
+
+        if (userLat != null && userLng != null) {
+            if (radiusKm != null) {
+                // Filter events within the radius
+                allEvents = allEvents.filter { event ->
+                    val eLat = event.latitude ?: return@filter false
+                    val eLng = event.longitude ?: return@filter false
+                    GeoUtils.isWithinRadius(userLat, userLng, eLat, eLng, radiusKm)
+                }
+            }
+            // Sort by distance (closest first), events without coords go to the end
+            allEvents = allEvents.sortedBy { event ->
+                val eLat = event.latitude
+                val eLng = event.longitude
+                if (eLat != null && eLng != null) {
+                    GeoUtils.haversineDistance(userLat, userLng, eLat, eLng)
+                } else {
+                    Double.MAX_VALUE
+                }
+            }
+        } else {
+            // Default: sort by start date
+            allEvents = allEvents.sortedBy { event ->
+                try {
+                    LocalDate.parse(event.startDate, dateFormatter)
+                } catch (e: Exception) {
+                    LocalDate.MAX
+                }
             }
         }
 
@@ -131,6 +166,9 @@ class ExploreService(
                 logoUrl = org.logoUrl,
                 primaryColor = org.primaryColor,
                 isVerified = org.isVerified,
+                location = org.location,
+                latitude = org.latitude,
+                longitude = org.longitude,
                 followerCount = followerCount,
                 eventCount = eventCounts[org.id] ?: 0
             )

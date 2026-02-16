@@ -130,7 +130,10 @@ class OrganizerRepositoryImpl(
                 val secondary_color: String,
                 val instagram: String?,
                 val facebook: String?,
-                val created_by_uid: String
+                val created_by_uid: String,
+                val location: String?,
+                val latitude: Double?,
+                val longitude: Double?
             )
 
             val payload = CreatePayload(
@@ -142,7 +145,10 @@ class OrganizerRepositoryImpl(
                 secondary_color = request.secondaryColor,
                 instagram = request.instagram,
                 facebook = request.facebook,
-                created_by_uid = createdByUid
+                created_by_uid = createdByUid,
+                location = request.location,
+                latitude = request.latitude,
+                longitude = request.longitude
             )
 
             val response = client.post("$apiUrl/organizers") {
@@ -242,7 +248,10 @@ class OrganizerRepositoryImpl(
                 val secondary_color: String? = null,
                 val logo_url: String? = null,
                 val instagram: String? = null,
-                val facebook: String? = null
+                val facebook: String? = null,
+                val location: String? = null,
+                val latitude: Double? = null,
+                val longitude: Double? = null
             )
 
             val payload = UpdatePayload(
@@ -254,7 +263,10 @@ class OrganizerRepositoryImpl(
                 secondary_color = request.secondaryColor,
                 logo_url = request.logoUrl,
                 instagram = request.instagram,
-                facebook = request.facebook
+                facebook = request.facebook,
+                location = request.location,
+                latitude = request.latitude,
+                longitude = request.longitude
             )
 
             val response = client.patch("$apiUrl/organizers") {

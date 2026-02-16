@@ -24,6 +24,9 @@ data class SeasonResponse(
     @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int = 12,
     @SerialName("requires_shirt_size") val requiresShirtSize: Boolean = false,
     @SerialName("requires_shirt_name") val requiresShirtName: Boolean = false,
+    val location: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     @SerialName("created_at") val createdAt: String,
     @SerialName("updated_at") val updatedAt: String
 )
@@ -46,6 +49,9 @@ data class CreateSeasonRequest(
     @SerialName("forfeit_loser_points") val forfeitLoserPoints: Int = 12,
     @SerialName("requires_shirt_size") val requiresShirtSize: Boolean = false,
     @SerialName("requires_shirt_name") val requiresShirtName: Boolean = false,
+    val location: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     @SerialName("number_of_courts") val numberOfCourts: Int = 4  // Used to create court records, not persisted to seasons table
 )
 
@@ -65,5 +71,8 @@ data class UpdateSeasonRequest(
     @SerialName("requires_shirt_size") val requiresShirtSize: Boolean? = null,
     @SerialName("requires_shirt_name") val requiresShirtName: Boolean? = null,
     @SerialName("players_direct_to_final") val playersDirectToFinal: Int? = null,
-    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null
+    @SerialName("players_in_semifinals") val playersInSemifinals: Int? = null,
+    val location: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )

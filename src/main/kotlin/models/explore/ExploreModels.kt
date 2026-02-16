@@ -11,6 +11,8 @@ data class ExploreEvent(
     @SerialName("start_date") val startDate: String,
     @SerialName("end_date") val endDate: String?,
     val location: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     @SerialName("flyer_url") val flyerUrl: String? = null,
     @SerialName("registration_open") val registrationOpen: Boolean,
     @SerialName("is_active") val isActive: Boolean,
@@ -36,6 +38,9 @@ data class ExploreOrganizer(
     @SerialName("logo_url") val logoUrl: String? = null,
     @SerialName("primary_color") val primaryColor: String = "#007AFF",
     @SerialName("is_verified") val isVerified: Boolean = false,
+    val location: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
     @SerialName("follower_count") val followerCount: Long = 0,
     @SerialName("event_count") val eventCount: Int = 0
 )

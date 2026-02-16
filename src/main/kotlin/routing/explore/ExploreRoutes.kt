@@ -21,7 +21,29 @@ fun Route.exploreRoutes(exploreService: ExploreService) {
                 return@get
             }
 
-            val result = exploreService.getExploreEvents(page, pageSize)
+            val lat = call.request.queryParameters["lat"]?.toDoubleOrNull()
+            val lng = call.request.queryParameters["lng"]?.toDoubleOrNull()
+            val radiusKm = call.request.queryParameters["radius_km"]?.toDoubleOrNull()
+
+            // Validate: both lat and lng must be present if one is provided
+            if ((lat != null) != (lng != null)) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("error" to "Both 'lat' and 'lng' are required when using geo filtering")
+                )
+                return@get
+            }
+
+            // Validate radius range
+            if (radiusKm != null && (radiusKm < 1 || radiusKm > 500)) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    mapOf("error" to "radius_km must be between 1 and 500")
+                )
+                return@get
+            }
+
+            val result = exploreService.getExploreEvents(page, pageSize, lat, lng, radiusKm)
             call.respond(HttpStatusCode.OK, result)
         }
 

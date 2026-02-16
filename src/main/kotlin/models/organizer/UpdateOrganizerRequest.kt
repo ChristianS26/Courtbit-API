@@ -13,5 +13,8 @@ data class UpdateOrganizerRequest(
     @SerialName("secondary_color") val secondaryColor: String? = null,
     @SerialName("logo_url") val logoUrl: String? = null,
     val instagram: String? = null,
-    val facebook: String? = null
+    val facebook: String? = null,
+    val location: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )

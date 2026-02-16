@@ -12,5 +12,8 @@ data class CreateOrganizerRequest(
     @SerialName("primary_color") val primaryColor: String = "#007AFF",
     @SerialName("secondary_color") val secondaryColor: String = "#5856D6",
     val instagram: String? = null,
-    val facebook: String? = null
+    val facebook: String? = null,
+    val location: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
