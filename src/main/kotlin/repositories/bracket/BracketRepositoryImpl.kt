@@ -462,6 +462,15 @@ class BracketRepositoryImpl(
             header("Authorization", "Bearer $apiKey")
         }
 
+        // Null out self-referencing FKs (next_match_id, loser_next_match_id) before deleting
+        // to avoid NO ACTION foreign key violations between matches in the same bracket
+        client.patch("$apiUrl/tournament_matches?bracket_id=eq.$bracketId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(io.ktor.http.ContentType.Application.Json)
+            setBody("""{"next_match_id":null,"loser_next_match_id":null}""")
+        }
+
         // Delete matches (foreign key constraint)
         client.delete("$apiUrl/tournament_matches?bracket_id=eq.$bracketId") {
             header("apikey", apiKey)
