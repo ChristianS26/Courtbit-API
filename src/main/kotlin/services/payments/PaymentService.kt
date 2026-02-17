@@ -5,6 +5,9 @@ import com.incodap.repositories.payments.PaymentRepository
 import com.incodap.repositories.teams.TeamRepository
 import com.incodap.repositories.users.UserRepository
 import com.incodap.services.excel.ExcelService
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import models.teams.ScheduleRestriction
 import repositories.discountcode.DiscountCodeRepository
 import com.stripe.Stripe
 import com.stripe.exception.StripeException
@@ -126,6 +129,11 @@ class PaymentService(
             .putMetadata("categoryId", request.categoryId.toString())
             .putMetadata("paid_for", request.paidFor)
             .putMetadata("player_uid", request.playerUid)
+            .apply {
+                request.scheduleRestriction?.let {
+                    putMetadata("schedule_restriction", Json.encodeToString(it))
+                }
+            }
             .build()
 
     private fun createLineItem(request: PaymentRequest, serverAmount: Long): SessionCreateParams.LineItem =
@@ -202,6 +210,22 @@ class PaymentService(
                     throw BadRequestException(applyResult.message ?: "Failed to apply discount code")
                 }
 
+                // Set schedule_restriction on the newly created team
+                if (request.scheduleRestriction != null) {
+                    try {
+                        val team = teamRepository.findByPlayerAndCategory(
+                            request.playerUid, request.tournamentId, request.categoryId
+                        )
+                        if (team != null) {
+                            teamRepository.updateTeamScheduleRestriction(
+                                team.id, Json.encodeToString(request.scheduleRestriction)
+                            )
+                        }
+                    } catch (e: Exception) {
+                        paymentLogger.warn { "Failed to set schedule_restriction after 100% discount: ${e.message}" }
+                    }
+                }
+
                 return CreateIntentResponse(
                     paymentIntentClientSecret = null,
                     isFreeRegistration = true,
@@ -265,6 +289,9 @@ class PaymentService(
             .putMetadata("paid_for", request.paidFor)
             .putMetadata("player_uid", request.playerUid)
             .apply {
+                request.scheduleRestriction?.let {
+                    putMetadata("schedule_restriction", Json.encodeToString(it))
+                }
                 if (customer != null) {
                     setCustomer(customer.id)
                     setSetupFutureUsage(PaymentIntentCreateParams.SetupFutureUsage.OFF_SESSION)
@@ -424,6 +451,9 @@ class PaymentService(
             .putMetadata("original_amount", originalAmount.toString())
             .putMetadata("discount_amount", discountAmount.toString())
             .apply {
+                request.scheduleRestriction?.let {
+                    putMetadata("schedule_restriction", Json.encodeToString(it))
+                }
                 if (customer != null) {
                     setCustomer(customer.id)
                     setSetupFutureUsage(PaymentIntentCreateParams.SetupFutureUsage.OFF_SESSION)

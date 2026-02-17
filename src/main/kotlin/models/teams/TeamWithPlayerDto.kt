@@ -13,5 +13,6 @@ data class TeamWithPlayerDto(
     val playerBPoints: Int,
     val playerBPaid: Boolean,
     val hasResult: Boolean = false,
-    val restriction: String? = null
+    val restriction: String? = null,
+    val scheduleRestriction: ScheduleRestriction? = null
 )

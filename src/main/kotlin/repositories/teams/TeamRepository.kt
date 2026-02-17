@@ -24,6 +24,7 @@ interface TeamRepository {
     suspend fun hasTeamsForTournament(tournamentId: String): Boolean
     suspend fun hasTeamsForTournamentAndCategoryName(tournamentId: String, categoryName: String): Boolean
     suspend fun updateTeamRestriction(teamId: String, restriction: String): Boolean
+    suspend fun updateTeamScheduleRestriction(teamId: String, scheduleRestriction: String): Boolean
     suspend fun payAndMarkManual(
         teamId: String,
         tournamentId: String,

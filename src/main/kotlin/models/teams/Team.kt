@@ -15,6 +15,7 @@ data class Team(
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("categories") val category: CategoryResponseDto,
     @SerialName("restriction") val restriction: String? = null,
+    @SerialName("schedule_restriction") val scheduleRestriction: ScheduleRestriction? = null,
     // Manual player fields
     @SerialName("player_a_name") val playerAName: String? = null,
     @SerialName("player_a_email") val playerAEmail: String? = null,

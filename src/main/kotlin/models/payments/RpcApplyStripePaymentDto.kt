@@ -11,4 +11,5 @@ data class RpcApplyStripePaymentDto(
     val p_paid_for: String,        // "1" | "2"
     val p_customer_id: String? = null,
     val p_restriction: String? = null,
+    val p_schedule_restriction: kotlinx.serialization.json.JsonElement? = null,
 )

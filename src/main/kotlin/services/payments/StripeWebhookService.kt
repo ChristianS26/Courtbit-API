@@ -3,6 +3,7 @@ package com.incodap.services.payments
 import com.incodap.repositories.payments.PaymentRepository
 import com.incodap.repositories.teams.TeamRepository
 import com.stripe.exception.SignatureVerificationException
+import kotlinx.serialization.json.Json
 import com.stripe.model.PaymentIntent
 import com.stripe.model.checkout.Session
 import com.stripe.model.Event
@@ -25,6 +26,7 @@ val logger = KotlinLogging.logger {}
 class StripeWebhookService(
     private val endpointSecret: String,
     private val paymentRepository: PaymentRepository,
+    private val teamRepository: TeamRepository,
     private val emailService: EmailService,
     private val tournamentRepository: TournamentRepository,
     private val categoryRepository: CategoryRepository,
@@ -170,6 +172,20 @@ class StripeWebhookService(
         }
 
         logger.info { "✅ RPC apply_stripe_payment OK para intent ${intent.id}" }
+
+        // Set schedule_restriction on the team if present in metadata
+        val scheduleRestrictionJson = intent.metadata["schedule_restriction"]
+        if (!scheduleRestrictionJson.isNullOrBlank()) {
+            try {
+                val team = teamRepository.findByPlayerAndCategory(playerUid, tournamentId, categoryIdInt)
+                if (team != null) {
+                    teamRepository.updateTeamScheduleRestriction(team.id, scheduleRestrictionJson)
+                    logger.info { "✅ schedule_restriction set for team ${team.id}" }
+                }
+            } catch (e: Exception) {
+                logger.warn { "⚠️ Failed to set schedule_restriction: ${e.message}" }
+            }
+        }
 
         // Record discount code usage if one was applied
         val discountCode = intent.metadata["discount_code"]

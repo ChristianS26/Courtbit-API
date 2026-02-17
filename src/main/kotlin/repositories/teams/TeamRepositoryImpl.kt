@@ -217,6 +217,18 @@ class TeamRepositoryImpl(
         return response.status.isSuccess()
     }
 
+    override suspend fun updateTeamScheduleRestriction(teamId: String, scheduleRestriction: String): Boolean {
+        // scheduleRestriction is raw JSON string, send as JSONB to Supabase
+        val patchBody = """{"schedule_restriction": $scheduleRestriction}"""
+        val response = client.patch("$apiUrl/teams?id=eq.$teamId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(patchBody)
+        }
+        return response.status.isSuccess()
+    }
+
     override suspend fun setTeamResult(teamId: String, req: SetTeamResultRequest): String {
         val payload = buildJsonObject {
             put("p_team_id", teamId)

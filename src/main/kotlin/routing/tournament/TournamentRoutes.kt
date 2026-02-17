@@ -60,6 +60,21 @@ fun Route.tournamentRoutes(
             }
         }
 
+        get("{id}/restriction-options") {
+            val id = call.parameters["id"]
+            if (id.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Parámetro 'id' requerido"))
+                return@get
+            }
+
+            val options = tournamentService.getRestrictionOptions(id)
+            if (options != null) {
+                call.respond(HttpStatusCode.OK, options)
+            } else {
+                call.respond(HttpStatusCode.NotFound, mapOf("error" to "Torneo no encontrado"))
+            }
+        }
+
         authenticate("auth-jwt") {
             post {
                 // Get organizer ID (works for owners and members)

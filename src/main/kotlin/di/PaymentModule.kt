@@ -40,6 +40,7 @@ val PaymentModule = module {
         StripeWebhookService(
             endpointSecret = stripeWebhookSecret,
             paymentRepository = get(),
+            teamRepository = get(),
             emailService = get(),
             tournamentRepository = get(),
             categoryRepository = get(),

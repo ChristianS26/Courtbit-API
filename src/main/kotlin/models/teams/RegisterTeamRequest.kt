@@ -1,5 +1,7 @@
 package models.teams
 
+import kotlinx.serialization.SerialName
+
 @kotlinx.serialization.Serializable
 data class RegisterTeamRequest(
     val tournamentId: String,
@@ -13,5 +15,6 @@ data class RegisterTeamRequest(
     val partnerUid: String? = null,
     val partnerName: String? = null,
     val partnerEmail: String? = null,
-    val partnerPhone: String? = null
+    val partnerPhone: String? = null,
+    @SerialName("schedule_restriction") val scheduleRestriction: ScheduleRestriction? = null
 )

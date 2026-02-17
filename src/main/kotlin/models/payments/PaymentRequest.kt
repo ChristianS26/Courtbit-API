@@ -2,6 +2,7 @@ package com.incodap.models.payments
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import models.teams.ScheduleRestriction
 
 @Serializable
 data class PaymentRequest(
@@ -15,7 +16,8 @@ data class PaymentRequest(
     val categoryId: Int,
     val email: String,
     val paidFor: String, // "1" o "2"
-    val discountCode: String? = null
+    val discountCode: String? = null,
+    @SerialName("schedule_restriction") val scheduleRestriction: ScheduleRestriction? = null
 ) {
     fun validate(): List<String> {
         val errors = mutableListOf<String>()

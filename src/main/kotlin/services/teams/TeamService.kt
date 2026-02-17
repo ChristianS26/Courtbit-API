@@ -6,6 +6,8 @@ import com.incodap.models.teams.SetTeamResultRequest
 import com.incodap.models.teams.TeamResultStatusDto
 import com.incodap.models.users.UserDto
 import com.incodap.repositories.teams.TeamRepository
+import kotlinx.serialization.json.Json
+import models.teams.ScheduleRestriction
 import models.category.CategoryResponseDto
 import models.ranking.TeamWithResultStatusDto
 import models.registrationcode.RegisterTeamResult
@@ -133,7 +135,8 @@ class TeamService(
                         playerBPoints = bPts,
                         playerBPaid = team.playerBPaid,
                         hasResult = teamIdsWithResult.contains(team.id),
-                        restriction = team.restriction
+                        restriction = team.restriction,
+                        scheduleRestriction = team.scheduleRestriction
                     )
                 },
                 maxTeams = maxTeamsByCategoryId[cat.id],
@@ -284,6 +287,13 @@ class TeamService(
                     teamRepository.updateTeamRestriction(existingTeam.id, newRestriction)
                 }
 
+                // Set structured schedule restriction if provided
+                val sr: ScheduleRestriction? = request.scheduleRestriction
+                if (sr != null) {
+                    val srJson = Json.encodeToString(ScheduleRestriction.serializer(), sr)
+                    teamRepository.updateTeamScheduleRestriction(existingTeam.id, srJson)
+                }
+
                 teamRepository.updateTeamPaidStatus(existingTeam.id, fieldToUpdate, true)
                 return RegisterTeamResult.Updated
             }
@@ -342,7 +352,12 @@ class TeamService(
         } else {
             ""
         }
-        return teamRepository.createTeam(
+        val scheduleRestrictionJson: kotlinx.serialization.json.JsonElement? =
+            if (request.scheduleRestriction != null) {
+                val jsonStr = Json.encodeToString(ScheduleRestriction.serializer(), request.scheduleRestriction!!)
+                Json.parseToJsonElement(jsonStr)
+            } else null
+        val created = teamRepository.createTeam(
             TeamRequest(
                 playerAUid = request.playerUid,
                 playerBUid = request.partnerUid,
@@ -351,8 +366,10 @@ class TeamService(
                 playerAPaid = true,
                 playerBPaid = false,
                 restriction = restrictionText,
+                scheduleRestriction = scheduleRestrictionJson,
             )
         )
+        return created
     }
 
     suspend fun getTeamWithFullPlayerInfo(teamId: String): TeamWithPlayerDto? {
@@ -380,7 +397,8 @@ class TeamService(
 
         return base.copy(
             hasResult = hasResult,
-            restriction = team.restriction
+            restriction = team.restriction,
+            scheduleRestriction = team.scheduleRestriction
         )
     }
 
@@ -512,9 +530,21 @@ class TeamService(
                 // Update existing team: mark calling player as paid
                 val paidField =
                     if (existing.playerAUid == req.playerUid) PlayerType.PLAYER_A.fieldName else PlayerType.PLAYER_B.fieldName
+                // Set schedule_restriction if provided
+                if (req.scheduleRestriction != null) {
+                    teamRepository.updateTeamScheduleRestriction(
+                        existing.id,
+                        Json.encodeToString(ScheduleRestriction.serializer(), req.scheduleRestriction)
+                    )
+                }
                 return teamRepository.updateTeamPaidStatus(existing.id, paidField, true)
             }
         }
+        val scheduleRestrictionJson: kotlinx.serialization.json.JsonElement? =
+            if (req.scheduleRestriction != null) {
+                val jsonStr = Json.encodeToString(ScheduleRestriction.serializer(), req.scheduleRestriction!!)
+                Json.parseToJsonElement(jsonStr)
+            } else null
         // Create new team with player A paid (the calling player)
         return teamRepository.createTeam(
             TeamRequest(
@@ -524,6 +554,7 @@ class TeamService(
                 categoryId = req.categoryId,
                 playerAPaid = true,
                 playerBPaid = false,
+                scheduleRestriction = scheduleRestrictionJson,
             )
         )
     }

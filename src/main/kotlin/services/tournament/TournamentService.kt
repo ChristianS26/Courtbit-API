@@ -7,10 +7,14 @@ import models.tournament.CategoryColorRequest
 import models.tournament.CategoryPriceRequest
 import models.tournament.CreateTournamentRequest
 import models.tournament.DeleteTournamentResult
+import models.tournament.RestrictionOptionsResponse
+import models.tournament.TimeRangeOption
 import models.tournament.TournamentResponse
 import repositories.tournament.TournamentHasPaymentsException
 import repositories.tournament.TournamentRepository
 import services.category.CategoryService
+import java.time.DayOfWeek
+import java.time.LocalDate
 
 class TournamentService(
     private val repository: TournamentRepository,
@@ -176,4 +180,56 @@ class TournamentService(
 
     suspend fun saveSchedulingConfig(tournamentId: String, config: models.tournament.SchedulingConfigRequest): Boolean =
         repository.saveSchedulingConfig(tournamentId, config)
+
+    suspend fun getRestrictionOptions(tournamentId: String): RestrictionOptionsResponse? {
+        val tournament = repository.getById(tournamentId) ?: return null
+        val config = repository.getSchedulingConfig(tournamentId)
+
+        return if (config != null && config.tournamentDays.isNotEmpty()) {
+            // Derive days-of-week from the explicit tournament_days list
+            val daysOfWeek = config.tournamentDays
+                .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
+                .map { it.dayOfWeek.value } // ISO: 1=Mon..7=Sun
+                .distinct()
+                .sorted()
+
+            // Derive time range from courts' available_from/available_to
+            val activeCourts = config.courts.filter { it.isActive }
+            val timeRange = if (activeCourts.isNotEmpty()) {
+                val from = activeCourts.minOf { it.availableFrom }
+                val to = activeCourts.maxOf { it.availableTo }
+                TimeRangeOption(
+                    from = from,
+                    to = to,
+                    stepMinutes = config.matchDurationMinutes
+                )
+            } else null
+
+            RestrictionOptionsResponse(
+                availableDaysOfWeek = daysOfWeek,
+                timeRange = timeRange
+            )
+        } else {
+            // No scheduling config: derive days from tournament date range
+            val start = runCatching { LocalDate.parse(tournament.startDate) }.getOrNull()
+            val end = runCatching { LocalDate.parse(tournament.endDate) }.getOrNull()
+
+            val daysOfWeek = if (start != null && end != null) {
+                generateSequence(start) { it.plusDays(1) }
+                    .takeWhile { !it.isAfter(end) }
+                    .map { it.dayOfWeek.value }
+                    .distinct()
+                    .sorted()
+                    .toList()
+            } else {
+                // Fallback: all 7 days
+                (1..7).toList()
+            }
+
+            RestrictionOptionsResponse(
+                availableDaysOfWeek = daysOfWeek,
+                timeRange = null // No time-based restriction available
+            )
+        }
+    }
 }
