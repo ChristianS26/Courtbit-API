@@ -272,7 +272,7 @@ fun Route.tournamentRoutes(
                     return@patch
                 }
 
-                val updated = tournamentService.updateFlyerUrl(id, payload.flyer_url)
+                val updated = tournamentService.updateFlyerUrl(id, payload.flyer_url, payload.flyer_position)
                 if (updated) {
                     call.respond(HttpStatusCode.OK, mapOf("success" to true))
                 } else {

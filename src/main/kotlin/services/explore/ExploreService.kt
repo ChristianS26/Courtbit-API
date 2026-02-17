@@ -63,6 +63,7 @@ class ExploreService(
                     latitude = t.latitude,
                     longitude = t.longitude,
                     flyerUrl = t.flyerUrl,
+                    flyerPosition = t.flyerPosition,
                     registrationOpen = t.registrationOpen,
                     isActive = true,
                     organizerId = t.organizerId,

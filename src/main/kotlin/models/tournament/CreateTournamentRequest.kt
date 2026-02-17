@@ -14,6 +14,7 @@ data class CreateTournamentRequest(
     val type: String,
     @SerialName("max_points") val maxPoints: String? = null,
     @SerialName("flyer_url") val flyerUrl: String? = null,
+    @SerialName("flyer_position") val flyerPosition: String? = null,
     @SerialName("club_logo_url") val clubLogoUrl: String? = null,
     @SerialName("organizer_id") val organizerId: String? = null,
     @SerialName("city_id") val cityId: Int? = null,

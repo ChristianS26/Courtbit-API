@@ -162,8 +162,8 @@ class TournamentService(
         }
     }
 
-    suspend fun updateFlyerUrl(id: String, flyerUrl: String): Boolean =
-        repository.updateFlyerUrl(id, flyerUrl)
+    suspend fun updateFlyerUrl(id: String, flyerUrl: String, flyerPosition: String? = null): Boolean =
+        repository.updateFlyerUrl(id, flyerUrl, flyerPosition)
 
     suspend fun updateClubLogoUrl(id: String, clubLogoUrl: String): Boolean =
         repository.updateClubLogoUrl(id, clubLogoUrl)

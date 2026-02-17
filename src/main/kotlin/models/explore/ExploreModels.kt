@@ -14,6 +14,7 @@ data class ExploreEvent(
     val latitude: Double? = null,
     val longitude: Double? = null,
     @SerialName("flyer_url") val flyerUrl: String? = null,
+    @SerialName("flyer_position") val flyerPosition: String? = null,
     @SerialName("registration_open") val registrationOpen: Boolean,
     @SerialName("is_active") val isActive: Boolean,
     @SerialName("organizer_id") val organizerId: String?,

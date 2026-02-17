@@ -236,12 +236,16 @@ class TournamentRepositoryImpl(
         return allSuccess
     }
 
-    override suspend fun updateFlyerUrl(id: String, flyerUrl: String): Boolean {
+    override suspend fun updateFlyerUrl(id: String, flyerUrl: String, flyerPosition: String?): Boolean {
+        val body = buildMap<String, String> {
+            put("flyer_url", flyerUrl)
+            if (flyerPosition != null) put("flyer_position", flyerPosition)
+        }
         val response = client.patch("$apiUrl/tournaments?id=eq.$id") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             contentType(ContentType.Application.Json)
-            setBody(mapOf("flyer_url" to flyerUrl))
+            setBody(body)
         }
 
         return response.status.isSuccess()
@@ -386,6 +390,7 @@ data class TournamentRawResponse(
     val type: String,
     @SerialName("max_points") val maxPoints: String? = null,
     @SerialName("flyer_url") val flyerUrl: String? = null,
+    @SerialName("flyer_position") val flyerPosition: String? = null,
     val categoryIds: List<String> = emptyList(),
     @SerialName("is_enabled") val isEnabled: Boolean,
     @SerialName("registration_open") val registrationOpen: Boolean,
@@ -412,6 +417,7 @@ data class TournamentRawResponse(
             type = type,
             maxPoints = maxPoints,
             flyerUrl = flyerUrl,
+            flyerPosition = flyerPosition,
             categoryIds = categoryIds,
             isEnabled = isEnabled,
             registrationOpen = registrationOpen,

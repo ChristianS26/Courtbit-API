@@ -15,6 +15,7 @@ data class TournamentResponse(
     val type: String,
     @SerialName("max_points") val maxPoints: String? = null,
     @SerialName("flyer_url") val flyerUrl: String? = null,
+    @SerialName("flyer_position") val flyerPosition: String? = null,
     val categoryIds: List<String> = emptyList(),
     @SerialName("is_enabled") val isEnabled: Boolean,
     @SerialName("registration_open") val registrationOpen: Boolean,
