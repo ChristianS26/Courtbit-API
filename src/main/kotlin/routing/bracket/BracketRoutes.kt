@@ -715,6 +715,8 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                                 call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
                             e is IllegalArgumentException ->
                                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
+                            e is IllegalStateException ->
+                                call.respond(HttpStatusCode.Conflict, mapOf("error" to message))
                             else ->
                                 call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
                         }
@@ -754,6 +756,8 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                                 call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
                             e is IllegalArgumentException ->
                                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
+                            e is IllegalStateException ->
+                                call.respond(HttpStatusCode.Conflict, mapOf("error" to message))
                             else ->
                                 call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
                         }
@@ -781,6 +785,10 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                             is IllegalArgumentException -> call.respond(
                                 HttpStatusCode.BadRequest,
                                 mapOf("error" to (e.message ?: "Cannot advance"))
+                            )
+                            is IllegalStateException -> call.respond(
+                                HttpStatusCode.Conflict,
+                                mapOf("error" to (e.message ?: "Advancement not allowed in current state"))
                             )
                             else -> call.respond(
                                 HttpStatusCode.InternalServerError,
@@ -825,6 +833,8 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                                 call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
                             e is IllegalArgumentException ->
                                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
+                            e is IllegalStateException ->
+                                call.respond(HttpStatusCode.Conflict, mapOf("error" to message))
                             else ->
                                 call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
                         }
@@ -855,6 +865,8 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                                     call.respond(HttpStatusCode.NotFound, ErrorResponse(message))
                                 e is IllegalArgumentException ->
                                     call.respond(HttpStatusCode.BadRequest, ErrorResponse(message))
+                                e is IllegalStateException ->
+                                    call.respond(HttpStatusCode.Conflict, ErrorResponse(message))
                                 else ->
                                     call.respond(HttpStatusCode.InternalServerError, ErrorResponse(message))
                             }

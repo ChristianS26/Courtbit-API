@@ -195,4 +195,10 @@ interface BracketRepository {
         winnerTeam: Int,
         submittedByUserId: String
     ): Result<MatchResponse>
+
+    /**
+     * Update a single field on a match (e.g. team1_id, team2_id).
+     * Used for BYE auto-advance to place advancing team in the next round.
+     */
+    suspend fun updateMatchField(matchId: String, field: String, value: String): Boolean
 }

@@ -694,7 +694,7 @@ class BracketRepositoryImpl(
 
     override suspend fun deleteMatchScore(matchId: String): Result<MatchResponse> {
         // Reset score fields to null and status to pending (raw JSON like updateMatchScore)
-        val jsonBody = """{"score_team1":null,"score_team2":null,"set_scores":null,"winner_team":null,"status":"pending"}"""
+        val jsonBody = """{"score_team1":null,"score_team2":null,"set_scores":null,"winner_team":null,"status":"pending","submitted_by_user_id":null,"submitted_at":null}"""
 
         val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
             header("apikey", apiKey)
@@ -794,5 +794,16 @@ class BracketRepositoryImpl(
         } else {
             Result.failure(IllegalStateException("Failed to update match score: ${response.status.value}"))
         }
+    }
+
+    override suspend fun updateMatchField(matchId: String, field: String, value: String): Boolean {
+        val jsonBody = """{"$field":"$value"}"""
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(jsonBody)
+        }
+        return response.status.isSuccess()
     }
 }

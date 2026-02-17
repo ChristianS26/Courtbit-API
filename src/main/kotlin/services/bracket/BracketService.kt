@@ -331,6 +331,20 @@ class BracketService(
             }
         }
 
+        // Auto-advance BYE matches: the real team advances to the next round
+        for (generated in generatedMatches) {
+            if (!generated.isBye) continue
+            val matchId = matchNumberToId[generated.matchNumber] ?: continue
+            val advancingTeamId = generated.team1Id ?: generated.team2Id ?: continue
+            val nextMatchNumber = generated.nextMatchNumber ?: continue
+            val nextMatchId = matchNumberToId[nextMatchNumber] ?: continue
+            val position = generated.nextMatchPosition ?: continue
+
+            // Place the advancing team in the correct slot of the next match
+            val field = if (position == 1) "team1_id" else "team2_id"
+            repository.updateMatchField(nextMatchId, field, advancingTeamId)
+        }
+
         // Fetch complete bracket with updated matches
         val result = repository.getBracketWithMatches(tournamentId, categoryId)
             ?: return Result.failure(IllegalStateException("Failed to fetch created bracket"))
@@ -405,6 +419,16 @@ class BracketService(
         // Get match to find its bracket
         val match = repository.getMatch(matchId)
             ?: return Result.failure(IllegalArgumentException("Match not found"))
+
+        // Cannot score a BYE match
+        if (match.isBye || match.status == "bye") {
+            return Result.failure(IllegalArgumentException("Cannot score a BYE match"))
+        }
+
+        // Cannot overwrite a completed match — must delete the score first
+        if (match.status == "completed" || match.status == "forfeit" || match.status == "walkover") {
+            return Result.failure(IllegalArgumentException("Match already has a result. Delete the existing score before assigning a new one."))
+        }
 
         // Get bracket config to determine format
         val bracket = repository.getBracketById(match.bracketId)
@@ -493,7 +517,7 @@ class BracketService(
         val match = repository.getMatch(matchId)
             ?: return Result.failure(IllegalArgumentException("Match not found"))
 
-        if (match.status != "completed" && match.status != "forfeit") {
+        if (match.status != "completed" && match.status != "forfeit" && match.status != "walkover") {
             return Result.failure(IllegalArgumentException("Match has no score to delete"))
         }
 
@@ -549,7 +573,7 @@ class BracketService(
         if (!isInSlot) return
 
         // If the next match has a completed result, cascade-delete it first
-        if (nextMatch.status == "completed" || nextMatch.status == "forfeit") {
+        if (nextMatch.status == "completed" || nextMatch.status == "forfeit" || nextMatch.status == "walkover") {
             cascadeDeleteScore(nextMatch)
             repository.deleteMatchScore(nextMatchId)
         }
@@ -579,6 +603,23 @@ class BracketService(
             1 -> match.team1Id ?: return Result.failure(IllegalArgumentException("Team 1 ID missing"))
             2 -> match.team2Id ?: return Result.failure(IllegalArgumentException("Team 2 ID missing"))
             else -> return Result.failure(IllegalArgumentException("Invalid winner_team value: $winnerTeam"))
+        }
+
+        // Check the next match slot isn't already occupied by a different team
+        if (match.nextMatchId != null && match.nextMatchPosition != null) {
+            val nextMatch = repository.getMatch(match.nextMatchId)
+            if (nextMatch != null) {
+                val occupant = when (match.nextMatchPosition) {
+                    1 -> nextMatch.team1Id
+                    2 -> nextMatch.team2Id
+                    else -> null
+                }
+                if (occupant != null && occupant != winnerTeamId) {
+                    return Result.failure(IllegalStateException(
+                        "Cannot advance: the target slot in the next match is already occupied by a different team"
+                    ))
+                }
+            }
         }
 
         // Advance to next match
@@ -1271,6 +1312,18 @@ class BracketService(
                 val nextMatchId = matchNumberToId[adjustedNextMatchNumber] ?: continue
                 repository.updateMatchNextMatchId(matchId, nextMatchId, generated.nextMatchPosition)
             }
+        }
+
+        // Auto-advance BYE matches
+        for (generated in knockoutMatchesGenerated) {
+            if (!generated.isBye) continue
+            val matchId = matchNumberToId[generated.matchNumber] ?: continue
+            val advancingTeamId = generated.team1Id ?: generated.team2Id ?: continue
+            val nextMatchNumber = generated.nextMatchNumber?.let { it + maxMatchNumber } ?: continue
+            val nextMatchId = matchNumberToId[nextMatchNumber] ?: continue
+            val position = generated.nextMatchPosition ?: continue
+            val field = if (position == 1) "team1_id" else "team2_id"
+            repository.updateMatchField(nextMatchId, field, advancingTeamId)
         }
 
         // Return complete bracket
