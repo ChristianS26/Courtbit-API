@@ -839,23 +839,23 @@ fun Route.bracketRoutes(bracketService: BracketService) {
 
                 val matchId = call.parameters["id"]
                 if (matchId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Match ID required"))
+                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("Match ID required"))
                     return@delete
                 }
 
                 val result = bracketService.deleteMatchScore(matchId)
 
                 result.fold(
-                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onSuccess = { call.respond(HttpStatusCode.OK, SuccessResponse("Score deleted")) },
                     onFailure = { e ->
                         val message = e.message ?: "Delete failed"
                         when {
                             e is IllegalArgumentException && message.contains("not found", ignoreCase = true) ->
-                                call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
+                                call.respond(HttpStatusCode.NotFound, ErrorResponse(message))
                             e is IllegalArgumentException ->
-                                call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
+                                call.respond(HttpStatusCode.BadRequest, ErrorResponse(message))
                             else ->
-                                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
+                                call.respond(HttpStatusCode.InternalServerError, ErrorResponse(message))
                         }
                     }
                 )

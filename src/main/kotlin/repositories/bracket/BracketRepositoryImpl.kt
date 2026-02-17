@@ -27,16 +27,6 @@ private data class MatchScheduleUpdateDto(
     @SerialName("scheduled_time") val scheduledTime: String?
 )
 
-@Serializable
-private data class MatchScoreResetDto(
-    @SerialName("score_team1") val scoreTeam1: Int? = null,
-    @SerialName("score_team2") val scoreTeam2: Int? = null,
-    @SerialName("set_scores") val setScores: String? = null,
-    @SerialName("winner_team") val winnerTeam: Int? = null,
-    val status: String = "pending",
-    @SerialName("submitted_by_user_id") val submittedByUserId: String? = null,
-    @SerialName("submitted_at") val submittedAt: String? = null
-)
 
 class BracketRepositoryImpl(
     private val client: HttpClient,
@@ -686,18 +676,15 @@ class BracketRepositoryImpl(
     // ============ Delete/Reset Match Score ============
 
     override suspend fun deleteMatchScore(matchId: String): Result<MatchResponse> {
-        // Reset score fields to null and status to pending
-        val bodyJson = jsonForBulkInsert.encodeToString(
-            MatchScoreResetDto.serializer(),
-            MatchScoreResetDto()
-        )
+        // Reset score fields to null and status to pending (raw JSON like updateMatchScore)
+        val jsonBody = """{"score_team1":null,"score_team2":null,"set_scores":null,"winner_team":null,"status":"pending"}"""
 
         val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
             contentType(ContentType.Application.Json)
-            setBody(bodyJson)
+            setBody(jsonBody)
         }
 
         val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
