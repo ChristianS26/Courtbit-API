@@ -27,6 +27,17 @@ private data class MatchScheduleUpdateDto(
     @SerialName("scheduled_time") val scheduledTime: String?
 )
 
+@Serializable
+private data class MatchScoreResetDto(
+    @SerialName("score_team1") val scoreTeam1: Int? = null,
+    @SerialName("score_team2") val scoreTeam2: Int? = null,
+    @SerialName("set_scores") val setScores: String? = null,
+    @SerialName("winner_team") val winnerTeam: Int? = null,
+    val status: String = "pending",
+    @SerialName("submitted_by_user_id") val submittedByUserId: String? = null,
+    @SerialName("submitted_at") val submittedAt: String? = null
+)
+
 class BracketRepositoryImpl(
     private val client: HttpClient,
     private val json: Json,
@@ -670,6 +681,40 @@ class BracketRepositoryImpl(
         val matches = json.decodeFromString<List<MatchResponse>>(bodyText)
         return matches.firstOrNull()
             ?: throw IllegalStateException("Match not found after update")
+    }
+
+    // ============ Delete/Reset Match Score ============
+
+    override suspend fun deleteMatchScore(matchId: String): Result<MatchResponse> {
+        // Reset score fields to null and status to pending
+        val bodyJson = jsonForBulkInsert.encodeToString(
+            MatchScoreResetDto.serializer(),
+            MatchScoreResetDto()
+        )
+
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            setBody(bodyJson)
+        }
+
+        val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
+
+        return if (response.status.isSuccess()) {
+            val matches = runCatching {
+                json.decodeFromString<List<MatchResponse>>(bodyText)
+            }.getOrElse { e ->
+                return Result.failure(IllegalStateException("Failed to parse response: ${e.message}"))
+            }
+            if (matches.isEmpty()) {
+                return Result.failure(IllegalArgumentException("Match not found with ID: $matchId"))
+            }
+            Result.success(matches.first())
+        } else {
+            Result.failure(IllegalStateException("Failed to reset score: ${response.status.value} - $bodyText"))
+        }
     }
 
     // ============ Player Score Submission ============

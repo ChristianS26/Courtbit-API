@@ -173,6 +173,11 @@ interface BracketRepository {
     suspend fun getTournamentAllowPlayerScores(tournamentId: String): Boolean
 
     /**
+     * Delete/reset match score: clear score fields and set status back to pending
+     */
+    suspend fun deleteMatchScore(matchId: String): Result<MatchResponse>
+
+    /**
      * Update match score with audit trail (submitted_by_user_id, submitted_at)
      */
     suspend fun updateMatchScoreWithAudit(

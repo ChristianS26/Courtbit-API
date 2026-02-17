@@ -485,6 +485,67 @@ class BracketService(
     }
 
     /**
+     * Delete/reset a match score. Clears score fields, reverts status to pending,
+     * removes advanced winner from next match, and recalculates standings.
+     */
+    suspend fun deleteMatchScore(matchId: String): Result<MatchResponse> {
+        // Get the current match
+        val match = repository.getMatch(matchId)
+            ?: return Result.failure(IllegalArgumentException("Match not found"))
+
+        if (match.status != "completed" && match.status != "forfeit") {
+            return Result.failure(IllegalArgumentException("Match has no score to delete"))
+        }
+
+        // If winner was advanced to next match, undo the advancement
+        val nextMatchId = match.nextMatchId
+        if (nextMatchId != null && match.winnerTeam != null) {
+            val winnerTeamId = when (match.winnerTeam) {
+                1 -> match.team1Id
+                2 -> match.team2Id
+                else -> null
+            }
+            if (winnerTeamId != null) {
+                val nextMatch = repository.getMatch(nextMatchId)
+                if (nextMatch != null) {
+                    val position = match.nextMatchPosition ?: 1
+                    // Clear the team slot in next match only if it still holds the winner
+                    val shouldClear = when (position) {
+                        1 -> nextMatch.team1Id == winnerTeamId
+                        2 -> nextMatch.team2Id == winnerTeamId
+                        else -> false
+                    }
+                    if (shouldClear) {
+                        val fieldToUpdate = if (position == 1) "team1_id" else "team2_id"
+                        repository.updateMatchTeams(
+                            matchId = nextMatchId,
+                            team1Id = if (position == 1) null else nextMatch.team1Id,
+                            team2Id = if (position == 2) null else nextMatch.team2Id,
+                            groupNumber = nextMatch.groupNumber
+                        )
+                    }
+                }
+            }
+        }
+
+        // Reset the match score
+        val result = repository.deleteMatchScore(matchId)
+
+        // Recalculate standings if needed
+        if (result.isSuccess) {
+            val bracket = repository.getBracketById(match.bracketId)
+            if (bracket != null) {
+                when (bracket.format) {
+                    "groups_knockout" -> calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
+                    "round_robin" -> calculateStandings(bracket.tournamentId, bracket.categoryId)
+                }
+            }
+        }
+
+        return result
+    }
+
+    /**
      * Advance the winner of a completed match to the next match.
      * The match must be completed with a winner determined.
      */

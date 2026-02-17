@@ -832,6 +832,35 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 )
             }
 
+            // DELETE /api/matches/{id}/score
+            // Delete/reset match score
+            delete("/{id}/score") {
+                val organizerId = call.getOrganizerId() ?: return@delete
+
+                val matchId = call.parameters["id"]
+                if (matchId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Match ID required"))
+                    return@delete
+                }
+
+                val result = bracketService.deleteMatchScore(matchId)
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        val message = e.message ?: "Delete failed"
+                        when {
+                            e is IllegalArgumentException && message.contains("not found", ignoreCase = true) ->
+                                call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
+                            e is IllegalArgumentException ->
+                                call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
+                            else ->
+                                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
+                        }
+                    }
+                )
+            }
+
             // PATCH /api/matches/{id}/status
             // Update match status without changing score
             patch("/{id}/status") {
