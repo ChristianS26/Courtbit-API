@@ -485,11 +485,11 @@ class BracketService(
     }
 
     /**
-     * Delete/reset a match score. Clears score fields, reverts status to pending,
-     * removes advanced winner from next match, and recalculates standings.
+     * Delete/reset a match score with cascade.
+     * If the winner was advanced to the next match and that match also has a result,
+     * recursively deletes downstream results before clearing this one.
      */
     suspend fun deleteMatchScore(matchId: String): Result<MatchResponse> {
-        // Get the current match
         val match = repository.getMatch(matchId)
             ?: return Result.failure(IllegalArgumentException("Match not found"))
 
@@ -498,37 +498,12 @@ class BracketService(
         }
 
         try {
-            // If winner was advanced to next match, undo the advancement
-            val nextMatchId = match.nextMatchId
-            val position = match.nextMatchPosition
-            if (nextMatchId != null && position != null && match.winnerTeam != null) {
-                val winnerTeamId = when (match.winnerTeam) {
-                    1 -> match.team1Id
-                    2 -> match.team2Id
-                    else -> null
-                }
-                if (winnerTeamId != null) {
-                    val nextMatch = repository.getMatch(nextMatchId)
-                    if (nextMatch != null) {
-                        // Verify the winner is still in the expected slot before clearing
-                        val isInSlot = when (position) {
-                            1 -> nextMatch.team1Id == winnerTeamId
-                            2 -> nextMatch.team2Id == winnerTeamId
-                            else -> false
-                        }
-                        if (isInSlot) {
-                            // Use dedicated method with raw JSON to ensure null is sent explicitly
-                            repository.clearMatchTeamSlot(nextMatchId, position)
-                        }
-                    }
-                }
-            }
+            cascadeDeleteScore(match)
         } catch (e: Exception) {
-            // Non-critical: undo advancement may fail, proceed with score deletion
-            println("Warning: Failed to undo winner advancement: ${e.message}")
+            println("Warning: Cascade undo failed: ${e.message}")
         }
 
-        // Reset the match score
+        // Reset this match's score
         val result = repository.deleteMatchScore(matchId)
 
         // Recalculate standings if needed
@@ -541,12 +516,46 @@ class BracketService(
                         "round_robin" -> calculateStandings(bracket.tournamentId, bracket.categoryId)
                     }
                 }
-            } catch (_: Exception) {
-                // Non-critical: standings recalculation failure shouldn't block score deletion
-            }
+            } catch (_: Exception) {}
         }
 
         return result
+    }
+
+    /**
+     * Recursively cascade score deletion forward through the bracket.
+     * If the next match has a completed result involving the advancing team,
+     * delete that result first (which recurses further), then clear the team slot.
+     */
+    private suspend fun cascadeDeleteScore(match: MatchResponse) {
+        val nextMatchId = match.nextMatchId ?: return
+        val position = match.nextMatchPosition ?: return
+        if (match.winnerTeam == null) return
+
+        val winnerTeamId = when (match.winnerTeam) {
+            1 -> match.team1Id
+            2 -> match.team2Id
+            else -> null
+        } ?: return
+
+        val nextMatch = repository.getMatch(nextMatchId) ?: return
+
+        // Verify the winner is actually in the expected slot
+        val isInSlot = when (position) {
+            1 -> nextMatch.team1Id == winnerTeamId
+            2 -> nextMatch.team2Id == winnerTeamId
+            else -> false
+        }
+        if (!isInSlot) return
+
+        // If the next match has a completed result, cascade-delete it first
+        if (nextMatch.status == "completed" || nextMatch.status == "forfeit") {
+            cascadeDeleteScore(nextMatch)
+            repository.deleteMatchScore(nextMatchId)
+        }
+
+        // Now clear the team slot in the next match
+        repository.clearMatchTeamSlot(nextMatchId, position)
     }
 
     /**
