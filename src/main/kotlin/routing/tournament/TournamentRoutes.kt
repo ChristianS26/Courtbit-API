@@ -19,6 +19,7 @@ import com.incodap.services.club.ClubService
 import models.tournament.CreateTournamentWithCategoriesRequest
 import models.tournament.DeleteTournamentResult
 import models.tournament.InheritCourtsRequest
+import models.tournament.RestrictionConfigRequest
 import models.tournament.SchedulingConfigRequest
 import models.tournament.UpdateFlyerRequest
 import models.tournament.UpdateTournamentWithCategoriesRequest
@@ -370,6 +371,53 @@ fun Route.tournamentRoutes(
 
                 try {
                     val saved = tournamentService.saveSchedulingConfig(id, request)
+                    if (saved) {
+                        call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                    } else {
+                        call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "No se pudo guardar la configuración"))
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Error interno: ${e.localizedMessage}"))
+                }
+            }
+
+            // GET /tournaments/{id}/restriction-config
+            get("{id}/restriction-config") {
+                val id = call.parameters["id"]
+                if (id.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Parámetro 'id' requerido"))
+                    return@get
+                }
+
+                val config = tournamentService.getRestrictionConfig(id)
+                if (config != null) {
+                    call.respond(HttpStatusCode.OK, config)
+                } else {
+                    call.respond(HttpStatusCode.OK, mapOf(
+                        "tournament_id" to id,
+                        "enabled" to false,
+                        "available_days" to emptyList<Int>(),
+                        "time_range_from" to null,
+                        "time_range_to" to null,
+                        "time_slot_minutes" to 60
+                    ))
+                }
+            }
+
+            // PUT /tournaments/{id}/restriction-config
+            put("{id}/restriction-config") {
+                val id = call.validateOrganizerAndId() ?: return@put
+
+                val request = try {
+                    call.receive<RestrictionConfigRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato inválido: ${e.localizedMessage}"))
+                    return@put
+                }
+
+                try {
+                    val saved = tournamentService.saveRestrictionConfig(id, request)
                     if (saved) {
                         call.respond(HttpStatusCode.OK, mapOf("success" to true))
                     } else {

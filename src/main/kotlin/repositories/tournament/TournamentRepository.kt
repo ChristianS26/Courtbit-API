@@ -19,4 +19,6 @@ interface TournamentRepository {
     suspend fun setCategoryColors(tournamentId: String, categoryColors: Map<Int, String>): Boolean
     suspend fun getSchedulingConfig(tournamentId: String): models.tournament.SchedulingConfigResponse?
     suspend fun saveSchedulingConfig(tournamentId: String, config: models.tournament.SchedulingConfigRequest): Boolean
+    suspend fun getRestrictionConfig(tournamentId: String): models.tournament.RestrictionConfigResponse?
+    suspend fun saveRestrictionConfig(tournamentId: String, config: models.tournament.RestrictionConfigRequest): Boolean
 }

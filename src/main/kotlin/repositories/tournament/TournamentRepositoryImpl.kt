@@ -340,6 +340,78 @@ class TournamentRepositoryImpl(
         }
         return success
     }
+
+    override suspend fun getRestrictionConfig(tournamentId: String): models.tournament.RestrictionConfigResponse? {
+        val response = client.get("$apiUrl/tournament_restriction_config") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("tournament_id", "eq.$tournamentId")
+            parameter("select", "*")
+        }
+
+        return if (response.status.isSuccess()) {
+            val body = response.bodyAsText()
+            val configs = json.decodeFromString<List<RestrictionConfigRaw>>(body)
+            configs.firstOrNull()?.toResponse()
+        } else {
+            null
+        }
+    }
+
+    override suspend fun saveRestrictionConfig(
+        tournamentId: String,
+        config: models.tournament.RestrictionConfigRequest
+    ): Boolean {
+        val existing = getRestrictionConfig(tournamentId)
+
+        val payload = RestrictionConfigRaw(
+            tournamentId = tournamentId,
+            enabled = config.enabled,
+            availableDays = config.availableDays,
+            timeRangeFrom = config.timeRangeFrom,
+            timeRangeTo = config.timeRangeTo,
+            timeSlotMinutes = config.timeSlotMinutes
+        )
+
+        val response = if (existing != null) {
+            client.patch("$apiUrl/tournament_restriction_config?tournament_id=eq.$tournamentId") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+        } else {
+            client.post("$apiUrl/tournament_restriction_config") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+        }
+
+        return response.status.isSuccess()
+    }
+}
+
+@Serializable
+private data class RestrictionConfigRaw(
+    @SerialName("tournament_id") val tournamentId: String,
+    val enabled: Boolean = false,
+    @SerialName("available_days") val availableDays: List<Int> = emptyList(),
+    @SerialName("time_range_from") val timeRangeFrom: String? = null,
+    @SerialName("time_range_to") val timeRangeTo: String? = null,
+    @SerialName("time_slot_minutes") val timeSlotMinutes: Int = 60
+) {
+    fun toResponse(): models.tournament.RestrictionConfigResponse {
+        return models.tournament.RestrictionConfigResponse(
+            tournamentId = tournamentId,
+            enabled = enabled,
+            availableDays = availableDays,
+            timeRangeFrom = timeRangeFrom,
+            timeRangeTo = timeRangeTo,
+            timeSlotMinutes = timeSlotMinutes
+        )
+    }
 }
 
 @Serializable
