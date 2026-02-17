@@ -11,7 +11,6 @@ data class OrganizerPublicProfileResponse(
     val description: String = "",
     @SerialName("logo_url") val logoUrl: String? = null,
     @SerialName("primary_color") val primaryColor: String = "#007AFF",
-    @SerialName("secondary_color") val secondaryColor: String = "#5856D6",
     @SerialName("contact_email") val contactEmail: String,
     @SerialName("contact_phone") val contactPhone: String = "",
     val instagram: String? = null,

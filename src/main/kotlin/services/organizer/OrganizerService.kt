@@ -81,11 +81,6 @@ class OrganizerService(
                 IllegalArgumentException("Invalid primary color format. Must be #RRGGBB")
             )
         }
-        if (!hexPattern.matches(request.secondaryColor)) {
-            return Result.failure(
-                IllegalArgumentException("Invalid secondary color format. Must be #RRGGBB")
-            )
-        }
 
         // Create organizer
         val created = repository.create(request, userUid)
@@ -133,11 +128,6 @@ class OrganizerService(
         if (request.primaryColor != null && !hexPattern.matches(request.primaryColor)) {
             return Result.failure(
                 IllegalArgumentException("Invalid primary color format. Must be #RRGGBB")
-            )
-        }
-        if (request.secondaryColor != null && !hexPattern.matches(request.secondaryColor)) {
-            return Result.failure(
-                IllegalArgumentException("Invalid secondary color format. Must be #RRGGBB")
             )
         }
 
@@ -282,7 +272,6 @@ class OrganizerService(
             description = organizer.description,
             logoUrl = organizer.logoUrl,
             primaryColor = organizer.primaryColor,
-            secondaryColor = organizer.secondaryColor,
             contactEmail = organizer.contactEmail,
             contactPhone = organizer.contactPhone,
             instagram = organizer.instagram,

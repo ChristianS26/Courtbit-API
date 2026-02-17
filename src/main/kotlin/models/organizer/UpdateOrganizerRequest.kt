@@ -10,7 +10,6 @@ data class UpdateOrganizerRequest(
     @SerialName("contact_email") val contactEmail: String? = null,
     @SerialName("contact_phone") val contactPhone: String? = null,
     @SerialName("primary_color") val primaryColor: String? = null,
-    @SerialName("secondary_color") val secondaryColor: String? = null,
     @SerialName("logo_url") val logoUrl: String? = null,
     val instagram: String? = null,
     val facebook: String? = null,
