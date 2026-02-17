@@ -497,35 +497,38 @@ class BracketService(
             return Result.failure(IllegalArgumentException("Match has no score to delete"))
         }
 
-        // If winner was advanced to next match, undo the advancement
-        val nextMatchId = match.nextMatchId
-        if (nextMatchId != null && match.winnerTeam != null) {
-            val winnerTeamId = when (match.winnerTeam) {
-                1 -> match.team1Id
-                2 -> match.team2Id
-                else -> null
-            }
-            if (winnerTeamId != null) {
-                val nextMatch = repository.getMatch(nextMatchId)
-                if (nextMatch != null) {
-                    val position = match.nextMatchPosition ?: 1
-                    // Clear the team slot in next match only if it still holds the winner
-                    val shouldClear = when (position) {
-                        1 -> nextMatch.team1Id == winnerTeamId
-                        2 -> nextMatch.team2Id == winnerTeamId
-                        else -> false
-                    }
-                    if (shouldClear) {
-                        val fieldToUpdate = if (position == 1) "team1_id" else "team2_id"
-                        repository.updateMatchTeams(
-                            matchId = nextMatchId,
-                            team1Id = if (position == 1) null else nextMatch.team1Id,
-                            team2Id = if (position == 2) null else nextMatch.team2Id,
-                            groupNumber = nextMatch.groupNumber
-                        )
+        try {
+            // If winner was advanced to next match, undo the advancement
+            val nextMatchId = match.nextMatchId
+            if (nextMatchId != null && match.winnerTeam != null) {
+                val winnerTeamId = when (match.winnerTeam) {
+                    1 -> match.team1Id
+                    2 -> match.team2Id
+                    else -> null
+                }
+                if (winnerTeamId != null) {
+                    val nextMatch = repository.getMatch(nextMatchId)
+                    if (nextMatch != null) {
+                        val position = match.nextMatchPosition ?: 1
+                        val shouldClear = when (position) {
+                            1 -> nextMatch.team1Id == winnerTeamId
+                            2 -> nextMatch.team2Id == winnerTeamId
+                            else -> false
+                        }
+                        if (shouldClear) {
+                            repository.updateMatchTeams(
+                                matchId = nextMatchId,
+                                team1Id = if (position == 1) null else nextMatch.team1Id,
+                                team2Id = if (position == 2) null else nextMatch.team2Id,
+                                groupNumber = nextMatch.groupNumber
+                            )
+                        }
                     }
                 }
             }
+        } catch (e: Exception) {
+            // Non-critical: undo advancement may fail, proceed with score deletion
+            println("Warning: Failed to undo winner advancement: ${e.message}")
         }
 
         // Reset the match score
@@ -533,12 +536,16 @@ class BracketService(
 
         // Recalculate standings if needed
         if (result.isSuccess) {
-            val bracket = repository.getBracketById(match.bracketId)
-            if (bracket != null) {
-                when (bracket.format) {
-                    "groups_knockout" -> calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
-                    "round_robin" -> calculateStandings(bracket.tournamentId, bracket.categoryId)
+            try {
+                val bracket = repository.getBracketById(match.bracketId)
+                if (bracket != null) {
+                    when (bracket.format) {
+                        "groups_knockout" -> calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
+                        "round_robin" -> calculateStandings(bracket.tournamentId, bracket.categoryId)
+                    }
                 }
+            } catch (_: Exception) {
+                // Non-critical: standings recalculation failure shouldn't block score deletion
             }
         }
 

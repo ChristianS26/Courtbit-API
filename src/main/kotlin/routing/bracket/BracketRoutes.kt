@@ -835,30 +835,35 @@ fun Route.bracketRoutes(bracketService: BracketService) {
             // DELETE /api/matches/{id}/score
             // Delete/reset match score
             delete("/{id}/score") {
-                val organizerId = call.getOrganizerId() ?: return@delete
+                try {
+                    val organizerId = call.getOrganizerId() ?: return@delete
 
-                val matchId = call.parameters["id"]
-                if (matchId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, ErrorResponse("Match ID required"))
-                    return@delete
-                }
-
-                val result = bracketService.deleteMatchScore(matchId)
-
-                result.fold(
-                    onSuccess = { call.respond(HttpStatusCode.OK, SuccessResponse("Score deleted")) },
-                    onFailure = { e ->
-                        val message = e.message ?: "Delete failed"
-                        when {
-                            e is IllegalArgumentException && message.contains("not found", ignoreCase = true) ->
-                                call.respond(HttpStatusCode.NotFound, ErrorResponse(message))
-                            e is IllegalArgumentException ->
-                                call.respond(HttpStatusCode.BadRequest, ErrorResponse(message))
-                            else ->
-                                call.respond(HttpStatusCode.InternalServerError, ErrorResponse(message))
-                        }
+                    val matchId = call.parameters["id"]
+                    if (matchId.isNullOrBlank()) {
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("Match ID required"))
+                        return@delete
                     }
-                )
+
+                    val result = bracketService.deleteMatchScore(matchId)
+
+                    result.fold(
+                        onSuccess = { call.respond(HttpStatusCode.OK, SuccessResponse("Score deleted")) },
+                        onFailure = { e ->
+                            val message = e.message ?: "Delete failed"
+                            when {
+                                e is IllegalArgumentException && message.contains("not found", ignoreCase = true) ->
+                                    call.respond(HttpStatusCode.NotFound, ErrorResponse(message))
+                                e is IllegalArgumentException ->
+                                    call.respond(HttpStatusCode.BadRequest, ErrorResponse(message))
+                                else ->
+                                    call.respond(HttpStatusCode.InternalServerError, ErrorResponse(message))
+                            }
+                        }
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Internal error: ${e.message}"))
+                }
             }
 
             // PATCH /api/matches/{id}/status
