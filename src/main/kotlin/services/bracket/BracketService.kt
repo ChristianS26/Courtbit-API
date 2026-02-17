@@ -500,7 +500,8 @@ class BracketService(
         try {
             // If winner was advanced to next match, undo the advancement
             val nextMatchId = match.nextMatchId
-            if (nextMatchId != null && match.winnerTeam != null) {
+            val position = match.nextMatchPosition
+            if (nextMatchId != null && position != null && match.winnerTeam != null) {
                 val winnerTeamId = when (match.winnerTeam) {
                     1 -> match.team1Id
                     2 -> match.team2Id
@@ -509,19 +510,15 @@ class BracketService(
                 if (winnerTeamId != null) {
                     val nextMatch = repository.getMatch(nextMatchId)
                     if (nextMatch != null) {
-                        val position = match.nextMatchPosition ?: 1
-                        val shouldClear = when (position) {
+                        // Verify the winner is still in the expected slot before clearing
+                        val isInSlot = when (position) {
                             1 -> nextMatch.team1Id == winnerTeamId
                             2 -> nextMatch.team2Id == winnerTeamId
                             else -> false
                         }
-                        if (shouldClear) {
-                            repository.updateMatchTeams(
-                                matchId = nextMatchId,
-                                team1Id = if (position == 1) null else nextMatch.team1Id,
-                                team2Id = if (position == 2) null else nextMatch.team2Id,
-                                groupNumber = nextMatch.groupNumber
-                            )
+                        if (isInSlot) {
+                            // Use dedicated method with raw JSON to ensure null is sent explicitly
+                            repository.clearMatchTeamSlot(nextMatchId, position)
                         }
                     }
                 }

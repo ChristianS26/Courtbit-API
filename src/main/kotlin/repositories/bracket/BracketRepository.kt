@@ -173,6 +173,13 @@ interface BracketRepository {
     suspend fun getTournamentAllowPlayerScores(tournamentId: String): Boolean
 
     /**
+     * Clear a team slot (team1_id or team2_id) on a match, setting it to NULL.
+     * Used to undo winner advancement when deleting a score.
+     * @param position 1 to clear team1_id, 2 to clear team2_id
+     */
+    suspend fun clearMatchTeamSlot(matchId: String, position: Int): Boolean
+
+    /**
      * Delete/reset match score: clear score fields and set status back to pending
      */
     suspend fun deleteMatchScore(matchId: String): Result<MatchResponse>

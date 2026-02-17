@@ -673,6 +673,23 @@ class BracketRepositoryImpl(
             ?: throw IllegalStateException("Match not found after update")
     }
 
+    // ============ Clear Team Slot ============
+
+    override suspend fun clearMatchTeamSlot(matchId: String, position: Int): Boolean {
+        val field = if (position == 1) "team1_id" else "team2_id"
+        // Raw JSON to explicitly send null (kotlinx.serialization omits nulls by default)
+        val jsonBody = """{"$field":null}"""
+
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(jsonBody)
+        }
+
+        return response.status.isSuccess()
+    }
+
     // ============ Delete/Reset Match Score ============
 
     override suspend fun deleteMatchScore(matchId: String): Result<MatchResponse> {
