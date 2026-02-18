@@ -69,6 +69,12 @@ interface BracketRepository {
     suspend fun deleteMatchesByBracketId(bracketId: String): Boolean
 
     /**
+     * Clear next_match_id and loser_next_match_id references for given match IDs.
+     * Must be called before deleteMatchesByIds to avoid FK constraint violations.
+     */
+    suspend fun clearNextMatchReferences(matchIds: List<String>): Boolean
+
+    /**
      * Delete specific matches by their IDs (used for deleting knockout phase only)
      * @return Number of matches deleted
      */

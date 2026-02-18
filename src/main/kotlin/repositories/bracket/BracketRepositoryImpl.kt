@@ -381,11 +381,25 @@ class BracketRepositoryImpl(
         return response.status.isSuccess()
     }
 
+    override suspend fun clearNextMatchReferences(matchIds: List<String>): Boolean {
+        if (matchIds.isEmpty()) return true
+
+        val idsFilter = matchIds.joinToString(",") { "\"$it\"" }
+        val response = client.patch("$apiUrl/tournament_matches?id=in.($idsFilter)") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody("""{"next_match_id":null,"loser_next_match_id":null}""")
+        }
+
+        return response.status.isSuccess()
+    }
+
     override suspend fun deleteMatchesByIds(matchIds: List<String>): Int {
         if (matchIds.isEmpty()) return 0
 
-        // Delete matches using IN query
-        val response = client.delete("$apiUrl/tournament_matches?id=in.(${matchIds.joinToString(",")})") {
+        val idsFilter = matchIds.joinToString(",") { "\"$it\"" }
+        val response = client.delete("$apiUrl/tournament_matches?id=in.($idsFilter)") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")

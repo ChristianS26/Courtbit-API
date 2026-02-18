@@ -1354,8 +1354,16 @@ class BracketService(
             return Result.failure(IllegalArgumentException("No knockout phase found to delete"))
         }
 
+        val knockoutIds = knockoutMatches.map { it.id }
+
+        // Clear self-referencing FK fields (next_match_id, loser_next_match_id) before deleting
+        val cleared = repository.clearNextMatchReferences(knockoutIds)
+        if (!cleared) {
+            return Result.failure(IllegalStateException("Failed to clear match references before deletion"))
+        }
+
         // Delete all knockout matches (BYEs, pending, and completed alike)
-        val deletedCount = repository.deleteMatchesByIds(knockoutMatches.map { it.id })
+        val deletedCount = repository.deleteMatchesByIds(knockoutIds)
 
         if (deletedCount != knockoutMatches.size) {
             return Result.failure(IllegalStateException("Failed to delete all knockout matches"))
