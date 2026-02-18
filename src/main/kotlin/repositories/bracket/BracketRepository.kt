@@ -79,10 +79,30 @@ interface BracketRepository {
     suspend fun deleteMatchesByBracketId(bracketId: String): Boolean
 
     /**
+     * Clear next_match_id and loser_next_match_id references for given match IDs.
+     * Must be called before deleteMatchesByIds to avoid FK constraint violations.
+     */
+    suspend fun clearNextMatchReferences(matchIds: List<String>): Boolean
+
+    /**
      * Delete specific matches by their IDs (used for deleting knockout phase only)
      * @return Number of matches deleted
      */
     suspend fun deleteMatchesByIds(matchIds: List<String>): Int
+
+    /**
+     * Delete knockout phase via RPC (transactional).
+     * Clears FK references and deletes all knockout matches in a single DB transaction.
+     * @return Number of matches deleted, or -1 on error
+     */
+    suspend fun deleteKnockoutPhaseRpc(tournamentId: String, categoryId: Int): Result<Int>
+
+    /**
+     * Clear all group results via RPC (atomic transaction).
+     * Resets all completed group matches to pending and zeroes standings.
+     * @return Number of matches cleared
+     */
+    suspend fun clearGroupResultsRpc(tournamentId: String, categoryId: Int): Result<Int>
 
     // ============ Match Scoring ============
 
@@ -217,6 +237,18 @@ interface BracketRepository {
     suspend fun getTournamentAllowPlayerScores(tournamentId: String): Boolean
 
     /**
+     * Clear a team slot (team1_id or team2_id) on a match, setting it to NULL.
+     * Used to undo winner advancement when deleting a score.
+     * @param position 1 to clear team1_id, 2 to clear team2_id
+     */
+    suspend fun clearMatchTeamSlot(matchId: String, position: Int): Boolean
+
+    /**
+     * Delete/reset match score: clear score fields and set status back to pending
+     */
+    suspend fun deleteMatchScore(matchId: String): Result<MatchResponse>
+
+    /**
      * Update match score with audit trail (submitted_by_user_id, submitted_at)
      */
     suspend fun updateMatchScoreWithAudit(
@@ -228,4 +260,10 @@ interface BracketRepository {
         submittedByUserId: String,
         expectedVersion: Int? = null
     ): Result<MatchResponse>
+
+    /**
+     * Update a single field on a match (e.g. team1_id, team2_id).
+     * Used for BYE auto-advance to place advancing team in the next round.
+     */
+    suspend fun updateMatchField(matchId: String, field: String, value: String): Boolean
 }

@@ -101,4 +101,30 @@ class FollowRepositoryImpl(
             false
         }
     }
+
+    override suspend fun getFollowedOrganizerIds(userId: String, organizerIds: Set<String>): Set<String> {
+        if (organizerIds.isEmpty()) return emptySet()
+        return try {
+            @Serializable
+            data class FollowRow(@SerialName("organizer_id") val organizerId: String)
+
+            val idsParam = organizerIds.joinToString(",") { "\"$it\"" }
+            val response = client.get("$apiUrl/organizer_followers") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                parameter("user_id", "eq.$userId")
+                parameter("organizer_id", "in.($idsParam)")
+                parameter("select", "organizer_id")
+            }
+
+            if (response.status.isSuccess()) {
+                val body = response.bodyAsText()
+                json.decodeFromString<List<FollowRow>>(body).map { it.organizerId }.toSet()
+            } else {
+                emptySet()
+            }
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
 }

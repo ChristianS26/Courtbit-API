@@ -8,11 +8,8 @@ import io.ktor.http.*
 import io.ktor.http.content.TextContent
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.boolean
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.put
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import models.bracket.*
@@ -32,6 +29,7 @@ private data class MatchScheduleUpdateDto(
     @SerialName("court_number") val courtNumber: Int?,
     @SerialName("scheduled_time") val scheduledTime: String?
 )
+
 
 class BracketRepositoryImpl(
     private val client: HttpClient,
@@ -497,30 +495,115 @@ class BracketRepositoryImpl(
         return response.status.isSuccess()
     }
 
+    override suspend fun clearNextMatchReferences(matchIds: List<String>): Boolean {
+        if (matchIds.isEmpty()) return true
+
+        val idsFilter = matchIds.joinToString(",") { "\"$it\"" }
+        val response = client.patch("$apiUrl/tournament_matches?id=in.($idsFilter)") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody("""{"next_match_id":null,"loser_next_match_id":null}""")
+        }
+
+        return response.status.isSuccess()
+    }
+
     override suspend fun deleteMatchesByIds(matchIds: List<String>): Int {
         if (matchIds.isEmpty()) return 0
 
-        val idFilter = matchIds.joinToString(",")
-
-        // Null out self-referencing FKs (next_match_id, loser_next_match_id) before deleting
-        // to avoid NO ACTION foreign key violations between matches
-        client.patch("$apiUrl/tournament_matches?id=in.($idFilter)") {
-            header("apikey", apiKey)
-            header("Authorization", "Bearer $apiKey")
-            setBody(TextContent(
-                """{"next_match_id":null,"loser_next_match_id":null}""",
-                ContentType.Application.Json
-            ))
-        }
-
-        // Delete matches using IN query
-        val response = client.delete("$apiUrl/tournament_matches?id=in.($idFilter)") {
+        val idsFilter = matchIds.joinToString(",") { "\"$it\"" }
+        val response = client.delete("$apiUrl/tournament_matches?id=in.($idsFilter)") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
         }
 
         return if (response.status.isSuccess()) matchIds.size else 0
+    }
+
+    override suspend fun deleteKnockoutPhaseRpc(tournamentId: String, categoryId: Int): Result<Int> {
+        @Serializable
+        data class RpcPayload(
+            @SerialName("p_tournament_id") val tournamentId: String,
+            @SerialName("p_category_id") val categoryId: Int
+        )
+
+        return try {
+            val response = client.post("$apiUrl/rpc/delete_knockout_phase") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(RpcPayload.serializer(), RpcPayload(tournamentId, categoryId)))
+            }
+
+            if (!response.status.isSuccess()) {
+                return Result.failure(IllegalStateException("RPC failed with status ${response.status}"))
+            }
+
+            val body = response.bodyAsText().trim()
+            val result = json.decodeFromString<JsonObject>(body)
+            val success = result["success"]?.let {
+                (it as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+            } ?: false
+
+            if (!success) {
+                val error = result["error"]?.let {
+                    (it as? JsonPrimitive)?.content
+                } ?: "Unknown RPC error"
+                return Result.failure(IllegalArgumentException(error))
+            }
+
+            val deletedCount = result["deleted_count"]?.let {
+                (it as? JsonPrimitive)?.content?.toIntOrNull()
+            } ?: 0
+
+            Result.success(deletedCount)
+        } catch (e: Exception) {
+            Result.failure(IllegalStateException("RPC call failed: ${e.message}"))
+        }
+    }
+
+    override suspend fun clearGroupResultsRpc(tournamentId: String, categoryId: Int): Result<Int> {
+        @Serializable
+        data class RpcPayload(
+            @SerialName("p_tournament_id") val tournamentId: String,
+            @SerialName("p_category_id") val categoryId: Int
+        )
+
+        return try {
+            val response = client.post("$apiUrl/rpc/clear_group_results") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(RpcPayload.serializer(), RpcPayload(tournamentId, categoryId)))
+            }
+
+            if (!response.status.isSuccess()) {
+                return Result.failure(IllegalStateException("RPC failed with status ${response.status}"))
+            }
+
+            val body = response.bodyAsText().trim()
+            val result = json.decodeFromString<JsonObject>(body)
+            val success = result["success"]?.let {
+                (it as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+            } ?: false
+
+            if (!success) {
+                val error = result["error"]?.let {
+                    (it as? JsonPrimitive)?.content
+                } ?: "Unknown RPC error"
+                return Result.failure(IllegalArgumentException(error))
+            }
+
+            val clearedCount = result["cleared_count"]?.let {
+                (it as? JsonPrimitive)?.content?.toIntOrNull()
+            } ?: 0
+
+            Result.success(clearedCount)
+        } catch (e: Exception) {
+            Result.failure(IllegalStateException("RPC call failed: ${e.message}"))
+        }
     }
 
     // ============ Match Scoring ============
@@ -986,6 +1069,54 @@ class BracketRepositoryImpl(
             ?: throw IllegalStateException("Match not found after update")
     }
 
+    // ============ Clear Team Slot ============
+
+    override suspend fun clearMatchTeamSlot(matchId: String, position: Int): Boolean {
+        val field = if (position == 1) "team1_id" else "team2_id"
+        // Raw JSON to explicitly send null (kotlinx.serialization omits nulls by default)
+        val jsonBody = """{"$field":null}"""
+
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(jsonBody)
+        }
+
+        return response.status.isSuccess()
+    }
+
+    // ============ Delete/Reset Match Score ============
+
+    override suspend fun deleteMatchScore(matchId: String): Result<MatchResponse> {
+        // Reset score fields to null and status to pending (raw JSON like updateMatchScore)
+        val jsonBody = """{"score_team1":null,"score_team2":null,"set_scores":null,"winner_team":null,"status":"pending","submitted_by_user_id":null,"submitted_at":null}"""
+
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            header("Prefer", "return=representation")
+            contentType(ContentType.Application.Json)
+            setBody(jsonBody)
+        }
+
+        val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(no body)" }
+
+        return if (response.status.isSuccess()) {
+            val matches = runCatching {
+                json.decodeFromString<List<MatchResponse>>(bodyText)
+            }.getOrElse { e ->
+                return Result.failure(IllegalStateException("Failed to parse response: ${e.message}"))
+            }
+            if (matches.isEmpty()) {
+                return Result.failure(IllegalArgumentException("Match not found with ID: $matchId"))
+            }
+            Result.success(matches.first())
+        } else {
+            Result.failure(IllegalStateException("Failed to reset score: ${response.status.value} - $bodyText"))
+        }
+    }
+
     // ============ Player Score Submission ============
 
     override suspend fun getTeamPlayerUids(teamId: String): List<String> {
@@ -1072,5 +1203,16 @@ class BracketRepositoryImpl(
         } else {
             Result.failure(IllegalStateException("Failed to update match score: ${response.status.value}"))
         }
+    }
+
+    override suspend fun updateMatchField(matchId: String, field: String, value: String): Boolean {
+        val jsonBody = """{"$field":"$value"}"""
+        val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(jsonBody)
+        }
+        return response.status.isSuccess()
     }
 }

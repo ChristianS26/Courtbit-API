@@ -25,10 +25,11 @@ import models.bracket.UpdateStatusRequest
 import models.bracket.UpdateBracketConfigRequest
 import models.bracket.UpdateScheduleRequest
 import models.bracket.WithdrawTeamRequest
-import services.bracket.BracketGenerationService
-import services.bracket.BracketScoringService
+import org.slf4j.LoggerFactory
 import services.bracket.BracketService
 import services.bracket.BracketStandingsService
+
+private val logger = LoggerFactory.getLogger("BracketRoutes")
 
 /**
  * Bracket API routes
@@ -536,11 +537,21 @@ fun Route.bracketRoutes(
                 request.groups.forEach { group ->
                 }
 
-                val result = generationService.generateGroupStage(tournamentId, categoryId, request)
+                val result = try {
+                    bracketService.generateGroupStage(tournamentId, categoryId, request)
+                } catch (e: Exception) {
+                    logger.error("Uncaught exception in generateGroupStage for tournament=$tournamentId category=$categoryId", e)
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Uncaught: ${e::class.simpleName}: ${e.message}", "stackTrace" to e.stackTraceToString().take(1000))
+                    )
+                    return@post
+                }
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.Created, it) },
                     onFailure = { e ->
+                        logger.error("generateGroupStage failed for tournament=$tournamentId category=$categoryId", e)
                         when (e) {
                             is IllegalArgumentException -> call.respond(
                                 HttpStatusCode.BadRequest,
@@ -732,10 +743,41 @@ fun Route.bracketRoutes(
                 try {
                     val organizerId = call.getOrganizerId() ?: return@delete
 
-                    val categoryId = call.parameters["categoryId"]?.toIntOrNull()
-                    if (categoryId == null) {
-                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
-                        return@delete
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@delete
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@delete
+                }
+
+                val result = bracketService.deleteKnockoutPhase(tournamentId, categoryId)
+
+                result.fold(
+                    onSuccess = {
+                        call.respond(HttpStatusCode.OK, mapOf(
+                            "message" to "Knockout phase deleted successfully"
+                        ))
+                    },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.NotFound,
+                                mapOf("error" to (e.message ?: "No knockout phase found"))
+                            )
+                            is IllegalStateException -> call.respond(
+                                HttpStatusCode.Conflict,
+                                mapOf("error" to (e.message ?: "Cannot delete knockout phase"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Deletion failed"))
+                            )
+                        }
                     }
 
                     val tournamentId = call.request.queryParameters["tournament_id"]
@@ -776,6 +818,50 @@ fun Route.bracketRoutes(
                         mapOf("error" to "Delete knockout failed: ${e::class.simpleName}: ${e.message}")
                     )
                 }
+            }
+
+            // DELETE /api/brackets/{categoryId}/groups/results?tournament_id=xxx
+            // Clear all group match results (resets to pending, zeroes standings)
+            delete("/{categoryId}/groups/results") {
+                val organizerId = call.getOrganizerId() ?: return@delete
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@delete
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@delete
+                }
+
+                val result = bracketService.clearGroupResults(tournamentId, categoryId)
+
+                result.fold(
+                    onSuccess = {
+                        call.respond(HttpStatusCode.OK, mapOf(
+                            "message" to "Group results cleared successfully"
+                        ))
+                    },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (e.message ?: "Cannot clear group results"))
+                            )
+                            is IllegalStateException -> call.respond(
+                                HttpStatusCode.Conflict,
+                                mapOf("error" to (e.message ?: "Cannot clear group results"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Clear failed"))
+                            )
+                        }
+                    }
+                )
             }
         }
     }
@@ -824,6 +910,8 @@ fun Route.bracketRoutes(
                                 call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
                             e is IllegalArgumentException ->
                                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
+                            e is IllegalStateException ->
+                                call.respond(HttpStatusCode.Conflict, mapOf("error" to message))
                             else ->
                                 call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
                         }
@@ -900,7 +988,7 @@ fun Route.bracketRoutes(
                             e is IllegalArgumentException ->
                                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
                             e is IllegalStateException ->
-                                call.respond(HttpStatusCode.Conflict, ErrorResponse(message))
+                                call.respond(HttpStatusCode.Conflict, mapOf("error" to message))
                             else ->
                                 call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
                         }
@@ -928,6 +1016,10 @@ fun Route.bracketRoutes(
                             is IllegalArgumentException -> call.respond(
                                 HttpStatusCode.BadRequest,
                                 mapOf("error" to (e.message ?: "Cannot advance"))
+                            )
+                            is IllegalStateException -> call.respond(
+                                HttpStatusCode.Conflict,
+                                mapOf("error" to (e.message ?: "Advancement not allowed in current state"))
                             )
                             else -> call.respond(
                                 HttpStatusCode.InternalServerError,
@@ -972,11 +1064,49 @@ fun Route.bracketRoutes(
                                 call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
                             e is IllegalArgumentException ->
                                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
+                            e is IllegalStateException ->
+                                call.respond(HttpStatusCode.Conflict, mapOf("error" to message))
                             else ->
                                 call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
                         }
                     }
                 )
+            }
+
+            // DELETE /api/matches/{id}/score
+            // Delete/reset match score
+            delete("/{id}/score") {
+                try {
+                    val organizerId = call.getOrganizerId() ?: return@delete
+
+                    val matchId = call.parameters["id"]
+                    if (matchId.isNullOrBlank()) {
+                        call.respond(HttpStatusCode.BadRequest, ErrorResponse("Match ID required"))
+                        return@delete
+                    }
+
+                    val result = bracketService.deleteMatchScore(matchId)
+
+                    result.fold(
+                        onSuccess = { call.respond(HttpStatusCode.OK, SuccessResponse("Score deleted")) },
+                        onFailure = { e ->
+                            val message = e.message ?: "Delete failed"
+                            when {
+                                e is IllegalArgumentException && message.contains("not found", ignoreCase = true) ->
+                                    call.respond(HttpStatusCode.NotFound, ErrorResponse(message))
+                                e is IllegalArgumentException ->
+                                    call.respond(HttpStatusCode.BadRequest, ErrorResponse(message))
+                                e is IllegalStateException ->
+                                    call.respond(HttpStatusCode.Conflict, ErrorResponse(message))
+                                else ->
+                                    call.respond(HttpStatusCode.InternalServerError, ErrorResponse(message))
+                            }
+                        }
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Internal error: ${e.message}"))
+                }
             }
 
             // PATCH /api/matches/{id}/status
