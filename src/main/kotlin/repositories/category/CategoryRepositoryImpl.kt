@@ -104,8 +104,8 @@ class CategoryRepositoryImpl(
             header("apikey", config.apiKey)
             header("Authorization", "Bearer ${config.apiKey}")
             parameter("tournament_id", "eq.$tournamentId")
-            parameter("select", "category_id,color,max_teams,price,categories(name,category_type,level)")
-            parameter("order", "categories(category_type),categories(level)")
+            parameter("select", "category_id,color,max_teams,price,categories(name,category_type,level,position)")
+            parameter("order", "categories(position)")
         }
 
         return if (response.status.isSuccess()) {
@@ -119,7 +119,8 @@ class CategoryRepositoryImpl(
                     name = it["categories"]?.jsonObject?.get("name")?.jsonPrimitive?.content ?: "",
                     color = it["color"]?.jsonPrimitive?.contentOrNull,
                     maxTeams = it["max_teams"]?.jsonPrimitive?.intOrNull,
-                    price = it["price"]?.jsonPrimitive?.intOrNull
+                    price = it["price"]?.jsonPrimitive?.intOrNull,
+                    position = it["categories"]?.jsonObject?.get("position")?.jsonPrimitive?.intOrNull
                 )
             }
         } else {
