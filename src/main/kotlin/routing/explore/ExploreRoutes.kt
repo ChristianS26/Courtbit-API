@@ -13,10 +13,7 @@ fun Route.exploreRoutes(exploreService: ExploreService) {
         // Public with optional JWT: Get explore events feed
         authenticate("auth-jwt", optional = true) {
             get("/events") {
-                val principal = call.principal<JWTPrincipal>()
-                val currentUserId = principal?.getClaim("uid", String::class)
-                val authHeader = call.request.headers["Authorization"]
-                println("[EXPLORE] Auth header present: ${authHeader != null}, principal: ${principal != null}, userId: $currentUserId")
+                val currentUserId = call.principal<JWTPrincipal>()?.getClaim("uid", String::class)
 
                 val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
                 val pageSize = call.request.queryParameters["page_size"]?.toIntOrNull() ?: 20
