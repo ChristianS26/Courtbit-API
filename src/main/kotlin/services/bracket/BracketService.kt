@@ -1354,15 +1354,7 @@ class BracketService(
             return Result.failure(IllegalArgumentException("No knockout phase found to delete"))
         }
 
-        // Check if any knockout match has been played
-        val playedKnockoutMatches = knockoutMatches.filter { it.status in listOf("in_progress", "completed") }
-        if (playedKnockoutMatches.isNotEmpty()) {
-            return Result.failure(IllegalStateException(
-                "Cannot delete knockout phase: ${playedKnockoutMatches.size} match(es) already started or completed"
-            ))
-        }
-
-        // Delete all knockout matches
+        // Delete all knockout matches (BYEs, pending, and completed alike)
         val deletedCount = repository.deleteMatchesByIds(knockoutMatches.map { it.id })
 
         if (deletedCount != knockoutMatches.size) {
