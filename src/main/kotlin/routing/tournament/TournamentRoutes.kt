@@ -15,6 +15,7 @@ import io.ktor.server.routing.patch
 import io.ktor.server.routing.post
 import io.ktor.server.routing.put
 import io.ktor.server.routing.route
+import com.incodap.services.club.ClubService
 import models.tournament.CreateTournamentWithCategoriesRequest
 import models.tournament.DeleteTournamentResult
 import models.tournament.InheritCourtsRequest
@@ -27,7 +28,8 @@ import services.tournament.TournamentService
 
 fun Route.tournamentRoutes(
     tournamentService: TournamentService,
-    categoryService: CategoryService
+    categoryService: CategoryService,
+    clubService: ClubService
 ) {
     route("/tournaments") {
 
@@ -343,12 +345,17 @@ fun Route.tournamentRoutes(
                 }
 
                 val config = tournamentService.getSchedulingConfig(id)
-                call.respond(HttpStatusCode.OK, config ?: models.tournament.SchedulingConfigResponse(
-                    tournamentId = id,
-                    courts = emptyList(),
-                    matchDurationMinutes = 45,
-                    tournamentDays = emptyList()
-                ))
+                if (config != null) {
+                    call.respond(HttpStatusCode.OK, config)
+                } else {
+                    // Return default config if none exists
+                    call.respond(HttpStatusCode.OK, mapOf(
+                        "tournament_id" to id,
+                        "courts" to emptyList<Any>(),
+                        "match_duration_minutes" to 45,
+                        "tournament_days" to emptyList<String>()
+                    ))
+                }
             }
 
             // PUT /tournaments/{id}/scheduling-config - Save scheduling configuration
@@ -485,6 +492,28 @@ fun Route.tournamentRoutes(
                 }
             }
 
+            // POST /tournaments/{id}/inherit-courts - Copy courts from associated club
+            post("{id}/inherit-courts") {
+                val id = call.validateOrganizerAndId() ?: return@post
+
+                val request = try {
+                    call.receive<InheritCourtsRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Formato invalido: ${e.localizedMessage}"))
+                    return@post
+                }
+
+                // Get club courts
+                val clubCourts = clubService.getClubCourts(request.clubId)
+                if (clubCourts.isEmpty()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "El club no tiene canchas configuradas"))
+                    return@post
+                }
+
+                // Return the courts for the frontend to use in scheduling
+                // (actual court assignment happens during schedule creation)
+                call.respond(HttpStatusCode.OK, clubCourts)
+            }
         }
     }
 }

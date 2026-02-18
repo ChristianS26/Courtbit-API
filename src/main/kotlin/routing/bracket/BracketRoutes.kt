@@ -15,7 +15,6 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import models.bracket.AssignGroupsRequest
 import models.bracket.CreateBracketRequest
-import models.bracket.GenerateGroupStageAutoRequest
 import models.bracket.ErrorResponse
 import models.bracket.GenerateBracketRequest
 import models.bracket.SuccessResponse
@@ -27,19 +26,13 @@ import models.bracket.UpdateScheduleRequest
 import models.bracket.WithdrawTeamRequest
 import org.slf4j.LoggerFactory
 import services.bracket.BracketService
-import services.bracket.BracketStandingsService
 
 private val logger = LoggerFactory.getLogger("BracketRoutes")
 
 /**
  * Bracket API routes
  */
-fun Route.bracketRoutes(
-    bracketService: BracketService,
-    scoringService: BracketScoringService,
-    standingsService: BracketStandingsService,
-    generationService: BracketGenerationService
-) {
+fun Route.bracketRoutes(bracketService: BracketService) {
     route("/brackets") {
 
         // GET /api/brackets?tournament_id=xxx
@@ -52,19 +45,6 @@ fun Route.bracketRoutes(
             }
 
             val brackets = bracketService.getBracketsByTournament(tournamentId)
-            call.respond(HttpStatusCode.OK, brackets)
-        }
-
-        // GET /api/brackets/all?tournament_id=xxx
-        // Public - get all brackets with matches, standings, and players (bulk)
-        get("/all") {
-            val tournamentId = call.request.queryParameters["tournament_id"]
-            if (tournamentId.isNullOrBlank()) {
-                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
-                return@get
-            }
-
-            val brackets = bracketService.getAllBracketsWithMatches(tournamentId)
             call.respond(HttpStatusCode.OK, brackets)
         }
 
@@ -129,7 +109,7 @@ fun Route.bracketRoutes(
                 return@get
             }
 
-            val result = standingsService.getStandings(tournamentId, categoryId)
+            val result = bracketService.getStandings(tournamentId, categoryId)
 
             result.fold(
                 onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -152,7 +132,7 @@ fun Route.bracketRoutes(
                 return@get
             }
 
-            val result = generationService.getGroupsState(tournamentId, categoryId)
+            val result = bracketService.getGroupsState(tournamentId, categoryId)
 
             result.fold(
                 onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -305,7 +285,7 @@ fun Route.bracketRoutes(
                     return@post
                 }
 
-                val result = generationService.generateBracket(
+                val result = bracketService.generateBracket(
                     tournamentId = tournamentId,
                     categoryId = categoryId,
                     seedingMethod = request.seedingMethod,
@@ -335,7 +315,7 @@ fun Route.bracketRoutes(
                     return@post
                 }
 
-                val result = bracketService.publishBracket(tournamentId, categoryId, organizerId)
+                val result = bracketService.publishBracket(tournamentId, categoryId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -360,7 +340,7 @@ fun Route.bracketRoutes(
                     return@post
                 }
 
-                val result = bracketService.unpublishBracket(tournamentId, categoryId, organizerId)
+                val result = bracketService.unpublishBracket(tournamentId, categoryId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -371,51 +351,32 @@ fun Route.bracketRoutes(
             // DELETE /api/brackets/{categoryId}?tournament_id=xxx
             // Requires authentication - deletes bracket and all matches
             delete("/{categoryId}") {
-                try {
-                    val organizerId = call.getOrganizerId() ?: return@delete
+                val organizerId = call.getOrganizerId() ?: return@delete
 
-                    val categoryId = call.parameters["categoryId"]?.toIntOrNull()
-                    if (categoryId == null) {
-                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
-                        return@delete
-                    }
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@delete
+                }
 
-                    val tournamentId = call.request.queryParameters["tournament_id"]
-                    if (tournamentId.isNullOrBlank()) {
-                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
-                        return@delete
-                    }
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@delete
+                }
 
-                    // Get bracket to find its ID
-                    val bracket = bracketService.getBracket(tournamentId, categoryId)
-                    if (bracket == null) {
-                        call.respond(HttpStatusCode.NotFound, mapOf("error" to "Bracket not found"))
-                        return@delete
-                    }
+                // Get bracket to find its ID
+                val bracket = bracketService.getBracket(tournamentId, categoryId)
+                if (bracket == null) {
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Bracket not found"))
+                    return@delete
+                }
 
-                    val result = bracketService.deleteBracket(bracket.bracket.id, organizerId)
-                    result.fold(
-                        onSuccess = {
-                            call.respond(HttpStatusCode.OK, mapOf("success" to true))
-                        },
-                        onFailure = { error ->
-                            when (error) {
-                                is IllegalStateException -> call.respond(
-                                    HttpStatusCode.Conflict,
-                                    mapOf("error" to (error.message ?: "Cannot delete bracket"))
-                                )
-                                else -> call.respond(
-                                    HttpStatusCode.BadRequest,
-                                    mapOf("error" to (error.message ?: "Failed to delete bracket"))
-                                )
-                            }
-                        }
-                    )
-                } catch (e: Exception) {
-                    call.respond(
-                        HttpStatusCode.InternalServerError,
-                        mapOf("error" to "Delete bracket failed: ${e::class.simpleName}: ${e.message}")
-                    )
+                val deleted = bracketService.deleteBracket(bracket.bracket.id)
+                if (deleted) {
+                    call.respond(HttpStatusCode.OK, mapOf("success" to true))
+                } else {
+                    call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Failed to delete bracket"))
                 }
             }
 
@@ -436,17 +397,7 @@ fun Route.bracketRoutes(
                     return@post
                 }
 
-                // Choose calculation method based on bracket format
-                val bracket = bracketService.getBracket(tournamentId, categoryId)
-                if (bracket == null) {
-                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Bracket not found"))
-                    return@post
-                }
-
-                val result = when (bracket.bracket.format) {
-                    "groups_knockout" -> standingsService.calculateGroupStandings(tournamentId, categoryId)
-                    else -> standingsService.calculateStandings(tournamentId, categoryId)
-                }
+                val result = bracketService.calculateStandings(tournamentId, categoryId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -489,7 +440,7 @@ fun Route.bracketRoutes(
                     return@post
                 }
 
-                val result = bracketService.withdrawTeam(tournamentId, categoryId, request.teamId, request.reason, organizerId)
+                val result = bracketService.withdrawTeam(tournamentId, categoryId, request.teamId, request.reason)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -566,51 +517,6 @@ fun Route.bracketRoutes(
                 )
             }
 
-            // POST /api/brackets/{categoryId}/groups/generate?tournament_id=xxx
-            // Generate group stage with server-side computation (backend computes groups)
-            post("/{categoryId}/groups/generate") {
-                val organizerId = call.getOrganizerId() ?: return@post
-
-                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
-                if (categoryId == null) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
-                    return@post
-                }
-
-                val tournamentId = call.request.queryParameters["tournament_id"]
-                if (tournamentId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
-                    return@post
-                }
-
-                val request = try {
-                    call.receive<GenerateGroupStageAutoRequest>()
-                } catch (e: Exception) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid request: ${e.localizedMessage}"))
-                    return@post
-                }
-
-                val result = generationService.generateGroupStageAuto(
-                    tournamentId, categoryId, request.teamIds, request.config
-                )
-
-                result.fold(
-                    onSuccess = { call.respond(HttpStatusCode.Created, it) },
-                    onFailure = { e ->
-                        when (e) {
-                            is IllegalArgumentException -> call.respond(
-                                HttpStatusCode.BadRequest,
-                                mapOf("error" to (e.message ?: "Invalid request"))
-                            )
-                            else -> call.respond(
-                                HttpStatusCode.InternalServerError,
-                                mapOf("error" to (e.message ?: "Group generation failed"))
-                            )
-                        }
-                    }
-                )
-            }
-
             // POST /api/brackets/{categoryId}/groups/swap?tournament_id=xxx
             // Swap two teams between groups
             post("/{categoryId}/groups/swap") {
@@ -635,12 +541,11 @@ fun Route.bracketRoutes(
                     return@post
                 }
 
-                val result = generationService.swapTeamsInGroups(
+                val result = bracketService.swapTeamsInGroups(
                     tournamentId,
                     categoryId,
                     request.team1Id,
-                    request.team2Id,
-                    organizerId
+                    request.team2Id
                 )
 
                 result.fold(
@@ -684,7 +589,7 @@ fun Route.bracketRoutes(
                     return@post
                 }
 
-                val result = standingsService.calculateGroupStandings(tournamentId, categoryId)
+                val result = bracketService.calculateGroupStandings(tournamentId, categoryId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },
@@ -714,7 +619,7 @@ fun Route.bracketRoutes(
                     return@post
                 }
 
-                val result = generationService.generateKnockoutFromGroups(tournamentId, categoryId, organizerId)
+                val result = bracketService.generateKnockoutFromGroups(tournamentId, categoryId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.Created, it) },
@@ -740,8 +645,7 @@ fun Route.bracketRoutes(
             // DELETE /api/brackets/{categoryId}/groups/knockout?tournament_id=xxx
             // Delete knockout phase (keeps group stage intact)
             delete("/{categoryId}/groups/knockout") {
-                try {
-                    val organizerId = call.getOrganizerId() ?: return@delete
+                val organizerId = call.getOrganizerId() ?: return@delete
 
                 val categoryId = call.parameters["categoryId"]?.toIntOrNull()
                 if (categoryId == null) {
@@ -779,45 +683,7 @@ fun Route.bracketRoutes(
                             )
                         }
                     }
-
-                    val tournamentId = call.request.queryParameters["tournament_id"]
-                    if (tournamentId.isNullOrBlank()) {
-                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
-                        return@delete
-                    }
-
-                    val result = generationService.deleteKnockoutPhase(tournamentId, categoryId, organizerId)
-
-                    result.fold(
-                        onSuccess = {
-                            call.respond(HttpStatusCode.OK, mapOf(
-                                "success" to true,
-                                "message" to "Knockout phase deleted successfully"
-                            ))
-                        },
-                        onFailure = { e ->
-                            when (e) {
-                                is IllegalArgumentException -> call.respond(
-                                    HttpStatusCode.NotFound,
-                                    mapOf("error" to (e.message ?: "No knockout phase found"))
-                                )
-                                is IllegalStateException -> call.respond(
-                                    HttpStatusCode.Conflict,
-                                    mapOf("error" to (e.message ?: "Cannot delete knockout phase"))
-                                )
-                                else -> call.respond(
-                                    HttpStatusCode.InternalServerError,
-                                    mapOf("error" to (e.message ?: "Deletion failed"))
-                                )
-                            }
-                        }
-                    )
-                } catch (e: Exception) {
-                    call.respond(
-                        HttpStatusCode.InternalServerError,
-                        mapOf("error" to "Delete knockout failed: ${e::class.simpleName}: ${e.message}")
-                    )
-                }
+                )
             }
 
             // DELETE /api/brackets/{categoryId}/groups/results?tournament_id=xxx
@@ -892,15 +758,10 @@ fun Route.bracketRoutes(
                     return@patch
                 }
 
-                val result = scoringService.submitPlayerScore(matchId, userId, request.sets, request.version)
+                val result = bracketService.submitPlayerScore(matchId, userId, request.sets)
 
                 result.fold(
-                    onSuccess = { scoreResult ->
-                        if (scoreResult.warnings.isNotEmpty()) {
-                            call.response.headers.append("X-Bracket-Warnings", scoreResult.warnings.joinToString("|"))
-                        }
-                        call.respond(HttpStatusCode.OK, scoreResult.match)
-                    },
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
                     onFailure = { e ->
                         val message = e.message ?: "Update failed"
                         when {
@@ -940,48 +801,12 @@ fun Route.bracketRoutes(
                     return@patch
                 }
 
-                val result = scoringService.updateMatchScore(matchId, request.sets, request.version, organizerId)
+                val result = bracketService.updateMatchScore(matchId, request.sets)
 
                 result.fold(
-                    onSuccess = { scoreResult ->
-                        if (scoreResult.warnings.isNotEmpty()) {
-                            call.response.headers.append("X-Bracket-Warnings", scoreResult.warnings.joinToString("|"))
-                        }
-                        call.respond(HttpStatusCode.OK, scoreResult.match)
-                    },
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
                     onFailure = { e ->
                         val message = e.message ?: "Update failed"
-                        when {
-                            e is ConcurrentModificationException ->
-                                call.respond(HttpStatusCode.Conflict, mapOf("error" to message))
-                            e is IllegalArgumentException && message.contains("not found", ignoreCase = true) ->
-                                call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
-                            e is IllegalArgumentException ->
-                                call.respond(HttpStatusCode.BadRequest, mapOf("error" to message))
-                            else ->
-                                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to message))
-                        }
-                    }
-                )
-            }
-
-            // DELETE /api/matches/{id}/score
-            // Reset match score (clear scores and revert to pending)
-            delete("/{id}/score") {
-                val organizerId = call.getOrganizerId() ?: return@delete
-
-                val matchId = call.parameters["id"]
-                if (matchId.isNullOrBlank()) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Match ID required"))
-                    return@delete
-                }
-
-                val result = scoringService.resetMatchScore(matchId, organizerId)
-
-                result.fold(
-                    onSuccess = { call.respond(HttpStatusCode.OK, SuccessResponse("Resultado eliminado")) },
-                    onFailure = { e ->
-                        val message = e.message ?: "Reset failed"
                         when {
                             e is IllegalArgumentException && message.contains("not found", ignoreCase = true) ->
                                 call.respond(HttpStatusCode.NotFound, mapOf("error" to message))
@@ -1007,7 +832,7 @@ fun Route.bracketRoutes(
                     return@post
                 }
 
-                val result = scoringService.advanceWinner(matchId)
+                val result = bracketService.advanceWinner(matchId)
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.OK, it) },

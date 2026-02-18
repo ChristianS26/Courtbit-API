@@ -5,13 +5,9 @@ import org.koin.dsl.module
 import repositories.ranking.PointsConfigRepository
 import repositories.ranking.PointsConfigRepositoryImpl
 import repositories.ranking.RankingRepositoryImpl
-import repositories.ranking.RankingSeasonRepository
-import repositories.ranking.RankingSeasonRepositoryImpl
 import routing.ranking.PointsConfigRoutes
 import routing.ranking.RankingRoutes
-import routing.ranking.RankingSeasonRoutes
 import services.ranking.PointsConfigService
-import services.ranking.RankingSeasonService
 import services.ranking.RankingService
 
 val RankingModule = module {
@@ -28,9 +24,4 @@ val RankingModule = module {
     single<PointsConfigRepository> { PointsConfigRepositoryImpl(get(), get(), get()) }
     single { PointsConfigService(get(), get()) }
     single { PointsConfigRoutes(service = get()) }
-
-    // Ranking Seasons
-    single<RankingSeasonRepository> { RankingSeasonRepositoryImpl(get(), get(), get()) }
-    single { RankingSeasonService(get()) }
-    single { RankingSeasonRoutes(service = get()) }
 }

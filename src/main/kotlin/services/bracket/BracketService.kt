@@ -1,22 +1,209 @@
 package services.bracket
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.encodeToString
+import models.bracket.AssignGroupsRequest
 import models.bracket.BracketResponse
 import models.bracket.BracketWithMatchesResponse
+import models.bracket.GeneratedMatch
+import models.bracket.GroupAssignment
+import models.bracket.GroupsKnockoutConfig
+import models.bracket.GroupsStateResponse
+import models.bracket.GroupState
 import models.bracket.MatchResponse
+import models.bracket.ScoreValidationResult
+import models.bracket.SetScore
+import models.bracket.StandingEntry
+import models.bracket.StandingInput
+import models.bracket.StandingsResponse
+import models.bracket.TeamSeed
 import models.bracket.WithdrawTeamResponse
-import repositories.bracket.BracketAuditRepository
 import repositories.bracket.BracketRepository
 
 /**
- * Service for bracket lifecycle, retrieval, match management, and withdrawal.
+ * Padel score validation supporting both classic and express formats.
+ *
+ * Classic format (FIP official rules):
+ * - 6-0, 6-1, 6-2, 6-3, 6-4 (standard win)
+ * - 7-5 (win from 5-5)
+ * - 7-6 (tiebreak win at 6-6)
+ *
+ * Express format (points-based):
+ * - First to N points wins (e.g., 8-0 through 8-7 for 8-point format)
+ */
+object PadelScoreValidator {
+
+    /**
+     * Generate valid winning scores for a given gamesPerSet (G).
+     * G-0, G-1, ..., G-(G-2), (G+1)-(G-1), (G+1)-G
+     */
+    private fun getValidWinningScores(gamesPerSet: Int): List<Pair<Int, Int>> {
+        val scores = mutableListOf<Pair<Int, Int>>()
+        // Regular wins: G-0 through G-(G-2)
+        for (loser in 0..(gamesPerSet - 2)) {
+            scores.add(gamesPerSet to loser)
+        }
+        // Extended: (G+1)-(G-1)
+        scores.add((gamesPerSet + 1) to (gamesPerSet - 1))
+        // Tiebreak: (G+1)-G
+        scores.add((gamesPerSet + 1) to gamesPerSet)
+        return scores
+    }
+
+    private fun getValidSetScores(gamesPerSet: Int): Set<Pair<Int, Int>> = buildSet {
+        getValidWinningScores(gamesPerSet).forEach { (a, b) ->
+            add(a to b)  // Team 1 wins
+            add(b to a)  // Team 2 wins
+        }
+    }
+
+    fun isValidSetScore(team1Games: Int, team2Games: Int, gamesPerSet: Int = 6): Boolean {
+        return (team1Games to team2Games) in getValidSetScores(gamesPerSet)
+    }
+
+    private fun isTiebreakScore(team1: Int, team2: Int, gamesPerSet: Int): Boolean {
+        return (team1 == gamesPerSet + 1 && team2 == gamesPerSet) ||
+               (team1 == gamesPerSet && team2 == gamesPerSet + 1)
+    }
+
+    /**
+     * Validate express format score (points-based).
+     * One team must reach maxPoints, the other must be less than maxPoints.
+     */
+    fun validateExpressScore(setScores: List<SetScore>, maxPoints: Int, totalSets: Int): ScoreValidationResult {
+        if (setScores.isEmpty()) {
+            return ScoreValidationResult.Invalid("At least one set required")
+        }
+        if (setScores.size > totalSets) {
+            return ScoreValidationResult.Invalid("Maximum $totalSets set(s) allowed")
+        }
+
+        var team1SetsWon = 0
+        var team2SetsWon = 0
+        val setsNeededToWin = (totalSets + 1) / 2  // Ceiling division for best-of-N
+
+        for ((index, set) in setScores.withIndex()) {
+            // Validate express score: one team must reach maxPoints exactly
+            val team1Wins = set.team1 == maxPoints && set.team2 < maxPoints
+            val team2Wins = set.team2 == maxPoints && set.team1 < maxPoints
+
+            if (!team1Wins && !team2Wins) {
+                // Check if it's a valid incomplete set or invalid score
+                if (set.team1 > maxPoints || set.team2 > maxPoints) {
+                    return ScoreValidationResult.Invalid(
+                        "Set ${index + 1}: Maximum score is $maxPoints points"
+                    )
+                }
+                if (set.team1 == maxPoints && set.team2 == maxPoints) {
+                    return ScoreValidationResult.Invalid(
+                        "Set ${index + 1}: Both teams cannot have $maxPoints points"
+                    )
+                }
+                return ScoreValidationResult.Invalid(
+                    "Set ${index + 1}: One team must reach $maxPoints points to win"
+                )
+            }
+
+            // Determine set winner
+            if (team1Wins) team1SetsWon++
+            if (team2Wins) team2SetsWon++
+
+            // Check if match is already decided
+            if (team1SetsWon >= setsNeededToWin || team2SetsWon >= setsNeededToWin) {
+                if (index < setScores.size - 1) {
+                    return ScoreValidationResult.Invalid(
+                        "Match already decided after set ${index + 1}, but ${setScores.size} sets provided"
+                    )
+                }
+            }
+        }
+
+        // Verify match is complete
+        return when {
+            team1SetsWon >= setsNeededToWin -> ScoreValidationResult.Valid(winner = 1, setsWon = team1SetsWon to team2SetsWon)
+            team2SetsWon >= setsNeededToWin -> ScoreValidationResult.Valid(winner = 2, setsWon = team1SetsWon to team2SetsWon)
+            else -> ScoreValidationResult.Invalid("Match incomplete: need $setsNeededToWin set(s) to win (current: $team1SetsWon-$team2SetsWon)")
+        }
+    }
+
+    /**
+     * Validate classic format score (games-based).
+     * @param gamesPerSet configurable games per set (default 6)
+     * @param totalSets configurable total sets (default 3, best-of)
+     */
+    fun validateMatchScore(setScores: List<SetScore>, gamesPerSet: Int = 6, totalSets: Int = 3): ScoreValidationResult {
+        if (setScores.isEmpty()) {
+            return ScoreValidationResult.Invalid("At least one set required")
+        }
+        if (setScores.size > totalSets) {
+            return ScoreValidationResult.Invalid("Maximum $totalSets sets allowed")
+        }
+
+        val setsNeededToWin = (totalSets + 1) / 2
+        var team1SetsWon = 0
+        var team2SetsWon = 0
+
+        for ((index, set) in setScores.withIndex()) {
+            if (!isValidSetScore(set.team1, set.team2, gamesPerSet)) {
+                val validScores = getValidWinningScores(gamesPerSet).joinToString(", ") { "${it.first}-${it.second}" }
+                return ScoreValidationResult.Invalid(
+                    "Invalid set ${index + 1} score: ${set.team1}-${set.team2}. " +
+                    "Valid scores: $validScores"
+                )
+            }
+
+            // Validate tiebreak if (G+1)-G
+            if (isTiebreakScore(set.team1, set.team2, gamesPerSet)) {
+                if (set.tiebreak == null) {
+                    return ScoreValidationResult.Invalid(
+                        "Set ${index + 1} is a tiebreak (${gamesPerSet + 1}-${gamesPerSet}), tiebreak score required"
+                    )
+                }
+                // Tiebreak validation: first to 7 with 2-point lead
+                val tb = set.tiebreak
+                val winner = maxOf(tb.team1, tb.team2)
+                val loser = minOf(tb.team1, tb.team2)
+                if (winner < 7 || (winner - loser) < 2) {
+                    return ScoreValidationResult.Invalid(
+                        "Invalid tiebreak score: ${tb.team1}-${tb.team2}. " +
+                        "Must be first to 7 with 2-point lead"
+                    )
+                }
+            }
+
+            // Determine set winner
+            when {
+                set.team1 > set.team2 -> team1SetsWon++
+                set.team2 > set.team1 -> team2SetsWon++
+            }
+
+            // Check if match is already decided
+            if (team1SetsWon >= setsNeededToWin || team2SetsWon >= setsNeededToWin) {
+                if (index < setScores.size - 1) {
+                    return ScoreValidationResult.Invalid(
+                        "Match already decided after set ${index + 1}, but ${setScores.size} sets provided"
+                    )
+                }
+            }
+        }
+
+        // Verify match is complete
+        return when {
+            team1SetsWon >= setsNeededToWin -> ScoreValidationResult.Valid(winner = 1, setsWon = team1SetsWon to team2SetsWon)
+            team2SetsWon >= setsNeededToWin -> ScoreValidationResult.Valid(winner = 2, setsWon = team1SetsWon to team2SetsWon)
+            else -> ScoreValidationResult.Invalid("Match incomplete: need $setsNeededToWin set(s) to win (current: $team1SetsWon-$team2SetsWon)")
+        }
+    }
+}
+
+/**
+ * Service for bracket operations including generation algorithm
  */
 class BracketService(
     private val repository: BracketRepository,
-    private val json: Json,
-    private val auditLog: BracketAuditRepository
+    private val json: Json
 ) {
-    // ============ Retrieval ============
 
     /**
      * Get bracket with all matches for a tournament category
@@ -31,15 +218,6 @@ class BracketService(
     suspend fun getBracketsByTournament(tournamentId: String): List<BracketResponse> {
         return repository.getBracketsByTournament(tournamentId)
     }
-
-    /**
-     * Get all brackets with matches, standings, and players for a tournament (bulk fetch)
-     */
-    suspend fun getAllBracketsWithMatches(tournamentId: String): List<BracketWithMatchesResponse> {
-        return repository.getAllBracketsWithMatches(tournamentId)
-    }
-
-    // ============ Lifecycle ============
 
     /**
      * Update bracket config (e.g. match format) without regenerating matches.
@@ -177,7 +355,7 @@ class BracketService(
     /**
      * Publish a bracket, locking its structure
      */
-    suspend fun publishBracket(tournamentId: String, categoryId: Int, organizerId: String? = null): Result<BracketResponse> {
+    suspend fun publishBracket(tournamentId: String, categoryId: Int): Result<BracketResponse> {
         val bracket = repository.getBracket(tournamentId, categoryId)
             ?: return Result.failure(IllegalArgumentException("Bracket not found"))
 
@@ -190,8 +368,6 @@ class BracketService(
             return Result.failure(IllegalStateException("Failed to publish bracket"))
         }
 
-        auditLog.log("bracket", bracket.id, "publish", organizerId)
-
         // Return updated bracket
         val result = repository.getBracket(tournamentId, categoryId)
             ?: return Result.failure(IllegalStateException("Failed to fetch updated bracket"))
@@ -202,7 +378,7 @@ class BracketService(
     /**
      * Unpublish a bracket, reverting to in_progress status
      */
-    suspend fun unpublishBracket(tournamentId: String, categoryId: Int, organizerId: String? = null): Result<BracketResponse> {
+    suspend fun unpublishBracket(tournamentId: String, categoryId: Int): Result<BracketResponse> {
         val bracket = repository.getBracket(tournamentId, categoryId)
             ?: return Result.failure(IllegalArgumentException("Bracket not found"))
 
@@ -215,8 +391,6 @@ class BracketService(
             return Result.failure(IllegalStateException("Failed to unpublish bracket"))
         }
 
-        auditLog.log("bracket", bracket.id, "unpublish", organizerId)
-
         // Return updated bracket
         val result = repository.getBracket(tournamentId, categoryId)
             ?: return Result.failure(IllegalStateException("Failed to fetch updated bracket"))
@@ -225,7 +399,7 @@ class BracketService(
     }
 
     /**
-     * Delete a bracket unconditionally. Cascades to matches, standings, etc.
+     * Delete a bracket
      */
     suspend fun deleteBracket(bracketId: String): Boolean {
         return repository.deleteBracket(bracketId)
@@ -260,12 +434,78 @@ class BracketService(
         val bracket = repository.getBracketById(match.bracketId)
             ?: return Result.failure(IllegalArgumentException("Bracket not found"))
 
-        val deleted = repository.deleteBracket(bracketId)
-        if (deleted) {
-            auditLog.log("bracket", bracketId, "delete", organizerId)
+        // Parse match format from bracket config
+        val matchFormat = bracket.config?.let {
+            try {
+                val config = json.decodeFromString<GroupsKnockoutConfig>(it.toString())
+                config.matchFormat
+            } catch (e: Exception) { null }
         }
-        return if (deleted) Result.success(true)
-        else Result.failure(IllegalStateException("Failed to delete bracket"))
+
+        // Validate based on format
+        val validation = if (matchFormat?.pointsPerSet != null) {
+            // Express format validation
+            val maxPoints = matchFormat.pointsPerSet
+            val totalSets = matchFormat.sets
+            PadelScoreValidator.validateExpressScore(setScores, maxPoints, totalSets)
+        } else {
+            // Classic format validation
+            val gamesPerSet = matchFormat?.gamesPerSet ?: 6
+            val totalSets = matchFormat?.sets ?: 3
+            PadelScoreValidator.validateMatchScore(setScores, gamesPerSet, totalSets)
+        }
+
+        if (validation is ScoreValidationResult.Invalid) {
+            return Result.failure(IllegalArgumentException(validation.message))
+        }
+
+        val validResult = validation as ScoreValidationResult.Valid
+
+        // Use sets won (not total games) for scoreTeam1/scoreTeam2
+        val setsWonTeam1 = validResult.setsWon.first
+        val setsWonTeam2 = validResult.setsWon.second
+
+        // Update the match score
+        val updateResult = repository.updateMatchScore(
+            matchId = matchId,
+            scoreTeam1 = setsWonTeam1,
+            scoreTeam2 = setsWonTeam2,
+            setScores = setScores,
+            winnerTeam = validResult.winner
+        )
+
+        // If score update succeeded, recalculate standings and advance winner
+        if (updateResult.isSuccess) {
+            val updatedMatch = updateResult.getOrNull()
+            if (updatedMatch != null) {
+                // Get bracket info to recalculate standings
+                val bracket = repository.getBracketById(updatedMatch.bracketId)
+                if (bracket != null) {
+                    // Recalculate standings based on bracket format
+                    when (bracket.format) {
+                        "groups_knockout" -> {
+                            // Recalculate group standings
+                            calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
+                        }
+                        "round_robin" -> {
+                            // Recalculate standings for round robin
+                            calculateStandings(bracket.tournamentId, bracket.categoryId)
+                        }
+                    }
+
+                    // Auto-advance winner for knockout matches
+                    if (bracket.format == "knockout" || bracket.format == "groups_knockout") {
+                        try {
+                            advanceWinner(matchId)
+                        } catch (_: Exception) {
+                            // Non-critical: advance may fail if no next match exists (e.g. final)
+                        }
+                    }
+                }
+            }
+        }
+
+        return updateResult
     }
 
     /**
@@ -1496,8 +1736,6 @@ class BracketService(
         }
     }
 
-    // ============ Withdrawal ============
-
     /**
      * Withdraw a team from the tournament.
      * Marks all their pending/scheduled matches as forfeit and advances opponents.
@@ -1506,8 +1744,7 @@ class BracketService(
         tournamentId: String,
         categoryId: Int,
         teamId: String,
-        reason: String?,
-        organizerId: String? = null
+        reason: String?
     ): Result<WithdrawTeamResponse> {
         return try {
             // Get bracket for this category
@@ -1543,12 +1780,6 @@ class BracketService(
                     }
                 }
             }
-
-            auditLog.log("bracket", bracket.id, "withdraw", organizerId, mapOf(
-                "team_id" to teamId,
-                "reason" to (reason ?: ""),
-                "forfeited_matches" to forfeitedIds.size.toString()
-            ))
 
             Result.success(WithdrawTeamResponse(
                 forfeitedMatches = forfeitedIds,

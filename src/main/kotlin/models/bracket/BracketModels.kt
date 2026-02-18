@@ -78,18 +78,8 @@ data class MatchResponse(
     @SerialName("scheduled_time") val scheduledTime: String? = null,
     @SerialName("court_number") val courtNumber: Int? = null,
     @SerialName("is_bye") val isBye: Boolean = false,
-    val version: Int = 1,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
-)
-
-/**
- * Wrapper for score update results — includes the updated match and any warnings
- * (e.g., auto-advance failure). Warnings are non-fatal and don't block the score update.
- */
-data class MatchScoreResult(
-    val match: MatchResponse,
-    val warnings: List<String> = emptyList()
 )
 
 /**
@@ -177,8 +167,7 @@ data class MatchInsertRequest(
  */
 @Serializable
 data class UpdateScoreRequest(
-    val sets: List<SetScore>,
-    val version: Int? = null  // Optimistic locking: current version of the match
+    val sets: List<SetScore>
 )
 
 /**
@@ -270,7 +259,7 @@ data class StandingInput(
     val gamesLost: Int,
     val pointDifference: Int,
     val roundReached: String?,
-    val groupNumber: Int = 0
+    val groupNumber: Int? = null
 )
 
 /**
@@ -289,8 +278,7 @@ data class StandingInsertRequest(
     @SerialName("games_won") val gamesWon: Int,
     @SerialName("games_lost") val gamesLost: Int,
     @SerialName("point_difference") val pointDifference: Int,
-    @SerialName("round_reached") val roundReached: String? = null,
-    @SerialName("group_number") val groupNumber: Int = 0
+    @SerialName("group_number") val groupNumber: Int? = null
 )
 
 // ============ Status Update DTOs ============
@@ -362,20 +350,8 @@ data class GroupsKnockoutConfig(
     @SerialName("third_place_match") val thirdPlaceMatch: Boolean = false,
     @SerialName("wildcard_count") val wildcardCount: Int = 0,  // Best runners-up to fill bracket (0, 1, 2, etc.)
     @SerialName("wildcard_source") val wildcardSource: String? = null,  // "second" or "third"
-    @SerialName("match_format") val matchFormat: MatchFormatConfig? = null,  // Match format configuration
-    @SerialName("group_win_points") val groupWinPoints: Int = 3,  // Points for winning a group match (default: 3)
-    @SerialName("knockout_points") val knockoutPoints: KnockoutPointsConfig? = null  // Points for knockout placement
-) {
-    @Serializable
-    data class KnockoutPointsConfig(
-        val winner: Int = 100,
-        val finalist: Int = 70,
-        @SerialName("semi_finalist") val semiFinalist: Int = 50,
-        @SerialName("quarter_finalist") val quarterFinalist: Int = 30,
-        @SerialName("base_points") val basePoints: Int = 10,
-        @SerialName("per_round_bonus") val perRoundBonus: Int = 5
-    )
-}
+    @SerialName("match_format") val matchFormat: MatchFormatConfig? = null  // Match format configuration
+)
 
 /**
  * Assignment of teams to a single group
@@ -392,16 +368,6 @@ data class GroupAssignment(
 @Serializable
 data class AssignGroupsRequest(
     val groups: List<GroupAssignment>,
-    val config: GroupsKnockoutConfig
-)
-
-/**
- * Request to generate group stage with server-side computation.
- * Backend computes group formation + snake seeding.
- */
-@Serializable
-data class GenerateGroupStageAutoRequest(
-    @SerialName("team_ids") val teamIds: List<String>,
     val config: GroupsKnockoutConfig
 )
 

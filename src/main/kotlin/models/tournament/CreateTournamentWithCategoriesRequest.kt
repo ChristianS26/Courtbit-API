@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 data class CategoryPriceRequest(
     @SerialName("category_id")
     val categoryId: Int,
-    val price: Int // Price in pesos
+    val price: Int // Price in cents
 )
 
 @Serializable
