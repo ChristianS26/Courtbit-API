@@ -24,7 +24,10 @@ import models.bracket.UpdateStatusRequest
 import models.bracket.UpdateBracketConfigRequest
 import models.bracket.UpdateScheduleRequest
 import models.bracket.WithdrawTeamRequest
+import org.slf4j.LoggerFactory
 import services.bracket.BracketService
+
+private val logger = LoggerFactory.getLogger("BracketRoutes")
 
 /**
  * Bracket API routes
@@ -485,11 +488,21 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 request.groups.forEach { group ->
                 }
 
-                val result = bracketService.generateGroupStage(tournamentId, categoryId, request)
+                val result = try {
+                    bracketService.generateGroupStage(tournamentId, categoryId, request)
+                } catch (e: Exception) {
+                    logger.error("Uncaught exception in generateGroupStage for tournament=$tournamentId category=$categoryId", e)
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Uncaught: ${e::class.simpleName}: ${e.message}", "stackTrace" to e.stackTraceToString().take(1000))
+                    )
+                    return@post
+                }
 
                 result.fold(
                     onSuccess = { call.respond(HttpStatusCode.Created, it) },
                     onFailure = { e ->
+                        logger.error("generateGroupStage failed for tournament=$tournamentId category=$categoryId", e)
                         when (e) {
                             is IllegalArgumentException -> call.respond(
                                 HttpStatusCode.BadRequest,
