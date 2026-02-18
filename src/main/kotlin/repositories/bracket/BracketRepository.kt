@@ -80,6 +80,13 @@ interface BracketRepository {
      */
     suspend fun deleteMatchesByIds(matchIds: List<String>): Int
 
+    /**
+     * Delete knockout phase via RPC (transactional).
+     * Clears FK references and deletes all knockout matches in a single DB transaction.
+     * @return Number of matches deleted, or -1 on error
+     */
+    suspend fun deleteKnockoutPhaseRpc(tournamentId: String, categoryId: Int): Result<Int>
+
     // ============ Match Scoring ============
 
     /**

@@ -7,6 +7,8 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import models.bracket.*
@@ -406,6 +408,48 @@ class BracketRepositoryImpl(
         }
 
         return if (response.status.isSuccess()) matchIds.size else 0
+    }
+
+    override suspend fun deleteKnockoutPhaseRpc(tournamentId: String, categoryId: Int): Result<Int> {
+        @Serializable
+        data class RpcPayload(
+            @SerialName("p_tournament_id") val tournamentId: String,
+            @SerialName("p_category_id") val categoryId: Int
+        )
+
+        return try {
+            val response = client.post("$apiUrl/rpc/delete_knockout_phase") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(RpcPayload.serializer(), RpcPayload(tournamentId, categoryId)))
+            }
+
+            if (!response.status.isSuccess()) {
+                return Result.failure(IllegalStateException("RPC failed with status ${response.status}"))
+            }
+
+            val body = response.bodyAsText().trim()
+            val result = json.decodeFromString<JsonObject>(body)
+            val success = result["success"]?.let {
+                (it as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+            } ?: false
+
+            if (!success) {
+                val error = result["error"]?.let {
+                    (it as? JsonPrimitive)?.content
+                } ?: "Unknown RPC error"
+                return Result.failure(IllegalArgumentException(error))
+            }
+
+            val deletedCount = result["deleted_count"]?.let {
+                (it as? JsonPrimitive)?.content?.toIntOrNull()
+            } ?: 0
+
+            Result.success(deletedCount)
+        } catch (e: Exception) {
+            Result.failure(IllegalStateException("RPC call failed: ${e.message}"))
+        }
     }
 
     // ============ Match Scoring ============

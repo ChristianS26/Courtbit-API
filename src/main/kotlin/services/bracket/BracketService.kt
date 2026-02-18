@@ -1341,32 +1341,8 @@ class BracketService(
         tournamentId: String,
         categoryId: Int
     ): Result<Unit> {
-        val bracketWithMatches = repository.getBracketWithMatches(tournamentId, categoryId)
-            ?: return Result.failure(IllegalArgumentException("Bracket not found"))
-
-        val matches = bracketWithMatches.matches
-
-        // Find all knockout matches (matches with groupNumber = null)
-        val knockoutMatches = matches.filter { it.groupNumber == null }
-
-        if (knockoutMatches.isEmpty()) {
-            return Result.failure(IllegalArgumentException("No knockout phase found to delete"))
-        }
-
-        val knockoutIds = knockoutMatches.map { it.id }
-
-        return try {
-            // Clear self-referencing FK fields (next_match_id, loser_next_match_id) before deleting
-            repository.clearNextMatchReferences(knockoutIds)
-
-            // Delete all knockout matches (BYEs, pending, and completed alike)
-            repository.deleteMatchesByIds(knockoutIds)
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            println("Error deleting knockout phase: ${e.message}")
-            Result.failure(IllegalStateException("Failed to delete knockout phase: ${e.message}"))
-        }
+        // Use transactional RPC — clears FK refs + deletes matches in a single DB transaction
+        return repository.deleteKnockoutPhaseRpc(tournamentId, categoryId).map { }
     }
 
     /**
