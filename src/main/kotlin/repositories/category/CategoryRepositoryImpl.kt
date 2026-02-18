@@ -10,6 +10,7 @@ import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -116,7 +117,7 @@ class CategoryRepositoryImpl(
                 TournamentCategoryDto(
                     id = it["category_id"]?.jsonPrimitive?.content ?: "",
                     name = it["categories"]?.jsonObject?.get("name")?.jsonPrimitive?.content ?: "",
-                    color = it["color"]?.jsonPrimitive?.content,
+                    color = it["color"]?.jsonPrimitive?.contentOrNull,
                     maxTeams = it["max_teams"]?.jsonPrimitive?.intOrNull,
                     price = it["price"]?.jsonPrimitive?.intOrNull
                 )
