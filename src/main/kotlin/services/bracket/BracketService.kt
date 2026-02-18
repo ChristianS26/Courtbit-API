@@ -1346,6 +1346,14 @@ class BracketService(
     }
 
     /**
+     * Clear all group results, resetting matches to pending and standings to zeros.
+     * Blocked if knockout phase has completed results.
+     */
+    suspend fun clearGroupResults(tournamentId: String, categoryId: Int): Result<Unit> {
+        return repository.clearGroupResultsRpc(tournamentId, categoryId).map { }
+    }
+
+    /**
      * Swap two teams between groups (before group stage starts).
      */
     suspend fun swapTeamsInGroups(

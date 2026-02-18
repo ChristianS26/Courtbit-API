@@ -672,6 +672,50 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                     }
                 )
             }
+
+            // DELETE /api/brackets/{categoryId}/groups/results?tournament_id=xxx
+            // Clear all group match results (resets to pending, zeroes standings)
+            delete("/{categoryId}/groups/results") {
+                val organizerId = call.getOrganizerId() ?: return@delete
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@delete
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@delete
+                }
+
+                val result = bracketService.clearGroupResults(tournamentId, categoryId)
+
+                result.fold(
+                    onSuccess = {
+                        call.respond(HttpStatusCode.OK, mapOf(
+                            "message" to "Group results cleared successfully"
+                        ))
+                    },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (e.message ?: "Cannot clear group results"))
+                            )
+                            is IllegalStateException -> call.respond(
+                                HttpStatusCode.Conflict,
+                                mapOf("error" to (e.message ?: "Cannot clear group results"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Clear failed"))
+                            )
+                        }
+                    }
+                )
+            }
         }
     }
 

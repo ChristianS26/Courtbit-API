@@ -87,6 +87,13 @@ interface BracketRepository {
      */
     suspend fun deleteKnockoutPhaseRpc(tournamentId: String, categoryId: Int): Result<Int>
 
+    /**
+     * Clear all group results via RPC (atomic transaction).
+     * Resets all completed group matches to pending and zeroes standings.
+     * @return Number of matches cleared
+     */
+    suspend fun clearGroupResultsRpc(tournamentId: String, categoryId: Int): Result<Int>
+
     // ============ Match Scoring ============
 
     /**

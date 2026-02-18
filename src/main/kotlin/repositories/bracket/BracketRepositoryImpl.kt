@@ -452,6 +452,48 @@ class BracketRepositoryImpl(
         }
     }
 
+    override suspend fun clearGroupResultsRpc(tournamentId: String, categoryId: Int): Result<Int> {
+        @Serializable
+        data class RpcPayload(
+            @SerialName("p_tournament_id") val tournamentId: String,
+            @SerialName("p_category_id") val categoryId: Int
+        )
+
+        return try {
+            val response = client.post("$apiUrl/rpc/clear_group_results") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(RpcPayload.serializer(), RpcPayload(tournamentId, categoryId)))
+            }
+
+            if (!response.status.isSuccess()) {
+                return Result.failure(IllegalStateException("RPC failed with status ${response.status}"))
+            }
+
+            val body = response.bodyAsText().trim()
+            val result = json.decodeFromString<JsonObject>(body)
+            val success = result["success"]?.let {
+                (it as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+            } ?: false
+
+            if (!success) {
+                val error = result["error"]?.let {
+                    (it as? JsonPrimitive)?.content
+                } ?: "Unknown RPC error"
+                return Result.failure(IllegalArgumentException(error))
+            }
+
+            val clearedCount = result["cleared_count"]?.let {
+                (it as? JsonPrimitive)?.content?.toIntOrNull()
+            } ?: 0
+
+            Result.success(clearedCount)
+        } catch (e: Exception) {
+            Result.failure(IllegalStateException("RPC call failed: ${e.message}"))
+        }
+    }
+
     // ============ Match Scoring ============
 
     override suspend fun getMatch(matchId: String): MatchResponse? {
