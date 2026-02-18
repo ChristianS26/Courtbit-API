@@ -1669,36 +1669,35 @@ class BracketService(
                     if (j == i || resolved) continue
                     val (os1, os2) = matchPairs[j]
 
+                    // Skip BYE matches — don't disrupt seeded BYEs for top seeds
+                    if (seedToTeam[os1] == null || seedToTeam[os2] == null) continue
+
                     // Try swapping t2 with the second team from match j
-                    val ot2 = seedToTeam[os2]
-                    if (ot2 != null) {
-                        val og2 = teamGroupMap[ot2.teamId]
-                        val og1 = teamGroupMap[seedToTeam[os1]?.teamId ?: ""]
-                        // Swap is valid if: t1 vs ot2 are different groups AND ot1 vs t2 are different groups
-                        if (og2 != g1 && (og1 == null || og1 != g2)) {
-                            // Swap seeds
-                            val newT2 = TeamSeed(ot2.teamId, s2)
-                            val newOt2 = TeamSeed(t2.teamId, os2)
-                            seedToTeam[s2] = newT2
-                            seedToTeam[os2] = newOt2
-                            resolved = true
-                            continue
-                        }
+                    val ot2 = seedToTeam[os2]!!
+                    val og2 = teamGroupMap[ot2.teamId]
+                    val og1 = teamGroupMap[seedToTeam[os1]!!.teamId]
+                    // Swap is valid if: t1 vs ot2 are different groups AND ot1 vs t2 are different groups
+                    if (og2 != g1 && (og1 == null || og1 != g2)) {
+                        // Swap seeds
+                        val newT2 = TeamSeed(ot2.teamId, s2)
+                        val newOt2 = TeamSeed(t2.teamId, os2)
+                        seedToTeam[s2] = newT2
+                        seedToTeam[os2] = newOt2
+                        resolved = true
+                        continue
                     }
 
                     // Try swapping t2 with the first team from match j
-                    val ot1 = seedToTeam[os1]
-                    if (ot1 != null) {
-                        val og1 = teamGroupMap[ot1.teamId]
-                        val og2j = teamGroupMap[seedToTeam[os2]?.teamId ?: ""]
-                        if (og1 != g1 && (og2j == null || og2j != g2)) {
-                            val newT2 = TeamSeed(ot1.teamId, s2)
-                            val newOt1 = TeamSeed(t2.teamId, os1)
-                            seedToTeam[s2] = newT2
-                            seedToTeam[os1] = newOt1
-                            resolved = true
-                            continue
-                        }
+                    val ot1 = seedToTeam[os1]!!
+                    val og1j = teamGroupMap[ot1.teamId]
+                    val og2j = teamGroupMap[seedToTeam[os2]!!.teamId]
+                    if (og1j != g1 && (og2j == null || og2j != g2)) {
+                        val newT2 = TeamSeed(ot1.teamId, s2)
+                        val newOt1 = TeamSeed(t2.teamId, os1)
+                        seedToTeam[s2] = newT2
+                        seedToTeam[os1] = newOt1
+                        resolved = true
+                        continue
                     }
                 }
             }

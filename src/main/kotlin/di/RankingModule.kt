@@ -9,6 +9,7 @@ import repositories.ranking.RankingSeasonRepository
 import repositories.ranking.RankingSeasonRepositoryImpl
 import routing.ranking.PointsConfigRoutes
 import routing.ranking.RankingRoutes
+import routing.ranking.RankingSeasonRoutes
 import services.ranking.PointsConfigService
 import services.ranking.RankingSeasonService
 import services.ranking.RankingService
@@ -31,4 +32,5 @@ val RankingModule = module {
     // Ranking Seasons
     single<RankingSeasonRepository> { RankingSeasonRepositoryImpl(get(), get(), get()) }
     single { RankingSeasonService(get()) }
+    single { RankingSeasonRoutes(service = get()) }
 }
