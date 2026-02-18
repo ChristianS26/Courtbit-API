@@ -651,7 +651,6 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 result.fold(
                     onSuccess = {
                         call.respond(HttpStatusCode.OK, mapOf(
-                            "success" to true,
                             "message" to "Knockout phase deleted successfully"
                         ))
                     },
