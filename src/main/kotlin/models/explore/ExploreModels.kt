@@ -22,7 +22,8 @@ data class ExploreEvent(
     @SerialName("organizer_logo_url") val organizerLogoUrl: String? = null,
     @SerialName("organizer_is_verified") val organizerIsVerified: Boolean = false,
     @SerialName("organizer_primary_color") val organizerPrimaryColor: String? = null,
-    @SerialName("is_featured") val isFeatured: Boolean = false
+    @SerialName("is_featured") val isFeatured: Boolean = false,
+    @SerialName("is_following_organizer") val isFollowingOrganizer: Boolean? = null
 )
 
 @Serializable

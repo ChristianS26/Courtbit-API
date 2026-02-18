@@ -28,7 +28,8 @@ class ExploreService(
         pageSize: Int,
         userLat: Double? = null,
         userLng: Double? = null,
-        radiusKm: Double? = null
+        radiusKm: Double? = null,
+        userId: String? = null
     ): ExploreEventsResponse = coroutineScope {
         val tournamentsDeferred = async { tournamentRepository.getAll() }
         val seasonsDeferred = async { seasonRepository.getAll() }
@@ -119,12 +120,24 @@ class ExploreService(
             }
         }
 
-        // Always sort by start date ascending (closest date first)
-        allEvents = allEvents.sortedBy { event ->
-            try {
-                LocalDate.parse(event.startDate, dateFormatter)
-            } catch (e: Exception) {
-                LocalDate.MAX
+        // Sort by distance if location provided, otherwise by start date
+        allEvents = if (userLat != null && userLng != null) {
+            allEvents.sortedBy { event ->
+                val eLat = event.latitude
+                val eLng = event.longitude
+                if (eLat != null && eLng != null) {
+                    GeoUtils.haversineDistance(userLat, userLng, eLat, eLng)
+                } else {
+                    Double.MAX_VALUE
+                }
+            }
+        } else {
+            allEvents.sortedBy { event ->
+                try {
+                    LocalDate.parse(event.startDate, dateFormatter)
+                } catch (e: Exception) {
+                    LocalDate.MAX
+                }
             }
         }
 
@@ -143,9 +156,28 @@ class ExploreService(
         val paginatedEvents = regularEvents.drop(offset).take(pageSize)
         val hasMore = offset + pageSize < regularEvents.size
 
+        // Enrich with follow status if authenticated
+        val enrichedEvents: List<ExploreEvent>
+        val enrichedFeatured: List<ExploreEvent>
+        if (userId != null) {
+            val allOrgIds = (paginatedEvents + featuredEvents)
+                .mapNotNull { it.organizerId }
+                .toSet()
+            val followedIds = followService.getFollowedOrganizerIds(userId, allOrgIds)
+            enrichedEvents = paginatedEvents.map { event ->
+                event.copy(isFollowingOrganizer = event.organizerId != null && event.organizerId in followedIds)
+            }
+            enrichedFeatured = featuredEvents.map { event ->
+                event.copy(isFollowingOrganizer = event.organizerId != null && event.organizerId in followedIds)
+            }
+        } else {
+            enrichedEvents = paginatedEvents
+            enrichedFeatured = featuredEvents
+        }
+
         ExploreEventsResponse(
-            events = paginatedEvents,
-            featured = featuredEvents,
+            events = enrichedEvents,
+            featured = enrichedFeatured,
             page = page,
             pageSize = pageSize,
             hasMore = hasMore
