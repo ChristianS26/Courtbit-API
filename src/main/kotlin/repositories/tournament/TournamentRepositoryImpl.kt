@@ -305,7 +305,7 @@ class TournamentRepositoryImpl(
             courts = json.encodeToString(config.courts),
             matchDurationMinutes = config.matchDurationMinutes,
             tournamentDays = config.tournamentDays,
-            phases = if (config.phases != null) json.encodeToString(config.phases) else null
+            phases = if (config.daySchedules != null) json.encodeToString(config.daySchedules) else null
         )
 
         val response = if (existing != null) {
@@ -411,7 +411,7 @@ private data class SchedulingConfigRaw(
     val courts: String, // JSON string
     @SerialName("match_duration_minutes") val matchDurationMinutes: Int,
     @SerialName("tournament_days") val tournamentDays: List<String>,
-    val phases: String? = null // JSON string
+    val phases: String? = null // JSON string — now stores DaySchedule[] (reusing column name)
 ) {
     fun toResponse(): models.tournament.SchedulingConfigResponse {
         val courtsList = try {
@@ -419,8 +419,8 @@ private data class SchedulingConfigRaw(
         } catch (e: Exception) {
             emptyList()
         }
-        val phasesList = try {
-            if (phases != null) kotlinx.serialization.json.Json.decodeFromString<List<models.tournament.SchedulingPhase>>(phases) else null
+        val daySchedulesList = try {
+            if (phases != null) kotlinx.serialization.json.Json.decodeFromString<List<models.tournament.DaySchedule>>(phases) else null
         } catch (e: Exception) {
             null
         }
@@ -429,7 +429,7 @@ private data class SchedulingConfigRaw(
             courts = courtsList,
             matchDurationMinutes = matchDurationMinutes,
             tournamentDays = tournamentDays,
-            phases = phasesList
+            daySchedules = daySchedulesList
         )
     }
 }
