@@ -10,4 +10,5 @@ data class PublicUser(
     @SerialName("last_name") val lastName: String,
     @SerialName("photo_url") val photoUrl: String? = null,
     val phone: String? = null,
+    val email: String? = null,
 )

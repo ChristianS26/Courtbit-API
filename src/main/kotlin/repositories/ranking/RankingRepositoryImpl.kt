@@ -162,7 +162,7 @@ class RankingRepositoryImpl(
             header("Authorization", "Bearer $apiKey")
             parameter(
                 "select",
-                "user:users!inner(uid,first_name,last_name,photo_url,phone),total_points,category:categories(*)"
+                "user:users!inner(uid,first_name,last_name,photo_url,phone,email),total_points,category:categories(*)"
             )
             parameter("season", "eq.$effectiveSeason")
             parameter("category_id", "eq.$categoryId")
@@ -179,16 +179,16 @@ class RankingRepositoryImpl(
             ?.let { it.index + 1 to it.value }
             ?: throw NotFoundException("Jugador no encontrado")
 
-        // 2. Obtener ranking_events con join a tournaments
+        // 2. Obtener ranking_events con join a tournaments y categories (cross-category)
         val eventsResponse = client.get("$apiUrl/ranking_events") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter(
                 "select",
-                "tournament:tournaments(id,name,start_date),tournament_id,tournament_name,position,created_at,points_earned"
+                "tournament:tournaments(id,name,start_date),tournament_id,tournament_name,position,created_at,points_earned,category:categories(id,name)"
             )
             parameter("user_id", "eq.$userId")
-            parameter("category_id", "eq.$categoryId")
+            parameter("order", "created_at.desc")
         }
 
         val events = json.decodeFromString(
@@ -213,7 +213,9 @@ class RankingRepositoryImpl(
                     "4" -> "Cuartos de final"
                     "5" -> "Octavos de final"
                     else -> "Participante"
-                }
+                },
+                pointsEarned = it.pointsEarned,
+                categoryName = it.category?.name
             )
         }
 

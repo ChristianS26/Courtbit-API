@@ -19,5 +19,7 @@ data class PlayerTournamentHistoryItem(
     val tournamentId: String,
     val tournamentName: String,
     val date: String?,
-    val result: String // "Ganado", "Finalista", "Participación"
+    val result: String, // "Campeón", "Finalista", "Participante"
+    val pointsEarned: Int = 0,
+    val categoryName: String? = null,
 )
