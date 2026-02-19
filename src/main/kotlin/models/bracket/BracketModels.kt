@@ -350,7 +350,21 @@ data class GroupsKnockoutConfig(
     @SerialName("third_place_match") val thirdPlaceMatch: Boolean = false,
     @SerialName("wildcard_count") val wildcardCount: Int = 0,  // Best runners-up to fill bracket (0, 1, 2, etc.)
     @SerialName("wildcard_source") val wildcardSource: String? = null,  // "second" or "third"
-    @SerialName("match_format") val matchFormat: MatchFormatConfig? = null  // Match format configuration
+    @SerialName("match_format") val matchFormat: MatchFormatConfig? = null,  // Match format configuration
+    @SerialName("seed_mapping") val seedMapping: List<SeedSlotMapping>? = null  // Pre-generated knockout seed-to-match mapping
+)
+
+/**
+ * Maps a knockout seed to a specific match slot for pre-generated knockout brackets.
+ * groupNumber/groupPosition are null for wildcard seeds.
+ */
+@Serializable
+data class SeedSlotMapping(
+    val seed: Int,
+    @SerialName("match_id") val matchId: String,
+    val position: Int,  // 1 = team1 slot, 2 = team2 slot
+    @SerialName("group_number") val groupNumber: Int?,
+    @SerialName("group_position") val groupPosition: Int?
 )
 
 /**
@@ -401,8 +415,44 @@ data class GroupsStateResponse(
     val config: GroupsKnockoutConfig,
     val groups: List<GroupState>,
     @SerialName("phase") val phase: String,  // "groups" or "knockout"
-    @SerialName("knockout_generated") val knockoutGenerated: Boolean
+    @SerialName("knockout_generated") val knockoutGenerated: Boolean,
+    @SerialName("tie_warnings") val tieWarnings: List<TieWarning> = emptyList()
 )
+
+/**
+ * Warning for a group that has a tie at the advancing cutoff position
+ */
+@Serializable
+data class TieWarning(
+    @SerialName("group_number") val groupNumber: Int,
+    @SerialName("group_name") val groupName: String,
+    @SerialName("tied_team_ids") val tiedTeamIds: List<String>,
+    val position: Int  // The position where the tie occurs (e.g. 2 = tie for 2nd advancing spot)
+)
+
+/**
+ * Request to resolve a group tie by choosing the winner
+ */
+@Serializable
+data class ResolveTieRequest(
+    @SerialName("group_number") val groupNumber: Int,
+    @SerialName("winner_team_id") val winnerTeamId: String
+)
+
+/**
+ * Result of checking group completion and attempting to fill knockout slots.
+ * Internal type, not serialized.
+ */
+sealed class GroupCompletionResult {
+    data class TeamsFilled(val groupNumber: Int) : GroupCompletionResult()
+    data object GroupIncomplete : GroupCompletionResult()
+    data object NoKnockoutPreGenerated : GroupCompletionResult()
+    data class TieDetected(
+        val groupNumber: Int,
+        val tiedTeamIds: List<String>,
+        val position: Int
+    ) : GroupCompletionResult()
+}
 
 // ============ Common Response DTOs ============
 

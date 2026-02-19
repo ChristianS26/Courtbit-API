@@ -18,6 +18,9 @@ import models.bracket.StandingEntry
 import models.bracket.StandingInput
 import models.bracket.StandingsResponse
 import models.bracket.TeamSeed
+import models.bracket.SeedSlotMapping
+import models.bracket.GroupCompletionResult
+import models.bracket.TieWarning
 import models.bracket.WithdrawTeamResponse
 import repositories.bracket.BracketRepository
 
@@ -496,6 +499,17 @@ class BracketService(
                         "groups_knockout" -> {
                             // Recalculate group standings
                             calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
+                            // Auto-fill knockout slots if this group is now complete
+                            val groupNumber = updatedMatch.groupNumber
+                            if (groupNumber != null) {
+                                try {
+                                    checkGroupCompletionAndFillKnockout(
+                                        bracket.tournamentId, bracket.categoryId, groupNumber
+                                    )
+                                } catch (e: Exception) {
+                                    println("WARN: Auto-fill knockout failed: ${e.message}")
+                                }
+                            }
                         }
                         "round_robin" -> {
                             // Recalculate standings for round robin
@@ -546,7 +560,20 @@ class BracketService(
                 val bracket = repository.getBracketById(match.bracketId)
                 if (bracket != null) {
                     when (bracket.format) {
-                        "groups_knockout" -> calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
+                        "groups_knockout" -> {
+                            calculateGroupStandings(bracket.tournamentId, bracket.categoryId)
+                            // Remove group teams from knockout slots when a score is deleted
+                            val groupNumber = match.groupNumber
+                            if (groupNumber != null) {
+                                try {
+                                    unfillGroupTeamsFromKnockout(
+                                        bracket.tournamentId, bracket.categoryId, groupNumber
+                                    )
+                                } catch (e: Exception) {
+                                    println("WARN: Unfill knockout failed: ${e.message}")
+                                }
+                            }
+                        }
                         "round_robin" -> calculateStandings(bracket.tournamentId, bracket.categoryId)
                     }
                 }
@@ -997,6 +1024,17 @@ class BracketService(
         }
         repository.upsertStandings(standingInputs)
 
+        // Pre-generate knockout structure with empty team slots
+        val totalAdvancing = config.advancingPerGroup * config.groupCount + config.wildcardCount
+        if (totalAdvancing >= 2) {
+            try {
+                preGenerateKnockoutStructure(bracket.id, config, matchNumber)
+            } catch (e: Exception) {
+                println("WARN: Failed to pre-generate knockout structure: ${e.message}")
+                // Non-fatal: groups are still usable without pre-generated knockout
+            }
+        }
+
         // Return complete bracket
         val result = repository.getBracketWithMatches(tournamentId, categoryId)
             ?: return Result.failure(IllegalStateException("Failed to fetch created bracket"))
@@ -1058,13 +1096,153 @@ class BracketService(
             )
         }
 
+        // Detect tie warnings for completed groups
+        val tieWarnings = mutableListOf<TieWarning>()
+        for (groupNum in 1..config.groupCount) {
+            val gMatches = groupMatches[groupNum] ?: emptyList()
+            // Only check completed groups
+            if (gMatches.isEmpty() || gMatches.any { it.status != "completed" }) continue
+            val gStandings = (groupStandings[groupNum] ?: emptyList()).sortedBy { it.position }
+            if (gStandings.size > config.advancingPerGroup) {
+                val lastAdvancing = gStandings[config.advancingPerGroup - 1]
+                val firstNonAdvancing = gStandings[config.advancingPerGroup]
+                if (lastAdvancing.totalPoints == firstNonAdvancing.totalPoints &&
+                    (lastAdvancing.gamesWon - lastAdvancing.gamesLost) == (firstNonAdvancing.gamesWon - firstNonAdvancing.gamesLost)
+                ) {
+                    val tiedTeamIds = gStandings
+                        .filter { it.totalPoints == lastAdvancing.totalPoints &&
+                            (it.gamesWon - it.gamesLost) == (lastAdvancing.gamesWon - lastAdvancing.gamesLost) }
+                        .mapNotNull { it.teamId }
+                    tieWarnings.add(TieWarning(
+                        groupNumber = groupNum,
+                        groupName = "Grupo ${('A' + groupNum - 1)}",
+                        tiedTeamIds = tiedTeamIds,
+                        position = config.advancingPerGroup
+                    ))
+                }
+            }
+        }
+
         return Result.success(GroupsStateResponse(
             bracketId = bracket.id,
             config = config,
             groups = groups,
             phase = phase,
-            knockoutGenerated = knockoutGenerated
+            knockoutGenerated = knockoutGenerated,
+            tieWarnings = tieWarnings
         ))
+    }
+
+    /**
+     * Resolve a tie in a completed group by manually positioning the winner higher.
+     * Swaps the chosen team's position with the team currently at the advancing cutoff.
+     * Then re-runs the auto-fill for that group.
+     */
+    suspend fun resolveGroupTie(
+        tournamentId: String,
+        categoryId: Int,
+        groupNumber: Int,
+        winnerTeamId: String
+    ): Result<GroupsStateResponse> {
+        val bracketWithMatches = repository.getBracketWithMatches(tournamentId, categoryId)
+            ?: return Result.failure(IllegalArgumentException("Bracket not found"))
+
+        val bracket = bracketWithMatches.bracket
+        val standings = bracketWithMatches.standings
+
+        val config = bracket.config?.let {
+            try { json.decodeFromString<GroupsKnockoutConfig>(it.toString()) }
+            catch (_: Exception) { null }
+        } ?: return Result.failure(IllegalStateException("Invalid bracket config"))
+
+        // Get standings for this group
+        val groupStandings = standings
+            .filter { it.groupNumber == groupNumber }
+            .sortedBy { it.position }
+
+        // Find the winner team's standing
+        val winnerStanding = groupStandings.find { it.teamId == winnerTeamId }
+            ?: return Result.failure(IllegalArgumentException("Team not found in group $groupNumber"))
+
+        // The winner needs to be at advancingPerGroup position or better
+        val targetPosition = config.advancingPerGroup
+        val currentAtTarget = groupStandings.find { it.position == targetPosition }
+            ?: return Result.failure(IllegalStateException("No team at position $targetPosition"))
+
+        if (winnerStanding.position != null && winnerStanding.position <= targetPosition) {
+            // Already advancing, no swap needed
+            // Just trigger auto-fill
+            try {
+                checkGroupCompletionAndFillKnockout(tournamentId, categoryId, groupNumber)
+            } catch (_: Exception) {}
+            return getGroupsState(tournamentId, categoryId)
+        }
+
+        // Swap positions: winner gets the advancing position, displaced team gets winner's old position
+        val winnerOldPosition = winnerStanding.position ?: (targetPosition + 1)
+
+        // Update standings via upsert — swap positions
+        val updatedStandings = groupStandings.map { standing ->
+            when (standing.teamId) {
+                winnerTeamId -> StandingInput(
+                    bracketId = bracket.id,
+                    teamId = standing.teamId,
+                    playerId = null,
+                    position = targetPosition,
+                    totalPoints = standing.totalPoints,
+                    matchesPlayed = standing.matchesPlayed,
+                    matchesWon = standing.matchesWon,
+                    matchesLost = standing.matchesLost,
+                    gamesWon = standing.gamesWon,
+                    gamesLost = standing.gamesLost,
+                    pointDifference = standing.pointDifference,
+                    roundReached = standing.roundReached,
+                    groupNumber = groupNumber
+                )
+                currentAtTarget.teamId -> StandingInput(
+                    bracketId = bracket.id,
+                    teamId = standing.teamId,
+                    playerId = null,
+                    position = winnerOldPosition,
+                    totalPoints = standing.totalPoints,
+                    matchesPlayed = standing.matchesPlayed,
+                    matchesWon = standing.matchesWon,
+                    matchesLost = standing.matchesLost,
+                    gamesWon = standing.gamesWon,
+                    gamesLost = standing.gamesLost,
+                    pointDifference = standing.pointDifference,
+                    roundReached = standing.roundReached,
+                    groupNumber = groupNumber
+                )
+                else -> StandingInput(
+                    bracketId = bracket.id,
+                    teamId = standing.teamId,
+                    playerId = null,
+                    position = standing.position ?: 0,
+                    totalPoints = standing.totalPoints,
+                    matchesPlayed = standing.matchesPlayed,
+                    matchesWon = standing.matchesWon,
+                    matchesLost = standing.matchesLost,
+                    gamesWon = standing.gamesWon,
+                    gamesLost = standing.gamesLost,
+                    pointDifference = standing.pointDifference,
+                    roundReached = standing.roundReached,
+                    groupNumber = groupNumber
+                )
+            }
+        }
+
+        repository.upsertStandings(updatedStandings)
+
+        // Unfill then re-fill knockout for this group
+        try {
+            unfillGroupTeamsFromKnockout(tournamentId, categoryId, groupNumber)
+            checkGroupCompletionAndFillKnockout(tournamentId, categoryId, groupNumber)
+        } catch (e: Exception) {
+            println("WARN: Resolve tie knockout update failed: ${e.message}")
+        }
+
+        return getGroupsState(tournamentId, categoryId)
     }
 
     /**
@@ -1218,6 +1396,26 @@ class BracketService(
         // Check if knockout already exists
         val knockoutMatches = matches.filter { it.groupNumber == null }
         if (knockoutMatches.isNotEmpty()) {
+            // If pre-generated (seedMapping exists), do a full assignment instead
+            if (config.seedMapping != null && config.seedMapping.isNotEmpty()) {
+                // Check all group matches are complete
+                val groupMatchesCheck = matches.filter { it.groupNumber != null }
+                val incompleteCheck = groupMatchesCheck.count { it.status != "completed" }
+                if (incompleteCheck > 0) {
+                    return Result.failure(IllegalArgumentException(
+                        "Cannot finalize knockout: $incompleteCheck group matches still incomplete"
+                    ))
+                }
+                // Force-fill all groups
+                for (groupNum in 1..config.groupCount) {
+                    try {
+                        checkGroupCompletionAndFillKnockout(tournamentId, categoryId, groupNum)
+                    } catch (_: Exception) {}
+                }
+                val result = repository.getBracketWithMatches(tournamentId, categoryId)
+                    ?: return Result.failure(IllegalStateException("Failed to fetch updated bracket"))
+                return Result.success(result)
+            }
             return Result.failure(IllegalStateException("Knockout phase already generated"))
         }
 
@@ -1479,6 +1677,375 @@ class BracketService(
         }
 
         return matches
+    }
+
+    // ============ Pre-generate Knockout Structure ============
+
+    /**
+     * Pre-generates the knockout bracket structure with empty team slots when group stage is created.
+     * This allows organizers to schedule knockout matches in advance.
+     * Stores a seed-to-match-slot mapping in the bracket config for later team assignment.
+     */
+    private suspend fun preGenerateKnockoutStructure(
+        bracketId: String,
+        config: GroupsKnockoutConfig,
+        startMatchNumber: Int
+    ) {
+        val totalAdvancing = config.advancingPerGroup * config.groupCount + config.wildcardCount
+
+        // Create placeholder seeds with empty teamIds
+        val placeholderTeams = (1..totalAdvancing).map { seed ->
+            TeamSeed(teamId = "", seed = seed)
+        }
+
+        // Generate bracket structure using existing algorithm
+        val knockoutMatches = generateKnockoutMatches(placeholderTeams)
+
+        // Adjust match numbers and clear team IDs (make all slots empty)
+        val adjustedMatches = knockoutMatches.map { match ->
+            match.copy(
+                matchNumber = match.matchNumber + startMatchNumber - 1,
+                team1Id = null,
+                team2Id = null,
+                isBye = false,
+                status = "pending",
+                nextMatchNumber = match.nextMatchNumber?.let { it + startMatchNumber - 1 }
+            )
+        }
+
+        // Create matches in database
+        val createdMatches = repository.createMatches(bracketId, adjustedMatches)
+        if (createdMatches.isEmpty()) {
+            println("WARN: Pre-generate knockout: no matches created")
+            return
+        }
+
+        // Build matchNumber-to-UUID mapping for setting next_match_id
+        val matchNumberToId = createdMatches.associate { it.matchNumber to it.id }
+
+        // Set next_match_id references
+        for (generated in adjustedMatches) {
+            if (generated.nextMatchNumber != null && generated.nextMatchPosition != null) {
+                val matchId = matchNumberToId[generated.matchNumber] ?: continue
+                val nextMatchId = matchNumberToId[generated.nextMatchNumber] ?: continue
+                repository.updateMatchNextMatchId(matchId, nextMatchId, generated.nextMatchPosition)
+            }
+        }
+
+        // Build seed-to-match-slot mapping
+        // The seed positions determine which seed goes to which first-round match
+        val bracketSize = nextPowerOfTwo(totalAdvancing)
+        val seedPositions = generateSeedPositions(bracketSize)
+        val round1MatchCount = bracketSize / 2
+
+        val seedMapping = mutableListOf<SeedSlotMapping>()
+        for (i in 0 until round1MatchCount) {
+            val pos1 = i * 2       // team1 position in seed array
+            val pos2 = i * 2 + 1   // team2 position in seed array
+            val seed1 = seedPositions[pos1]
+            val seed2 = seedPositions[pos2]
+
+            // Match number for this first-round match
+            val matchNum = i + startMatchNumber
+            val matchId = matchNumberToId[matchNum] ?: continue
+
+            // Map seed to group+position
+            // Seeds 1..groupCount = position 1 from groups 1..N
+            // Seeds (groupCount+1)..(2*groupCount) = position 2 from groups 1..N
+            // Remaining = wildcards
+            fun seedToGroupInfo(seed: Int): Pair<Int?, Int?> {
+                if (seed > totalAdvancing) return Pair(null, null) // BYE padding
+                val nonWildcardCount = config.advancingPerGroup * config.groupCount
+                if (seed > nonWildcardCount) return Pair(null, null) // Wildcard
+                val zeroSeed = seed - 1
+                val groupPosition = (zeroSeed / config.groupCount) + 1
+                val groupNumber = (zeroSeed % config.groupCount) + 1
+                return Pair(groupNumber, groupPosition)
+            }
+
+            if (seed1 <= totalAdvancing) {
+                val (gn, gp) = seedToGroupInfo(seed1)
+                seedMapping.add(SeedSlotMapping(seed1, matchId, 1, gn, gp))
+            }
+            if (seed2 <= totalAdvancing) {
+                val (gn, gp) = seedToGroupInfo(seed2)
+                seedMapping.add(SeedSlotMapping(seed2, matchId, 2, gn, gp))
+            }
+        }
+
+        // Save seed mapping into bracket config
+        val updatedConfig = config.copy(seedMapping = seedMapping)
+        repository.updateBracketConfig(bracketId, json.encodeToString(updatedConfig))
+
+        println("INFO: Pre-generated knockout: ${createdMatches.size} matches, ${seedMapping.size} seed mappings for bracket $bracketId")
+    }
+
+    /**
+     * Called after a group match score is updated.
+     * Checks if the specified group is fully complete and, if so, assigns
+     * the advancing teams to their pre-generated knockout slots.
+     *
+     * If ALL groups are complete, also handles wildcards and same-group conflict resolution.
+     */
+    private suspend fun checkGroupCompletionAndFillKnockout(
+        tournamentId: String,
+        categoryId: Int,
+        groupNumber: Int
+    ): GroupCompletionResult {
+        val bracketWithMatches = repository.getBracketWithMatches(tournamentId, categoryId)
+            ?: return GroupCompletionResult.GroupIncomplete
+
+        val bracket = bracketWithMatches.bracket
+        val matches = bracketWithMatches.matches
+        val standings = bracketWithMatches.standings
+
+        // Parse config with seed mapping
+        val config = bracket.config?.let {
+            try { json.decodeFromString<GroupsKnockoutConfig>(it.toString()) }
+            catch (_: Exception) { null }
+        } ?: return GroupCompletionResult.NoKnockoutPreGenerated
+
+        val seedMapping = config.seedMapping
+        if (seedMapping.isNullOrEmpty()) {
+            return GroupCompletionResult.NoKnockoutPreGenerated
+        }
+
+        // Check if this group's matches are all completed
+        val groupMatches = matches.filter { it.groupNumber == groupNumber }
+        if (groupMatches.isEmpty()) return GroupCompletionResult.GroupIncomplete
+        if (groupMatches.any { it.status != "completed" }) {
+            return GroupCompletionResult.GroupIncomplete
+        }
+
+        // Get standings for this group sorted by position
+        val groupStandings = standings
+            .filter { it.groupNumber == groupNumber }
+            .sortedBy { it.position }
+
+        if (groupStandings.size < config.advancingPerGroup) {
+            return GroupCompletionResult.GroupIncomplete
+        }
+
+        // Check for tie at the advancing cutoff
+        if (groupStandings.size > config.advancingPerGroup) {
+            val lastAdvancing = groupStandings[config.advancingPerGroup - 1]
+            val firstNonAdvancing = groupStandings[config.advancingPerGroup]
+            if (lastAdvancing.totalPoints == firstNonAdvancing.totalPoints &&
+                (lastAdvancing.gamesWon - lastAdvancing.gamesLost) == (firstNonAdvancing.gamesWon - firstNonAdvancing.gamesLost)
+            ) {
+                val tiedTeamIds = groupStandings
+                    .filter { it.totalPoints == lastAdvancing.totalPoints &&
+                        (it.gamesWon - it.gamesLost) == (lastAdvancing.gamesWon - lastAdvancing.gamesLost) }
+                    .mapNotNull { it.teamId }
+                return GroupCompletionResult.TieDetected(
+                    groupNumber = groupNumber,
+                    tiedTeamIds = tiedTeamIds,
+                    position = config.advancingPerGroup
+                )
+            }
+        }
+
+        // Assign advancing teams from this group to their knockout slots
+        for (position in 1..config.advancingPerGroup) {
+            val teamId = groupStandings.getOrNull(position - 1)?.teamId ?: continue
+            // Find the seed mapping entry for this group+position
+            val mapping = seedMapping.find { it.groupNumber == groupNumber && it.groupPosition == position }
+                ?: continue
+            // Only fill if the knockout match hasn't started
+            val knockoutMatch = repository.getMatch(mapping.matchId) ?: continue
+            if (knockoutMatch.status == "completed" || knockoutMatch.status == "in_progress") continue
+            // Set the team in the correct slot
+            val field = if (mapping.position == 1) "team1_id" else "team2_id"
+            repository.updateMatchField(mapping.matchId, field, teamId)
+        }
+
+        // Check if ALL groups are now complete
+        val allGroupMatches = matches.filter { it.groupNumber != null }
+        val allComplete = allGroupMatches.all { it.status == "completed" }
+
+        if (allComplete) {
+            // Assign wildcards and resolve same-group conflicts
+            try {
+                finalizeAllGroupsKnockout(bracket.id, config, seedMapping, standings, matches)
+            } catch (e: Exception) {
+                println("WARN: Failed to finalize knockout assignment: ${e.message}")
+            }
+        }
+
+        return GroupCompletionResult.TeamsFilled(groupNumber)
+    }
+
+    /**
+     * Called when ALL groups are complete.
+     * Assigns wildcards (best runners-up across groups) and resolves same-group
+     * first-round conflicts by swapping team slots.
+     */
+    private suspend fun finalizeAllGroupsKnockout(
+        bracketId: String,
+        config: GroupsKnockoutConfig,
+        seedMapping: List<SeedSlotMapping>,
+        standings: List<StandingEntry>,
+        matches: List<MatchResponse>
+    ) {
+        val groupStandings = standings
+            .filter { it.groupNumber != null }
+            .groupBy { it.groupNumber!! }
+
+        // Assign wildcards if configured
+        if (config.wildcardCount > 0) {
+            val wildcardPosition = config.advancingPerGroup + 1
+            val wildcardCandidates = mutableListOf<StandingEntry>()
+            for (groupNum in 1..config.groupCount) {
+                val groupTeams = groupStandings[groupNum]?.sortedBy { it.position } ?: emptyList()
+                val candidate = groupTeams.getOrNull(wildcardPosition - 1)
+                if (candidate != null) {
+                    wildcardCandidates.add(candidate)
+                }
+            }
+
+            val sortedWildcards = wildcardCandidates.sortedWith(
+                compareByDescending<StandingEntry> { it.totalPoints }
+                    .thenByDescending { it.pointDifference }
+                    .thenByDescending { it.gamesWon }
+            )
+
+            val selectedWildcards = sortedWildcards.take(config.wildcardCount)
+            for (wildcard in selectedWildcards) {
+                val teamId = wildcard.teamId ?: continue
+                // Find wildcard seed mapping (groupNumber == null)
+                val wildcardMappings = seedMapping.filter { it.groupNumber == null }
+                // Find the first unassigned wildcard slot
+                for (mapping in wildcardMappings) {
+                    val knockoutMatch = repository.getMatch(mapping.matchId) ?: continue
+                    val currentTeam = if (mapping.position == 1) knockoutMatch.team1Id else knockoutMatch.team2Id
+                    if (currentTeam == null) {
+                        val field = if (mapping.position == 1) "team1_id" else "team2_id"
+                        repository.updateMatchField(mapping.matchId, field, teamId)
+                        break
+                    }
+                }
+            }
+        }
+
+        // Resolve same-group conflicts in first round
+        // Build team-to-group map from standings
+        val teamGroupMap = mutableMapOf<String, Int>()
+        for ((groupNum, teamStandings) in groupStandings) {
+            for (standing in teamStandings) {
+                val teamId = standing.teamId ?: continue
+                teamGroupMap[teamId] = groupNum
+            }
+        }
+
+        // Get current first-round knockout matches (matches without group_number)
+        val knockoutMatches = matches.filter { it.groupNumber == null }
+            .sortedBy { it.matchNumber }
+
+        // Find first-round matches (those that have no incoming matches from other knockout matches)
+        val matchIdsWithIncoming = knockoutMatches
+            .mapNotNull { it.nextMatchId }
+            .toSet()
+        val firstRoundMatches = knockoutMatches.filter { it.id !in matchIdsWithIncoming }
+
+        // Re-read first round matches to get current team assignments
+        val currentFirstRound = firstRoundMatches.mapNotNull { repository.getMatch(it.id) }
+
+        // Check for same-group conflicts and swap
+        for (i in currentFirstRound.indices) {
+            val m1 = currentFirstRound[i]
+            val t1 = m1.team1Id ?: continue
+            val t2 = m1.team2Id ?: continue
+            val g1 = teamGroupMap[t1]
+            val g2 = teamGroupMap[t2]
+            if (g1 != null && g1 == g2) {
+                // Find another match to swap team2 with
+                for (j in currentFirstRound.indices) {
+                    if (j == i) continue
+                    val m2 = currentFirstRound[j]
+                    val ot1 = m2.team1Id ?: continue
+                    val ot2 = m2.team2Id ?: continue
+                    val og1 = teamGroupMap[ot1]
+                    val og2 = teamGroupMap[ot2]
+                    // Try swapping t2 with ot2
+                    if (og2 != g1 && (og1 == null || og1 != g2)) {
+                        // Swap: m1.team2 <-> m2.team2
+                        repository.updateMatchField(m1.id, "team2_id", ot2)
+                        repository.updateMatchField(m2.id, "team2_id", t2)
+                        break
+                    }
+                    // Try swapping t2 with ot1
+                    if (og1 != null && og1 != g1 && (og2 == null || og2 != g2)) {
+                        repository.updateMatchField(m1.id, "team2_id", ot1)
+                        repository.updateMatchField(m2.id, "team1_id", t2)
+                        break
+                    }
+                }
+            }
+        }
+
+        // Handle BYE matches — first-round slots with one team null
+        val updatedFirstRound = firstRoundMatches.mapNotNull { repository.getMatch(it.id) }
+        for (match in updatedFirstRound) {
+            val hasTeam1 = match.team1Id != null
+            val hasTeam2 = match.team2Id != null
+            if (hasTeam1 && !hasTeam2 || !hasTeam1 && hasTeam2) {
+                // BYE: auto-advance the present team
+                val advancingTeamId = match.team1Id ?: match.team2Id ?: continue
+                val nextMatchId = match.nextMatchId ?: continue
+                val nextPosition = match.nextMatchPosition ?: continue
+                // Mark match as completed BYE
+                repository.updateMatchScore(
+                    matchId = match.id,
+                    scoreTeam1 = 0,
+                    scoreTeam2 = 0,
+                    setScores = emptyList(),
+                    winnerTeam = if (hasTeam1) 1 else 2
+                )
+                repository.updateMatchStatus(match.id, "walkover")
+                // Advance to next match
+                val field = if (nextPosition == 1) "team1_id" else "team2_id"
+                repository.updateMatchField(nextMatchId, field, advancingTeamId)
+            }
+        }
+    }
+
+    /**
+     * Removes teams from knockout slots for a specific group when a group score is deleted.
+     * Only clears slots whose knockout match hasn't started yet.
+     */
+    private suspend fun unfillGroupTeamsFromKnockout(
+        tournamentId: String,
+        categoryId: Int,
+        groupNumber: Int
+    ) {
+        val bracketWithMatches = repository.getBracketWithMatches(tournamentId, categoryId)
+            ?: return
+
+        val bracket = bracketWithMatches.bracket
+        val config = bracket.config?.let {
+            try { json.decodeFromString<GroupsKnockoutConfig>(it.toString()) }
+            catch (_: Exception) { null }
+        } ?: return
+
+        val seedMapping = config.seedMapping ?: return
+
+        // Find all seed mappings for this group
+        val groupMappings = seedMapping.filter { it.groupNumber == groupNumber }
+
+        for (mapping in groupMappings) {
+            val knockoutMatch = repository.getMatch(mapping.matchId) ?: continue
+            // Only clear if match hasn't been played
+            if (knockoutMatch.status == "completed" || knockoutMatch.status == "in_progress") continue
+            repository.clearMatchTeamSlot(mapping.matchId, mapping.position)
+        }
+
+        // Also clear any wildcards if they were assigned (since group completion changed)
+        val wildcardMappings = seedMapping.filter { it.groupNumber == null }
+        for (mapping in wildcardMappings) {
+            val knockoutMatch = repository.getMatch(mapping.matchId) ?: continue
+            if (knockoutMatch.status == "completed" || knockoutMatch.status == "in_progress") continue
+            repository.clearMatchTeamSlot(mapping.matchId, mapping.position)
+        }
     }
 
     // ============ Bracket Generation Algorithm ============

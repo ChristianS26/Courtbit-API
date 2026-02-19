@@ -655,6 +655,49 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 )
             }
 
+            // POST /api/brackets/{categoryId}/groups/resolve-tie?tournament_id=xxx
+            // Resolve a tie in a completed group by selecting which team advances
+            post("/{categoryId}/groups/resolve-tie") {
+                val organizerId = call.getOrganizerId() ?: return@post
+
+                val categoryId = call.parameters["categoryId"]?.toIntOrNull()
+                if (categoryId == null) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid category ID"))
+                    return@post
+                }
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@post
+                }
+
+                val request = call.receive<models.bracket.ResolveTieRequest>()
+                val result = bracketService.resolveGroupTie(
+                    tournamentId, categoryId, request.groupNumber, request.winnerTeamId
+                )
+
+                result.fold(
+                    onSuccess = { call.respond(HttpStatusCode.OK, it) },
+                    onFailure = { e ->
+                        when (e) {
+                            is IllegalArgumentException -> call.respond(
+                                HttpStatusCode.BadRequest,
+                                mapOf("error" to (e.message ?: "Cannot resolve tie"))
+                            )
+                            is IllegalStateException -> call.respond(
+                                HttpStatusCode.Conflict,
+                                mapOf("error" to (e.message ?: "Tie resolution not allowed"))
+                            )
+                            else -> call.respond(
+                                HttpStatusCode.InternalServerError,
+                                mapOf("error" to (e.message ?: "Resolution failed"))
+                            )
+                        }
+                    }
+                )
+            }
+
             // DELETE /api/brackets/{categoryId}/groups/knockout?tournament_id=xxx
             // Delete knockout phase (keeps group stage intact)
             delete("/{categoryId}/groups/knockout") {
