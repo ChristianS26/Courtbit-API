@@ -48,6 +48,19 @@ fun Route.bracketRoutes(bracketService: BracketService) {
             call.respond(HttpStatusCode.OK, brackets)
         }
 
+        // GET /api/brackets/all?tournament_id=xxx
+        // Public - bulk fetch all brackets with matches, standings, and players
+        get("/all") {
+            val tournamentId = call.request.queryParameters["tournament_id"]
+            if (tournamentId.isNullOrBlank()) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                return@get
+            }
+
+            val results = bracketService.getAllBracketsWithMatches(tournamentId)
+            call.respond(HttpStatusCode.OK, results)
+        }
+
         // GET /api/brackets/{categoryId}?tournament_id=xxx
         // Public - anyone can view brackets
         get("/{categoryId}") {

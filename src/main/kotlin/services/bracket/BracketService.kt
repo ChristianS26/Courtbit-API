@@ -220,6 +220,16 @@ class BracketService(
     }
 
     /**
+     * Get all brackets with matches, standings, and players for a tournament (bulk fetch).
+     */
+    suspend fun getAllBracketsWithMatches(tournamentId: String): List<BracketWithMatchesResponse> {
+        val brackets = repository.getBracketsByTournament(tournamentId)
+        return brackets.mapNotNull { bracket ->
+            repository.getBracketWithMatches(tournamentId, bracket.categoryId)
+        }
+    }
+
+    /**
      * Update bracket config (e.g. match format) without regenerating matches.
      */
     suspend fun updateBracketConfig(
