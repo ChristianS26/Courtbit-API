@@ -12,7 +12,9 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
 import models.category.SetTournamentCategoriesPayload
 import models.tournament.CreateTournamentRequest
@@ -305,7 +307,7 @@ class TournamentRepositoryImpl(
             courts = json.encodeToString(config.courts ?: emptyList()),
             matchDurationMinutes = config.matchDurationMinutes,
             tournamentDays = config.tournamentDays,
-            phases = if (config.daySchedules != null) json.encodeToString(config.daySchedules) else null
+            phases = if (config.daySchedules != null) json.encodeToJsonElement(ListSerializer(models.tournament.DaySchedule.serializer()), config.daySchedules) else null
         )
 
         val response = if (existing != null) {
@@ -411,7 +413,7 @@ private data class SchedulingConfigRaw(
     val courts: String, // JSON string
     @SerialName("match_duration_minutes") val matchDurationMinutes: Int,
     @SerialName("tournament_days") val tournamentDays: List<String>,
-    val phases: String? = null // JSON string — now stores DaySchedule[] (reusing column name)
+    val phases: JsonElement? = null // jsonb column — stores DaySchedule[] (reusing column name)
 ) {
     fun toResponse(): models.tournament.SchedulingConfigResponse {
         val courtsList = try {
@@ -421,7 +423,8 @@ private data class SchedulingConfigRaw(
         }
         val daySchedulesList = try {
             if (phases != null) {
-                val parsed = kotlinx.serialization.json.Json.decodeFromString<List<models.tournament.DaySchedule>>(phases)
+                val phasesJson = phases.toString()
+                val parsed = kotlinx.serialization.json.Json.decodeFromString<List<models.tournament.DaySchedule>>(phasesJson)
                 // Backward compat: if courtCount defaults to 3 but we have a courts array, use its size
                 if (courtsList.isNotEmpty()) {
                     parsed.map { ds ->
