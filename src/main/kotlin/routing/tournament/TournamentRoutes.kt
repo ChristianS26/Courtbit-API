@@ -257,13 +257,6 @@ fun Route.tournamentRoutes(
                         call.respond(HttpStatusCode.OK, mapOf("success" to true))
                     }
 
-                    DeleteTournamentResult.HasPayments -> {
-                        call.respond(
-                            HttpStatusCode.Conflict,
-                            mapOf("error" to "No se puede eliminar este torneo porque tiene pagos ya registrados.")
-                        )
-                    }
-
                     is DeleteTournamentResult.Error -> {
                         call.respond(
                             HttpStatusCode.InternalServerError,

@@ -55,6 +55,7 @@ class RankingRepositoryImpl(
                 header("Authorization", "Bearer $apiKey")
                 parameter("select", "name")
                 parameter("id", "eq.$tournamentId")
+                parameter("deleted_at", "is.null")
                 parameter("limit", "1")
             }
             if (!response.status.isSuccess()) return null

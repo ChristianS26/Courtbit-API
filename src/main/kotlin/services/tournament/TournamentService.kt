@@ -10,7 +10,6 @@ import models.tournament.DeleteTournamentResult
 import models.tournament.RestrictionOptionsResponse
 import models.tournament.TimeRangeOption
 import models.tournament.TournamentResponse
-import repositories.tournament.TournamentHasPaymentsException
 import repositories.tournament.TournamentRepository
 import services.category.CategoryService
 
@@ -146,19 +145,15 @@ class TournamentService(
     suspend fun updateShowRegisteredPlayers(id: String, show: Boolean): Boolean =
         repository.patchField(id, mapOf("show_registered_players" to show), "show_registered_players")
 
-    // Nuevo: resultado tipado con manejo de pagos
     suspend fun deleteTournament(id: String): DeleteTournamentResult {
-
         return try {
             val deleted = repository.delete(id)
 
             if (deleted) {
                 DeleteTournamentResult.Deleted
             } else {
-                DeleteTournamentResult.Error("No se pudo eliminar el torneo en Supabase.")
+                DeleteTournamentResult.Error("No se pudo eliminar el torneo.")
             }
-        } catch (e: TournamentHasPaymentsException) {
-            DeleteTournamentResult.HasPayments
         } catch (e: Exception) {
             DeleteTournamentResult.Error(e.message)
         }

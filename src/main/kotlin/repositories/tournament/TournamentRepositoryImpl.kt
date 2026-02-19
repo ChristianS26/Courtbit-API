@@ -32,6 +32,7 @@ class TournamentRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("select", "*,organizers!organizer_id(name,logo_url)")
+            parameter("deleted_at", "is.null")
             parameter("order", "start_date.desc")
         }
 
@@ -50,6 +51,7 @@ class TournamentRepositoryImpl(
             header("Authorization", "Bearer $apiKey")
             parameter("select", "*,organizers!organizer_id(name,logo_url)")
             parameter("organizer_id", "eq.$organizerId")
+            parameter("deleted_at", "is.null")
             parameter("order", "start_date.desc")
         }
 
@@ -67,6 +69,7 @@ class TournamentRepositoryImpl(
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             parameter("id", "eq.$id")
+            parameter("deleted_at", "is.null")
             parameter("select", "*,organizers!organizer_id(name,logo_url)")
         }
 
@@ -147,7 +150,7 @@ class TournamentRepositoryImpl(
     }
 
     override suspend fun delete(id: String): Boolean {
-        // Use RPC function for cascade delete
+        // Soft delete via RPC — sets deleted_at instead of removing data
         val url = "$apiUrl/rpc/delete_tournament_cascade"
 
         return try {
@@ -161,25 +164,12 @@ class TournamentRepositoryImpl(
             val status = response.status
             val bodyText = runCatching { response.bodyAsText() }.getOrElse { "(sin body)" }
 
-
             if (status.isSuccess()) {
-                // Parse the result - it's returned as a JSON string
                 val result = bodyText.trim().removeSurrounding("\"")
-                when (result) {
-                    "deleted" -> true
-                    "has_payments" -> throw TournamentHasPaymentsException(
-                        "No se puede eliminar el torneo porque tiene pagos registrados."
-                    )
-                    else -> {
-                        false
-                    }
-                }
+                result == "deleted"
             } else {
                 false
             }
-        } catch (e: TournamentHasPaymentsException) {
-            // se repropaga para que el service lo maneje
-            throw e
         } catch (e: Exception) {
             false
         }
@@ -507,5 +497,3 @@ data class TournamentRawResponse(
         )
     }
 }
-
-class TournamentHasPaymentsException(message: String? = null) : RuntimeException(message)
