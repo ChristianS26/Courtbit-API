@@ -2,6 +2,7 @@ package services.ranking
 
 import com.incodap.repositories.ranking.RankingRepository
 import models.ranking.AddRankingEventRequest
+import models.ranking.AssignedRankingEventResponse
 import models.ranking.BatchRankingRequest
 import models.ranking.BatchRankingRpcResponse
 import models.ranking.PlayerProfileResponse
@@ -96,6 +97,14 @@ class RankingService(
 
     suspend fun getPlayerProfile(userId: String, categoryId: Int, season: String? = null): PlayerProfileResponse {
         return repository.getPlayerProfile(userId, categoryId, season)
+    }
+
+    suspend fun getAssignedEvents(tournamentId: String, categoryId: Int): List<AssignedRankingEventResponse> {
+        return repository.getAssignedEvents(tournamentId, categoryId)
+    }
+
+    suspend fun revertRankingEvents(tournamentId: String, categoryId: Int): Int {
+        return repository.revertRankingEvents(tournamentId, categoryId)
     }
 
     suspend fun getRankingForMultipleUsersAndCategories(userIds: List<String>, categoryIds: List<Int>, season: String?): List<Ranking> {

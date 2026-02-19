@@ -1,6 +1,7 @@
 package com.incodap.repositories.ranking
 
 import models.ranking.AddRankingEventRequest
+import models.ranking.AssignedRankingEventResponse
 import models.ranking.BatchRankingRpcResponse
 import models.ranking.PlayerProfileResponse
 import models.ranking.Ranking
@@ -17,4 +18,6 @@ interface RankingRepository {
     suspend fun getRankingByEmails(emails: List<String>, categoryIds: List<Int>, season: String?): List<Ranking>
     suspend fun getRankingByPhones(phones: List<String>, categoryIds: List<Int>, season: String?): List<Ranking>
     suspend fun checkExistingEvents(tournamentId: String, categoryId: Int): Boolean
+    suspend fun getAssignedEvents(tournamentId: String, categoryId: Int): List<AssignedRankingEventResponse>
+    suspend fun revertRankingEvents(tournamentId: String, categoryId: Int): Int
 }

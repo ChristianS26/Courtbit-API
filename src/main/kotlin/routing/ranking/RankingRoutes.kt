@@ -10,6 +10,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import kotlinx.serialization.json.buildJsonObject
@@ -93,6 +94,52 @@ class RankingRoutes(
                         buildJsonObject { put("exists", exists) }.toString(),
                         ContentType.Application.Json
                     )
+                }
+
+                // GET /api/ranking/events?tournament_id=X&category_id=Y — get assigned ranking events
+                get("/events") {
+                    call.requireOrganizer() ?: return@get
+                    val tournamentId = call.request.queryParameters["tournament_id"]
+                    val categoryId = call.request.queryParameters["category_id"]?.toIntOrNull()
+                    if (tournamentId.isNullOrBlank() || categoryId == null) {
+                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing tournament_id or category_id"))
+                        return@get
+                    }
+                    try {
+                        val events = service.getAssignedEvents(tournamentId, categoryId)
+                        call.respond(events)
+                    } catch (e: Exception) {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to (e.message ?: "Error fetching assigned events"))
+                        )
+                    }
+                }
+
+                // DELETE /api/ranking/events?tournament_id=X&category_id=Y — revert ranking points
+                delete("/events") {
+                    call.requireOrganizer() ?: return@delete
+                    val tournamentId = call.request.queryParameters["tournament_id"]
+                    val categoryId = call.request.queryParameters["category_id"]?.toIntOrNull()
+                    if (tournamentId.isNullOrBlank() || categoryId == null) {
+                        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing tournament_id or category_id"))
+                        return@delete
+                    }
+                    try {
+                        val deleted = service.revertRankingEvents(tournamentId, categoryId)
+                        call.respondText(
+                            buildJsonObject {
+                                put("deleted", deleted)
+                                put("message", "Ranking events reverted")
+                            }.toString(),
+                            ContentType.Application.Json
+                        )
+                    } catch (e: Exception) {
+                        call.respond(
+                            HttpStatusCode.InternalServerError,
+                            mapOf("error" to (e.message ?: "Error reverting ranking events"))
+                        )
+                    }
                 }
 
                 // POST /api/ranking/batch — batch assign ranking points

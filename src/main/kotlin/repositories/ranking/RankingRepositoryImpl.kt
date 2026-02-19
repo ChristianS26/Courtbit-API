@@ -12,8 +12,13 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import models.ranking.AddRankingEventRequest
+import models.ranking.AssignedRankingEvent
+import models.ranking.AssignedRankingEventResponse
 import models.ranking.BatchRankingRpcResponse
 import models.ranking.PlayerProfileResponse
 import models.ranking.PlayerTournamentHistoryItem
@@ -228,6 +233,55 @@ class RankingRepositoryImpl(
             history = history,
             category = item.category
         )
+    }
+
+    override suspend fun getAssignedEvents(tournamentId: String, categoryId: Int): List<AssignedRankingEventResponse> {
+        val response = client.get("$apiUrl/ranking_events") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            parameter("select", "user_id,team_member_id,position,points_earned,user:users(uid,first_name,last_name)")
+            parameter("tournament_id", "eq.$tournamentId")
+            parameter("category_id", "eq.$categoryId")
+            parameter("order", "points_earned.desc")
+        }
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException("Error fetching assigned events: ${response.status}")
+        }
+        val events = json.decodeFromString(
+            ListSerializer(AssignedRankingEvent.serializer()),
+            response.bodyAsText()
+        )
+        return events.map { event ->
+            val name = event.user?.let { "${it.firstName} ${it.lastName}".trim() }
+                ?: event.teamMemberId
+                ?: "Desconocido"
+            AssignedRankingEventResponse(
+                userId = event.userId,
+                teamMemberId = event.teamMemberId,
+                playerName = name,
+                position = event.position,
+                pointsEarned = event.pointsEarned,
+            )
+        }
+    }
+
+    override suspend fun revertRankingEvents(tournamentId: String, categoryId: Int): Int {
+        val body = buildJsonObject {
+            put("p_tournament_id", tournamentId)
+            put("p_category_id", categoryId)
+        }
+
+        val response = client.post("$apiUrl/rpc/revert_ranking_events") {
+            header("apikey", apiKey)
+            header("Authorization", "Bearer $apiKey")
+            contentType(ContentType.Application.Json)
+            setBody(body.toString())
+        }
+        if (!response.status.isSuccess()) {
+            throw IllegalStateException("Error calling revert_ranking_events: ${response.status} ${response.bodyAsText()}")
+        }
+        val result = json.parseToJsonElement(response.bodyAsText())
+        return result.jsonObject["deleted"]?.jsonPrimitive?.intOrNull ?: 0
     }
 
     override suspend fun getRankingForMultipleUsersAndCategories(
