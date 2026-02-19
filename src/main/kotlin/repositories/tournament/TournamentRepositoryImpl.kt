@@ -302,7 +302,7 @@ class TournamentRepositoryImpl(
 
         val payload = SchedulingConfigRaw(
             tournamentId = tournamentId,
-            courts = json.encodeToString(config.courts),
+            courts = json.encodeToString(config.courts ?: emptyList()),
             matchDurationMinutes = config.matchDurationMinutes,
             tournamentDays = config.tournamentDays,
             phases = if (config.daySchedules != null) json.encodeToString(config.daySchedules) else null
@@ -420,13 +420,21 @@ private data class SchedulingConfigRaw(
             emptyList()
         }
         val daySchedulesList = try {
-            if (phases != null) kotlinx.serialization.json.Json.decodeFromString<List<models.tournament.DaySchedule>>(phases) else null
+            if (phases != null) {
+                val parsed = kotlinx.serialization.json.Json.decodeFromString<List<models.tournament.DaySchedule>>(phases)
+                // Backward compat: if courtCount defaults to 3 but we have a courts array, use its size
+                if (courtsList.isNotEmpty()) {
+                    parsed.map { ds ->
+                        if (ds.courtCount == 3) ds.copy(courtCount = courtsList.size) else ds
+                    }
+                } else parsed
+            } else null
         } catch (e: Exception) {
             null
         }
         return models.tournament.SchedulingConfigResponse(
             tournamentId = tournamentId,
-            courts = courtsList,
+            courts = if (courtsList.isNotEmpty()) courtsList else null,
             matchDurationMinutes = matchDurationMinutes,
             tournamentDays = tournamentDays,
             daySchedules = daySchedulesList
