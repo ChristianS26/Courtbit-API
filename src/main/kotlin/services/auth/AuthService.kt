@@ -27,6 +27,18 @@ class AuthService(
     suspend fun searchUsers(query: String, limit: Int = 20, offset: Int = 0): List<MaskedUserSearchResult> =
         userRepository.searchUsers(query, limit, offset).map { it.toMaskedSearchResult() }
 
+    suspend fun searchOrgPlayers(organizerId: String, query: String, limit: Int = 20): List<MaskedUserSearchResult> =
+        userRepository.searchOrgPlayers(organizerId, query, limit)
+
+    suspend fun lookupUser(email: String?, phone: String?): MaskedUserSearchResult? {
+        val user = when {
+            !email.isNullOrBlank() -> userRepository.findByEmail(email.trim().lowercase())
+            !phone.isNullOrBlank() -> userRepository.findByPhone(phone.trim())
+            else -> null
+        }
+        return user?.toMaskedSearchResult()
+    }
+
     fun hashPassword(password: String): String = BCrypt.hashpw(password, BCrypt.gensalt())
     fun verifyPassword(plain: String, hash: String): Boolean {
         // jBCrypt 0.4 only supports $2a$ — normalize $2b$/$2y$ variants (functionally identical)

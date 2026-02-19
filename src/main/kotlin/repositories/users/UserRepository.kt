@@ -1,17 +1,20 @@
 package com.incodap.repositories.users
 
+import com.incodap.models.users.MaskedUserSearchResult
 import com.incodap.models.users.UserDto
 import models.profile.UpdateProfileRequest
 import models.users.DeleteUserResult
 
 interface UserRepository {
     suspend fun findByEmail(email: String): UserDto?
+    suspend fun findByPhone(phone: String): UserDto?
     suspend fun findByUid(uid: String): UserDto?
     suspend fun insertUser(userDto: UserDto): Boolean
     suspend fun updateProfile(uid: String, request: UpdateProfileRequest): UserDto?
     suspend fun updateProfilePhoto(uid: String, photoUrl: String): Boolean
     suspend fun updatePassword(uid: String, newPasswordHash: String): Boolean
     suspend fun searchUsers(query: String, limit: Int = 20, offset: Int = 0): List<UserDto>
+    suspend fun searchOrgPlayers(organizerId: String, query: String, limit: Int = 20): List<MaskedUserSearchResult>
     suspend fun getStripeCustomerIdByUid(uid: String): String?
     suspend fun updateStripeCustomerId(uid: String, customerId: String): Boolean
     suspend fun deleteByUid(uid: String): DeleteUserResult

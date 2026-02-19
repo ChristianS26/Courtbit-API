@@ -1,7 +1,10 @@
 package com.incodap.repositories.users
 
 import com.incodap.config.SupabaseConfig
+import com.incodap.models.users.MaskedUserSearchResult
 import com.incodap.models.users.UserDto
+import com.incodap.models.users.maskEmail
+import com.incodap.models.users.maskPhone
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -26,6 +29,16 @@ class UserRepositoryImpl(
     private val apiUrl = config.apiUrl        // debería incluir /rest/v1
     private val apiKey = config.apiKey
     private val logger = LoggerFactory.getLogger(UserRepositoryImpl::class.java)
+
+    @Serializable
+    private data class OrgPlayerRow(
+        val uid: String,
+        @SerialName("first_name") val firstName: String,
+        @SerialName("last_name") val lastName: String,
+        val email: String,
+        val phone: String? = null,
+        @SerialName("photo_url") val photoUrl: String? = null,
+    )
 
     // Para parsear errores estándar de PostgREST/Supabase
     @Serializable
@@ -91,8 +104,47 @@ class UserRepositoryImpl(
         }
     }
 
+    override suspend fun searchOrgPlayers(organizerId: String, query: String, limit: Int): List<MaskedUserSearchResult> {
+        val trimmed = query.trim()
+        if (trimmed.length < 2) return emptyList()
+
+        return try {
+            val payload = buildJsonObject {
+                put("p_organizer_id", organizerId)
+                put("p_query", trimmed)
+                put("p_limit", limit.coerceIn(1, 50))
+            }
+            val response = client.post("$apiUrl/rpc/search_org_players") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(payload)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                val rows = json.decodeFromString(ListSerializer(OrgPlayerRow.serializer()), body)
+                rows.map {
+                    MaskedUserSearchResult(
+                        uid = it.uid,
+                        firstName = it.firstName,
+                        lastName = it.lastName,
+                        email = maskEmail(it.email),
+                        phone = maskPhone(it.phone),
+                        photoUrl = it.photoUrl,
+                    )
+                }
+            } else {
+                logger.warn("⚠️ searchOrgPlayers failed: status={} body={}", response.status, body)
+                emptyList()
+            }
+        } catch (e: Exception) {
+            logger.error("❌ Error in searchOrgPlayers: {}", e.message, e)
+            emptyList()
+        }
+    }
+
     // -------------------------------------------------------
-    // 🔎 Buscar por email / UID
+    // 🔎 Buscar por email / UID / phone
     // -------------------------------------------------------
 
     override suspend fun findByEmail(email: String): UserDto? {
@@ -114,6 +166,31 @@ class UserRepositoryImpl(
             }
         } catch (e: Exception) {
             logger.error("❌ Error al buscar por email: {}", e.message, e)
+            null
+        }
+    }
+
+    override suspend fun findByPhone(phone: String): UserDto? {
+        val normalized = phone.trim()
+        if (normalized.isEmpty()) return null
+
+        return try {
+            val response = client.get("$apiUrl/users") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                parameter("phone", "eq.$normalized")
+                parameter("select", "*")
+                parameter("limit", 1)
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) {
+                json.decodeFromString(ListSerializer(UserDto.serializer()), body).firstOrNull()
+            } else {
+                logger.warn("⚠️ findByPhone failed: status={} body={}", response.status, body)
+                null
+            }
+        } catch (e: Exception) {
+            logger.error("❌ Error al buscar por phone: {}", e.message, e)
             null
         }
     }

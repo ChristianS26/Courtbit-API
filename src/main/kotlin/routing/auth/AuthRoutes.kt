@@ -79,6 +79,39 @@ fun Route.authRoutes(authService: AuthService, emailService: EmailService) {
                 call.respond(users)
             }
 
+            get("/search-org-players") {
+                val organizerId = call.request.queryParameters["organizerId"]
+                val query = call.request.queryParameters["query"].orEmpty()
+                val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+
+                if (organizerId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "organizerId es requerido"))
+                    return@get
+                }
+                if (query.length < 2) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "La búsqueda debe tener al menos 2 caracteres"))
+                    return@get
+                }
+                val results = authService.searchOrgPlayers(organizerId, query, limit)
+                call.respond(results)
+            }
+
+            get("/lookup-user") {
+                val email = call.request.queryParameters["email"]
+                val phone = call.request.queryParameters["phone"]
+
+                if (email.isNullOrBlank() && phone.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Se requiere email o phone"))
+                    return@get
+                }
+                val result = authService.lookupUser(email, phone)
+                if (result != null) {
+                    call.respond(result)
+                } else {
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "Usuario no encontrado"))
+                }
+            }
+
             patch("/change-password") {
                 try {
                     val uid = call.uid
