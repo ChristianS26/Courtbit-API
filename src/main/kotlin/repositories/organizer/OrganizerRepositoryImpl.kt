@@ -12,6 +12,9 @@ import models.organizer.CreateOrganizerRequest
 import models.organizer.OrganizerResponse
 import models.organizer.OrganizerStatisticsResponse
 import models.organizer.UpdateOrganizerRequest
+import mu.KotlinLogging
+
+private val logger = KotlinLogging.logger {}
 
 class OrganizerRepositoryImpl(
     private val client: HttpClient,
@@ -227,10 +230,12 @@ class OrganizerRepositoryImpl(
             }
 
             if (memberResponse.status.isSuccess()) {
+                logger.info { "Added creator as owner for organizer $organizerId" }
             } else {
+                logger.error { "Failed to add creator as owner for organizer $organizerId: ${memberResponse.status} - ${memberResponse.bodyAsText()}" }
             }
         } catch (e: Exception) {
-            // Don't throw - organizer was created successfully, this is a secondary operation
+            logger.error(e) { "Exception adding creator as owner for organizer $organizerId" }
         }
     }
 
