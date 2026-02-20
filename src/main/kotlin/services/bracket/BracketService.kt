@@ -1611,16 +1611,17 @@ class BracketService(
         }
 
         // Swap teams in all affected matches
+        // Matches stay in their original group — only the team ID changes
         for (match in team1Matches) {
             val newTeam1Id = if (match.team1Id == team1Id) team2Id else match.team1Id
             val newTeam2Id = if (match.team2Id == team1Id) team2Id else match.team2Id
-            repository.updateMatchTeams(match.id, newTeam1Id, newTeam2Id, team2Group)
+            repository.updateMatchTeams(match.id, newTeam1Id, newTeam2Id, null)
         }
 
         for (match in team2Matches) {
             val newTeam1Id = if (match.team1Id == team2Id) team1Id else match.team1Id
             val newTeam2Id = if (match.team2Id == team2Id) team1Id else match.team2Id
-            repository.updateMatchTeams(match.id, newTeam1Id, newTeam2Id, team1Group)
+            repository.updateMatchTeams(match.id, newTeam1Id, newTeam2Id, null)
         }
 
         // Update standings group numbers
