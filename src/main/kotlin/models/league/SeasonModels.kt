@@ -37,7 +37,7 @@ data class SeasonResponse(
 data class CreateSeasonRequest(
     val name: String,
     @SerialName("start_date") val startDate: String,
-    @SerialName("end_date") val endDate: String?,
+    @SerialName("end_date") val endDate: String? = null,
     @SerialName("is_active") val isActive: Boolean = false,
     @SerialName("registrations_open") val registrationsOpen: Boolean = false,
     @SerialName("matchday_dates") val matchdayDates: List<String>? = null,
