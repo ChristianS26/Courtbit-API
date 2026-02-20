@@ -2,6 +2,7 @@ package models.teams
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import models.category.CategoryResponseDto
 
 @Serializable
@@ -15,7 +16,7 @@ data class Team(
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("categories") val category: CategoryResponseDto,
     @SerialName("restriction") val restriction: String? = null,
-    @SerialName("schedule_restriction") val scheduleRestriction: ScheduleRestriction? = null,
+    @SerialName("schedule_restriction") val scheduleRestriction: JsonElement? = null,
     // Manual player fields
     @SerialName("player_a_name") val playerAName: String? = null,
     @SerialName("player_a_email") val playerAEmail: String? = null,

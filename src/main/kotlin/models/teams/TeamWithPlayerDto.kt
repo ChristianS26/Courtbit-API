@@ -1,5 +1,6 @@
 package models.teams// models/teams/TeamWithFullPlayerInfo.kt
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import models.category.CategoryResponseDto
 
 @Serializable
@@ -14,5 +15,5 @@ data class TeamWithPlayerDto(
     val playerBPaid: Boolean,
     val hasResult: Boolean = false,
     val restriction: String? = null,
-    val scheduleRestriction: ScheduleRestriction? = null
+    val scheduleRestriction: JsonElement? = null
 )
