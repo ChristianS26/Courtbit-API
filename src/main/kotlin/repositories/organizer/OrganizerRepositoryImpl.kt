@@ -232,7 +232,8 @@ class OrganizerRepositoryImpl(
             if (memberResponse.status.isSuccess()) {
                 logger.info { "Added creator as owner for organizer $organizerId" }
             } else {
-                logger.error { "Failed to add creator as owner for organizer $organizerId: ${memberResponse.status} - ${memberResponse.bodyAsText()}" }
+                val errorBody = memberResponse.bodyAsText()
+                logger.error { "Failed to add creator as owner for organizer $organizerId: ${memberResponse.status} - $errorBody" }
             }
         } catch (e: Exception) {
             logger.error(e) { "Exception adding creator as owner for organizer $organizerId" }
