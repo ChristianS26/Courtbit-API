@@ -17,7 +17,8 @@ data class DaySchedule(
     @SerialName("time_from") val timeFrom: String, // "17:00"
     @SerialName("time_to") val timeTo: String, // "23:00"
     @SerialName("court_count") val courtCount: Int = 3, // Number of courts for this day
-    @SerialName("premium_time_from") val premiumTimeFrom: String? = null // "20:00"
+    @SerialName("premium_time_from") val premiumTimeFrom: String? = null, // "20:00"
+    val phase: String? = null // "all" | "groups" | "finals" — null treated as "all"
 )
 
 @Serializable

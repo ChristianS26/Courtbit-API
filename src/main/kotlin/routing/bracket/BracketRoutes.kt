@@ -954,6 +954,69 @@ fun Route.bracketRoutes(bracketService: BracketService) {
                 )
             }
 
+            // ============ Bulk Scheduling ============
+
+            // PATCH /api/matches/schedule/bulk
+            // Bulk update match schedules in a single transaction
+            patch("/schedule/bulk") {
+                val organizerId = call.getOrganizerId() ?: return@patch
+
+                val request = try {
+                    call.receive<models.bracket.BulkScheduleRequest>()
+                } catch (e: Exception) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid request: ${e.localizedMessage}"))
+                    return@patch
+                }
+
+                if (request.assignments.isEmpty()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "assignments cannot be empty"))
+                    return@patch
+                }
+
+                // Build JSON array for the RPC
+                val updatesJson = kotlinx.serialization.json.Json.encodeToString(
+                    kotlinx.serialization.builtins.ListSerializer(models.bracket.BulkScheduleAssignment.serializer()),
+                    request.assignments
+                )
+
+                val result = bracketService.bulkUpdateMatchSchedules(updatesJson)
+
+                result.fold(
+                    onSuccess = { count ->
+                        call.respond(HttpStatusCode.OK, models.bracket.BulkScheduleResponse(
+                            updated = count,
+                            total = request.assignments.size
+                        ))
+                    },
+                    onFailure = { e ->
+                        call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Bulk update failed")))
+                    }
+                )
+            }
+
+            // DELETE /api/matches/schedule?tournament_id=xxx
+            // Clear all match schedules for a tournament
+            delete("/schedule") {
+                val organizerId = call.getOrganizerId() ?: return@delete
+
+                val tournamentId = call.request.queryParameters["tournament_id"]
+                if (tournamentId.isNullOrBlank()) {
+                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "tournament_id query parameter required"))
+                    return@delete
+                }
+
+                val result = bracketService.clearTournamentMatchSchedules(tournamentId)
+
+                result.fold(
+                    onSuccess = { count ->
+                        call.respond(HttpStatusCode.OK, models.bracket.ClearScheduleResponse(cleared = count))
+                    },
+                    onFailure = { e ->
+                        call.respond(HttpStatusCode.InternalServerError, mapOf("error" to (e.message ?: "Clear failed")))
+                    }
+                )
+            }
+
             // DELETE /api/matches/{id}/score
             // Delete/reset match score
             delete("/{id}/score") {

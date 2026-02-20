@@ -180,6 +180,19 @@ interface BracketRepository {
      */
     suspend fun updateMatchSchedule(matchId: String, courtNumber: Int?, scheduledTime: String?): MatchResponse
 
+    /**
+     * Bulk update match schedules via RPC (single transaction).
+     * @param updates JSONB array of [{match_id, court_number, scheduled_time}, ...]
+     * @return Number of matches updated
+     */
+    suspend fun bulkUpdateMatchSchedules(updates: String): Result<Int>
+
+    /**
+     * Clear all match schedules for a tournament via RPC (single transaction).
+     * @return Number of matches cleared
+     */
+    suspend fun clearTournamentMatchSchedules(tournamentId: String): Result<Int>
+
     // ============ Player Score Submission ============
 
     /**
