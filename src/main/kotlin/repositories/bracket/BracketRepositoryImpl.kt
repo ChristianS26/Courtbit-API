@@ -9,6 +9,8 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import models.bracket.*
@@ -722,18 +724,19 @@ class BracketRepositoryImpl(
     }
 
     override suspend fun updateMatchTeams(matchId: String, team1Id: String?, team2Id: String?, groupNumber: Int?): Boolean {
-        val updateMap = mutableMapOf<String, Any?>()
-        updateMap["team1_id"] = team1Id
-        updateMap["team2_id"] = team2Id
-        if (groupNumber != null) {
-            updateMap["group_number"] = groupNumber
+        val body = buildJsonObject {
+            put("team1_id", team1Id)
+            put("team2_id", team2Id)
+            if (groupNumber != null) {
+                put("group_number", groupNumber)
+            }
         }
 
         val response = client.patch("$apiUrl/tournament_matches?id=eq.$matchId") {
             header("apikey", apiKey)
             header("Authorization", "Bearer $apiKey")
             contentType(ContentType.Application.Json)
-            setBody(updateMap)
+            setBody(body.toString())
         }
 
         return response.status.isSuccess()
