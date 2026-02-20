@@ -773,6 +773,57 @@ class BracketRepositoryImpl(
             ?: throw IllegalStateException("Match not found after update")
     }
 
+    // ============ Bulk Scheduling RPCs ============
+
+    override suspend fun bulkUpdateMatchSchedules(updates: String): Result<Int> {
+        return try {
+            val response = client.post("$apiUrl/rpc/bulk_update_match_schedules") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody("""{"p_updates": $updates}""")
+            }
+
+            if (!response.status.isSuccess()) {
+                val errorBody = runCatching { response.bodyAsText() }.getOrElse { "" }
+                return Result.failure(IllegalStateException("Bulk schedule RPC failed: ${response.status.value} $errorBody"))
+            }
+
+            val body = response.bodyAsText().trim()
+            val count = body.toIntOrNull() ?: 0
+            Result.success(count)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun clearTournamentMatchSchedules(tournamentId: String): Result<Int> {
+        @Serializable
+        data class RpcPayload(
+            @SerialName("p_tournament_id") val tournamentId: String
+        )
+
+        return try {
+            val response = client.post("$apiUrl/rpc/clear_tournament_match_schedules") {
+                header("apikey", apiKey)
+                header("Authorization", "Bearer $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(json.encodeToString(RpcPayload.serializer(), RpcPayload(tournamentId)))
+            }
+
+            if (!response.status.isSuccess()) {
+                val errorBody = runCatching { response.bodyAsText() }.getOrElse { "" }
+                return Result.failure(IllegalStateException("Clear schedule RPC failed: ${response.status.value} $errorBody"))
+            }
+
+            val body = response.bodyAsText().trim()
+            val count = body.toIntOrNull() ?: 0
+            Result.success(count)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     // ============ Clear Team Slot ============
 
     override suspend fun clearMatchTeamSlot(matchId: String, position: Int): Boolean {

@@ -301,6 +301,43 @@ data class UpdateScheduleRequest(
     @SerialName("scheduled_time") val scheduledTime: String? = null
 )
 
+// ============ Bulk Scheduling DTOs ============
+
+/**
+ * A single schedule assignment within a bulk update
+ */
+@Serializable
+data class BulkScheduleAssignment(
+    @SerialName("match_id") val matchId: String,
+    @SerialName("court_number") val courtNumber: Int,
+    @SerialName("scheduled_time") val scheduledTime: String
+)
+
+/**
+ * Request to bulk-update match schedules
+ */
+@Serializable
+data class BulkScheduleRequest(
+    val assignments: List<BulkScheduleAssignment>
+)
+
+/**
+ * Response from bulk schedule operations
+ */
+@Serializable
+data class BulkScheduleResponse(
+    val updated: Int,
+    val total: Int
+)
+
+/**
+ * Response from clear schedule operations
+ */
+@Serializable
+data class ClearScheduleResponse(
+    val cleared: Int
+)
+
 // ============ Withdrawal DTOs ============
 
 /**

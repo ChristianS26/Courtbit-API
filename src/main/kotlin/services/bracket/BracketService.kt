@@ -2313,6 +2313,23 @@ class BracketService(
     }
 
     /**
+     * Bulk update match schedules in a single transaction via RPC.
+     * @param updatesJson JSON array string: [{"match_id":"...","court_number":1,"scheduled_time":"..."},...]
+     * @return Number of matches updated
+     */
+    suspend fun bulkUpdateMatchSchedules(updatesJson: String): Result<Int> {
+        return repository.bulkUpdateMatchSchedules(updatesJson)
+    }
+
+    /**
+     * Clear all match schedules for a tournament in a single transaction via RPC.
+     * @return Number of matches cleared
+     */
+    suspend fun clearTournamentMatchSchedules(tournamentId: String): Result<Int> {
+        return repository.clearTournamentMatchSchedules(tournamentId)
+    }
+
+    /**
      * Withdraw a team from the tournament.
      * Marks all their pending/scheduled matches as forfeit and advances opponents.
      */
