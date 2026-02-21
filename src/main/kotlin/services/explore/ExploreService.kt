@@ -143,7 +143,7 @@ class ExploreService(
 
         // Separate featured events (max 2, only on page 1)
         val featuredEvents = if (page == 1) {
-            allEvents.filter { it.isFeatured }.take(2)
+            allEvents.filter { it.isFeatured }.shuffled().take(2)
         } else {
             emptyList()
         }
