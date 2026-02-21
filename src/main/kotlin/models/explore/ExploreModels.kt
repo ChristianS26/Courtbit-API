@@ -46,7 +46,8 @@ data class ExploreOrganizer(
     val latitude: Double? = null,
     val longitude: Double? = null,
     @SerialName("follower_count") val followerCount: Long = 0,
-    @SerialName("event_count") val eventCount: Int = 0
+    @SerialName("event_count") val eventCount: Int = 0,
+    @SerialName("is_following_organizer") val isFollowingOrganizer: Boolean? = null
 )
 
 @Serializable

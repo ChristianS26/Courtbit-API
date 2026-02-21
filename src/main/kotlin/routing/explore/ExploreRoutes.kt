@@ -59,35 +59,39 @@ fun Route.exploreRoutes(exploreService: ExploreService) {
             call.respond(HttpStatusCode.OK, organizers)
         }
 
-        // Public: Search/browse organizers with pagination
-        get("/organizers/search") {
-            val query = call.request.queryParameters["q"]
-            val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
-            val pageSize = call.request.queryParameters["page_size"]?.toIntOrNull() ?: 20
+        // Public with optional JWT: Search/browse organizers with pagination
+        authenticate("auth-jwt", optional = true) {
+            get("/organizers/search") {
+                val currentUserId = call.principal<JWTPrincipal>()?.getClaim("uid", String::class)
 
-            if (page < 1 || pageSize < 1 || pageSize > 50) {
-                call.respond(
-                    HttpStatusCode.BadRequest,
-                    mapOf("error" to "Invalid pagination parameters")
-                )
-                return@get
+                val query = call.request.queryParameters["q"]
+                val page = call.request.queryParameters["page"]?.toIntOrNull() ?: 1
+                val pageSize = call.request.queryParameters["page_size"]?.toIntOrNull() ?: 20
+
+                if (page < 1 || pageSize < 1 || pageSize > 50) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "Invalid pagination parameters")
+                    )
+                    return@get
+                }
+
+                val lat = call.request.queryParameters["lat"]?.toDoubleOrNull()
+                val lng = call.request.queryParameters["lng"]?.toDoubleOrNull()
+                val sortBy = call.request.queryParameters["sort_by"] ?: "followers"
+                val verifiedOnly = call.request.queryParameters["verified_only"]?.toBooleanStrictOrNull() ?: false
+
+                if ((lat != null) != (lng != null)) {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        mapOf("error" to "Both 'lat' and 'lng' are required when using geo filtering")
+                    )
+                    return@get
+                }
+
+                val result = exploreService.searchOrganizers(query, page, pageSize, lat, lng, sortBy, verifiedOnly, currentUserId)
+                call.respond(HttpStatusCode.OK, result)
             }
-
-            val lat = call.request.queryParameters["lat"]?.toDoubleOrNull()
-            val lng = call.request.queryParameters["lng"]?.toDoubleOrNull()
-            val sortBy = call.request.queryParameters["sort_by"] ?: "followers"
-            val verifiedOnly = call.request.queryParameters["verified_only"]?.toBooleanStrictOrNull() ?: false
-
-            if ((lat != null) != (lng != null)) {
-                call.respond(
-                    HttpStatusCode.BadRequest,
-                    mapOf("error" to "Both 'lat' and 'lng' are required when using geo filtering")
-                )
-                return@get
-            }
-
-            val result = exploreService.searchOrganizers(query, page, pageSize, lat, lng, sortBy, verifiedOnly)
-            call.respond(HttpStatusCode.OK, result)
         }
     }
 }

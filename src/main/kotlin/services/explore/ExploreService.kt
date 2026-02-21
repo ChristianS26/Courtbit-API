@@ -227,6 +227,7 @@ class ExploreService(
         userLng: Double? = null,
         sortBy: String = "followers",
         verifiedOnly: Boolean = false,
+        userId: String? = null,
     ): ExploreOrganizersResponse {
         var allOrganizers = getExploreOrganizers()
 
@@ -276,9 +277,22 @@ class ExploreService(
         val paginatedOrganizers = allOrganizers.drop(offset).take(pageSize)
         val hasMore = offset + pageSize < allOrganizers.size
 
+        // Enrich with follow status if authenticated
+        val enrichedOrganizers: List<ExploreOrganizer>
+        val enrichedFeatured: List<ExploreOrganizer>
+        if (userId != null) {
+            val allOrgIds = (paginatedOrganizers + featured).map { it.id }.toSet()
+            val followedIds = followService.getFollowedOrganizerIds(userId, allOrgIds)
+            enrichedOrganizers = paginatedOrganizers.map { it.copy(isFollowingOrganizer = it.id in followedIds) }
+            enrichedFeatured = featured.map { it.copy(isFollowingOrganizer = it.id in followedIds) }
+        } else {
+            enrichedOrganizers = paginatedOrganizers
+            enrichedFeatured = featured
+        }
+
         return ExploreOrganizersResponse(
-            organizers = paginatedOrganizers,
-            featured = featured,
+            organizers = enrichedOrganizers,
+            featured = enrichedFeatured,
             page = page,
             pageSize = pageSize,
             hasMore = hasMore,
