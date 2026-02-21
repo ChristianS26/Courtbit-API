@@ -8,6 +8,10 @@ import io.ktor.http.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.jsonObject
 import models.league.CreateSeasonRequest
 import models.league.SeasonResponse
 import models.league.UpdateSeasonRequest
@@ -81,7 +85,10 @@ class SeasonRepositoryImpl(
             header("Authorization", "Bearer $apiKey")
             header("Prefer", "return=representation")
             contentType(ContentType.Application.Json)
-            setBody(listOf(request))
+            // Strip number_of_courts — not a DB column, only used for court creation logic
+            val element = json.encodeToJsonElement(request).jsonObject
+            val filtered = JsonObject(element.filterKeys { it != "number_of_courts" })
+            setBody(JsonArray(listOf(filtered)))
             // Include organizer data in the response
             parameter("select", "*,organizers!organizer_id(name,logo_url)")
         }
