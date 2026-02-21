@@ -184,9 +184,9 @@ class TournamentService(
         val tournament = repository.getById(tournamentId) ?: return null
         val restrictionConfig = repository.getRestrictionConfig(tournamentId)
 
-        // If no config or not enabled, restrictions are not available
+        // If no config or not enabled, return empty options (tournament exists but has no restrictions)
         if (restrictionConfig == null || !restrictionConfig.enabled) {
-            return null
+            return RestrictionOptionsResponse(availableDaysOfWeek = emptyList(), timeRange = null)
         }
 
         val timeRange = if (restrictionConfig.timeRangeFrom != null && restrictionConfig.timeRangeTo != null) {
