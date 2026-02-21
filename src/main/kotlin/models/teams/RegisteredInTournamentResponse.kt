@@ -2,6 +2,7 @@ package models.teams
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import models.category.CategoryResponseDto
 
 @Serializable
@@ -31,5 +32,6 @@ data class RegistrationItemDto(
     @SerialName("i_am_player_a") val iAmPlayerA: Boolean,
     @SerialName("paid_by_me") val paidByMe: Boolean,
     @SerialName("paid_by_partner") val paidByPartner: Boolean,
+    @SerialName("schedule_restriction") val scheduleRestriction: JsonElement? = null,
 )
 

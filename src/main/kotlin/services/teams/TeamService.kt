@@ -501,7 +501,8 @@ class TeamService(
                 },
                 iAmPlayerA = r.i_am_player_a,
                 paidByMe = r.paid_by_me,
-                paidByPartner = r.paid_by_partner
+                paidByPartner = r.paid_by_partner,
+                scheduleRestriction = r.schedule_restriction
             )
         }
 
@@ -561,7 +562,8 @@ class TeamService(
                 },
                 iAmPlayerA = r.i_am_player_a,
                 paidByMe = r.paid_by_me,
-                paidByPartner = r.paid_by_partner
+                paidByPartner = r.paid_by_partner,
+                scheduleRestriction = r.schedule_restriction
             )
         }
     }
