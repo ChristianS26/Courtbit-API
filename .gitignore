@@ -41,3 +41,5 @@ bin/
 
 # Claude Code
 .claude/
+.agents/
+skills-lock.json
