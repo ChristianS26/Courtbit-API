@@ -231,7 +231,7 @@ class UserRepositoryImpl(
                     put("first_name", userDto.firstName)
                     put("last_name", userDto.lastName)
                     userDto.phone?.let { put("phone", it) }
-                    userDto.gender?.let { put("gender", it) }
+                    userDto.gender?.let { put("gender", it.lowercase()) }
                     userDto.birthdate?.let { put("birthdate", it) }
                     put("role", userDto.role)
                     put("photo_url", userDto.photoUrl ?: "")
@@ -310,7 +310,7 @@ class UserRepositoryImpl(
                 request.firstName?.let { put("first_name", it) }
                 request.lastName?.let { put("last_name", it) }
                 request.phone?.let { put("phone", it) }
-                request.gender?.let { put("gender", it) }
+                request.gender?.let { put("gender", it.lowercase()) }
                 request.photoUrl?.let { put("photo_url", it) }
                 request.countryIso?.let { put("country_iso", it) }
                 request.shirtSize?.let { put("shirt_size", it) }
